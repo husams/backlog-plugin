@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# The backlog CLI. Agents: run this, never read it or anything under ../tool/.
+set -euo pipefail
+. "${BASH_SOURCE[0]%/*}/_env.sh"
+exec "$VENV/bin/backlog" "$@"

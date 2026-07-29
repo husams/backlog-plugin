@@ -1,0 +1,19 @@
+{
+  "name": "backlog",
+  "displayName": "Backlog",
+  "version": "1.2.1",
+  "description": "Self-hosted backlog management for features, stories, subtasks, dependencies, reviews, and enforced custom workflows using SQLite or PostgreSQL.",
+  "author": {
+    "name": "Husam Senussi",
+    "email": "husamsenussi@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "backlog",
+    "tasks",
+    "stories",
+    "workflow",
+    "review"
+  ],
+  "skills": "./skills/"
+}

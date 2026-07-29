@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run Python against the backlog API inside the skill's environment.
+#
+#   backlog-py <<'PY'            read a snippet from stdin -- nothing is written to disk
+#   backlog-py script.py [args]  run one of the ready-made scripts in ../scripts/
+#
+# One process, one connection, however many operations. Use this instead of a
+# chain of CLI calls whenever the answer has to be computed.
+set -euo pipefail
+. "${BASH_SOURCE[0]%/*}/_env.sh"
+exec "$VENV/bin/python" "${@:--}"

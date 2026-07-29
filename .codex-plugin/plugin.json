@@ -1,0 +1,36 @@
+{
+  "name": "backlog-plugin",
+  "version": "1.2.1",
+  "description": "Track project backlogs, dependencies, workflows, reviews, pull request gates, and Linear synchronization.",
+  "author": {
+    "name": "Husam Senussi",
+    "email": "husamsenussi@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "backlog",
+    "tasks",
+    "stories",
+    "workflow",
+    "review",
+    "linear"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Backlog",
+    "shortDescription": "Track project work from planning through merge.",
+    "longDescription": "Manage features, stories, subtasks, acceptance criteria, dependencies, workflow transitions, review threads, pull request gates, and Linear synchronization.",
+    "developerName": "Husam Senussi",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Show me the current backlog.",
+      "What should I work on next?",
+      "Check whether this story is ready to merge."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

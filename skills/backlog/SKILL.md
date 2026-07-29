@@ -1,0 +1,173 @@
+---
+name: backlog
+description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories and subtasks in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, to change a project's status flow, or to sync with Linear."
+---
+
+# Backlog
+
+All paths in this document are relative to this skill directory. The two
+runtime entry points are:
+
+```bash
+BL=bin/backlog
+PY=bin/backlog-py
+```
+
+`bin/install.sh` is an optional human-run direct installer. Agents do not run
+it during normal skill use or marketplace installation; see
+[references/install.md](references/install.md).
+
+Add `--actor <name>` so the audit trail records who acted, and `--project
+<slug>` to act on a project other than the current one. `--json` exists but you
+rarely want it: prefer computing the answer over reading a dump.
+
+**Use `$BL` by default.** Reach for `$PY` when the question needs counting,
+filtering or comparing across many tasks — one process answers it instead of a
+chain of CLI calls. Feed it a snippet on stdin and print the conclusion:
+
+```bash
+$PY <<'PY'
+from backlog_cli import api
+with api.open() as bl:
+    n = len(bl.startable("claude"))
+    print(f"{n} startable")
+PY
+```
+
+Common named-task activities are already written: see
+[references/scripts.md](references/scripts.md). Use them only for small,
+explicit inputs; use `$PY` to reduce computed or large task sets in-process.
+
+## The shape
+
+```
+template ──copied at project creation──> project ──> task ──┬── task_item   criteria / checklist / notes
+   │                                        │               ├── dependency  blocks / relates / duplicates
+   └── the flow a new project starts with   │               ├── review_thread
+                                            └── workflow    ├── artifact
+                                               (per task    └── linear_link
+                                                type)
+```
+
+`task` is **one table** for features, stories and subtasks, told apart by
+`task_type` and nested through `parent_id`. A feature holds stories; a story
+holds subtasks.
+
+## The rules are enforced by the tool, not by you
+
+**Do not re-implement the rules from memory, and do not work around a refusal.**
+The CLI reads this project's `workflow_transition` rows and refuses anything
+they do not allow. Trust the exit code:
+
+| Command | Exit | Means |
+| --- | --- | --- |
+| `$BL move KEY STATUS` | `0` | applied |
+| | `1` | illegal transition, or a gate failed — the message names which |
+| `$BL gate KEY --for merge` | `0` | merging is allowed |
+| | `2` | **blocked — do not merge** |
+| `$BL dep check KEY` | `0` / `2` | startable / blocked |
+
+There is no flag that sets a status directly: `move` is the only path, and it
+consults the flow every time. A gate can be waived deliberately (`--no-pr`,
+`--allow-blocked`, `--allow-open-subtasks`) and `doctor` reports the waiver
+afterwards, so an override stays visible.
+
+## Hard rules
+
+1. **Never read the code.** Everything under `bin/`, `tool/` and `scripts/` is
+   off limits. The markdown here is their documentation: [references/cli.md](references/cli.md)
+   for commands, [references/scripts.md](references/scripts.md) for the ready-made
+   scripts, [references/api.md](references/api.md) for the Python API.
+2. **Compute in Python, answer in prose.** When you use `$PY`, reduce inside the
+   snippet and print the conclusion — a count, a list of keys, a verdict. Do not
+   print a dataset back into your own context and summarise it there.
+3. **Leave nothing behind.** Snippets go in on stdin. Never write a `.py` file, a
+   temp file or a scratch artifact to answer a question.
+4. **Never touch tables or the database directly.** No `sqlite3`, no `psql`, no
+   SQL, schema imports, connection attributes, or internal API attributes. Use
+   only the documented public API. Direct access bypasses the flow, gates and
+   audit trail.
+5. **Read the flow before moving anything.** Statuses are per project and per
+   task type — this project may not have the ones you expect:
+   `$BL statuses` or `$BL workflow show --type story`.
+6. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
+7. **Do not start blocked work.** If `move ... in_progress` fails on
+   `dependencies_clear`, pick something else.
+8. **Never write to Linear without being asked.** `linear pull` and
+   `linear status` are safe; `linear push` needs an explicit `--apply`.
+9. **Read only what you need.** For review work use `review inbox` — root
+   comment, direct parent of the latest reply, latest reply. Reach for
+   `--full` only when that is genuinely insufficient.
+
+## Start here
+
+```bash
+$PY scripts/standup.py --actor <you>   # all four of the below, in one process
+```
+
+or individually:
+
+```bash
+$BL where                      # which store and project you are in
+$BL board                      # what exists and where it stands
+$BL next --actor <you>         # what YOU should do right now
+$BL statuses                   # the flow this project actually runs
+$BL show <KEY>                 # one task in full
+```
+
+`next` returns review threads waiting on you, work assigned to you that is
+actually startable, work that is blocked and why, items awaiting your review,
+and items whose gates now pass.
+
+If no store exists: `$BL init .` from the repository root, then commit
+`.backlog`.
+
+## Load only what you need
+
+| Task | Read this |
+| --- | --- |
+| A common request — status change, standup, start, merge check, review triage | [references/scripts.md](references/scripts.md) |
+| Something the CLI has no flag for: count, filter or compare across tasks | [references/api.md](references/api.md) |
+| Move a task through its flow; understand a gate that is blocking you | [references/workflow.md](references/workflow.md) |
+| Change a project's statuses or transitions, or author a template | [references/templates.md](references/templates.md) |
+| Record or inspect what blocks what; order a feature's stories | [references/dependencies.md](references/dependencies.md) |
+| Open, answer, accept or reject review comments | [references/review.md](references/review.md) |
+| Look up an exact command, flag or exit code | [references/cli.md](references/cli.md) |
+| Plan work: create features/stories/subtasks, criteria, checklists, assign | [references/planning.md](references/planning.md) |
+| Sync with Linear either direction, or resolve a sync conflict | [references/linear.md](references/linear.md) |
+| Put the store somewhere else: central file, shared PostgreSQL | [references/store.md](references/store.md) |
+| Attach a design doc, spec, log or report to a task | [references/artifacts.md](references/artifacts.md) |
+| A command failed, or the store looks wrong | [references/troubleshooting.md](references/troubleshooting.md) |
+| Install or update the skill | [references/install.md](references/install.md) |
+| Select SQLite/PostgreSQL or provision the database | [references/store.md](references/store.md), [references/install.md](references/install.md) |
+
+## The loop in one screen
+
+```bash
+$BL statuses --type story                         # what this project's flow allows
+$BL story add --title "Cache resolved symbols" --feature F-001 \
+    --ac "Given a cold cache, when resolve runs, entries are written."
+$BL dep add S-004 --blocked-by S-002 --note "needs the session table"
+$BL assign S-004 --to claude --reviewer husam     # agent vs human is recorded
+$BL move S-004 ready         --actor product-manager
+$BL dep check S-004                               # exit 0 => safe to start
+$BL move S-004 in_progress   --actor developer
+$BL item add S-004 --kind checklist --content "wire the route"
+$BL pr set S-004 --url https://github.com/acme/repo/pull/91
+$BL move S-004 in_review     --actor developer
+
+$BL review open S-004 --author husam --body "Lock is taken twice" --file src/cache.cpp --line 88
+$BL review inbox --actor claude
+$BL review reply C-003 --author claude --action fix --body "Fixed in a1b2c3d"
+$BL review reply C-004 --author husam --action accept --body "Confirmed"
+
+$BL pr set S-004 --review-state approved
+$BL move S-004 accepted --actor husam             # refused while a thread is open
+$BL gate S-004 --for merge                        # exit 0 => merging is allowed
+# ...merge the PR...
+$BL pr set S-004 --state merged
+$BL move S-004 done --actor claude
+```
+
+Every refusal above comes from a row in this project's flow, not from a rule
+written here.

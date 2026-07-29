@@ -1,0 +1,256 @@
+# Backlog
+
+Backlog is a self-hosted backlog system for Codex and Claude Code. It gives
+agents a shared, structured place to plan work, track activity, and move work
+through project-defined delivery flows.
+
+The plugin manages:
+
+- features, stories, and subtasks;
+- acceptance criteria, checklists, notes, priorities, and assignments;
+- dependencies and blocked work;
+- review threads, pull request state, and attached artifacts;
+- custom statuses, transitions, gates, and reusable workflow templates;
+- audit history for changes made by humans and agents.
+
+Workflow rules are enforced by the tool rather than left to the agent. Every
+status change is checked against the selected project and task type. Illegal
+transitions and failed gates are refused, so a custom flow remains consistent
+regardless of which agent is operating it.
+
+The skill is self-contained under `skills/backlog/`. It includes its launchers,
+Python API, predefined scripts, documentation, and database tooling.
+
+## Requirements
+
+- Codex or Claude Code
+- [uv](https://docs.astral.sh/uv/)
+
+The first launcher invocation creates the skill's Python environment. The
+PostgreSQL driver is installed automatically when PostgreSQL is selected.
+
+## Install for Codex
+
+From the plugin repository:
+
+```bash
+./skills/backlog/bin/install.sh
+```
+
+This links the skill to:
+
+```text
+~/.codex/skills/backlog
+```
+
+Start a new Codex task after installation so Codex discovers the skill. Under
+Codex, invoke the tools through the installed skill path:
+
+```bash
+~/.codex/skills/backlog/bin/backlog --version
+~/.codex/skills/backlog/bin/backlog where
+```
+
+The same installer also links the skill into Claude Code's skills directory.
+
+## Install for Claude Code
+
+To try the plugin directly from its checkout:
+
+```bash
+claude --plugin-dir /absolute/path/to/backlog-plugin
+```
+
+To install it through the repository's local marketplace, run these commands
+inside Claude Code:
+
+```text
+/plugin marketplace add /absolute/path/to/backlog-plugin
+/plugin install backlog@backlog-marketplace
+/reload-plugins
+```
+
+The skill is namespaced as `/backlog:backlog`. Its launcher paths are relative
+to the installed skill directory, so the plugin does not require a root
+executable directory or host-specific paths.
+
+Alternatively, `./skills/backlog/bin/install.sh` installs it as a regular Claude
+Code skill at:
+
+```text
+~/.claude/skills/backlog
+```
+
+## Configure the database
+
+Backlog supports SQLite and PostgreSQL. Select the backend with `BACKLOG_DB` and
+provide an optional location with `BACK_LOG_URL`.
+
+### Repository-local SQLite
+
+This is the simplest setup. The database is stored at
+`<repository>/.backlog/backlog.db`.
+
+```bash
+export BACKLOG_DB=sqlite
+unset BACK_LOG_URL
+backlog-py scripts/setup_database.py
+```
+
+Under Codex, use the full launcher path:
+
+```bash
+BACKLOG_DB=sqlite \
+  ~/.codex/skills/backlog/bin/backlog-py \
+  ~/.codex/skills/backlog/scripts/setup_database.py
+```
+
+The generated `.backlog/` directory can be committed with the project.
+
+### SQLite at an explicit location
+
+```bash
+export BACKLOG_DB=sqlite
+export BACK_LOG_URL=sqlite:///absolute/path/backlog.db
+backlog-py scripts/setup_database.py
+```
+
+### Shared PostgreSQL
+
+```bash
+export BACKLOG_DB=postgres
+export BACK_LOG_URL=postgresql://backlog@db.internal/backlog
+export BACKLOG_SCHEMA=backlog
+backlog-py scripts/setup_database.py
+```
+
+Prefer PostgreSQL credential files or `PG*` environment variables instead of
+putting passwords in command history. The setup script is idempotent: it
+creates missing tables, applies migrations, installs workflow templates, and
+creates the selected project.
+
+Useful optional variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `BACKLOG_PROJECT` | Select a project; defaults to the repository directory name |
+| `BACKLOG_SCHEMA` | Select the PostgreSQL schema; defaults to `backlog` |
+| `BACKLOG_DIR` | Override the repository-local `.backlog` directory |
+| `BACKLOG_ARTIFACTS` | Override where attached artifact files are stored |
+
+Verify the configured store:
+
+```bash
+backlog where
+backlog doctor
+```
+
+## Use the backlog
+
+Agents load the skill automatically when asked to plan work, inspect the
+backlog, find blocked tasks, change status, manage reviews, or check workflow
+gates.
+
+Common commands:
+
+```bash
+backlog board
+backlog next --actor codex
+backlog show S-001
+backlog statuses --type story
+```
+
+Create a feature, story, and subtask:
+
+```bash
+backlog feature add --title "Account recovery"
+backlog story add --feature F-001 --title "Request a recovery link" \
+  --ac "A valid account can request a time-limited recovery link."
+backlog subtask add --story S-001 --title "Add the recovery endpoint"
+```
+
+Inspect the configured story flow before changing status:
+
+```bash
+backlog workflow show --type story
+backlog move S-001 ready --actor product-manager
+backlog move S-001 in_progress --actor codex
+```
+
+For a small set of named tasks, use the predefined status script:
+
+```bash
+backlog-py scripts/change_status.py S-001 in_review --actor codex
+backlog-py scripts/change_status.py T-001 --done --actor codex
+```
+
+The script does not bypass the workflow. It refuses a move when the transition
+is illegal or a configured gate fails.
+
+## Custom workflows
+
+Each project can define separate flows for features, stories, and subtasks. A
+flow controls:
+
+- available statuses and their display order;
+- legal transitions between statuses;
+- initial and terminal states;
+- conditions that must pass before a transition;
+- whether a completed state stops blocking dependent work.
+
+Inspect and manage flows with:
+
+```bash
+backlog statuses
+backlog workflow show --type story
+backlog workflow status-add --type story --slug qa --display "QA" \
+  --category review --after in_review
+backlog workflow move-add --type story --from in_review --to qa
+backlog workflow move-add --type story --from qa --to accepted \
+  --gate review_threads_closed,pr_approved
+```
+
+Reusable templates can seed the same workflow into multiple projects. The CLI
+validates every transition against the active project's stored flow.
+
+## Python API
+
+Use `backlog-py` when an answer requires filtering, counting, comparing, or
+updating a computed set of tasks. Computation happens inside one Python process
+so the agent does not need to retrieve and reason over a large structured
+dataset.
+
+```bash
+backlog-py <<'PY'
+from backlog_cli import api
+
+with api.open() as backlog:
+    active = backlog.tasks(status="in_progress")
+    print(f"{len(active)} tasks in progress")
+PY
+```
+
+Use only the documented public API. Do not query database tables, execute SQL,
+or access internal connection attributes.
+
+## Project layout
+
+| Path | Purpose |
+| --- | --- |
+| `.codex-plugin/plugin.json` | Codex plugin manifest |
+| `.claude-plugin/plugin.json` | Claude Code plugin manifest |
+| `.claude-plugin/marketplace.json` | Local Claude Code marketplace |
+| `skills/backlog/SKILL.md` | Core agent rules and documentation routing |
+| `skills/backlog/bin/install.sh` | Optional direct-install helper for Codex and Claude Code |
+| `skills/backlog/references/` | Task-specific documentation |
+| `skills/backlog/scripts/` | Predefined operational scripts |
+| `skills/backlog/bin/` | `backlog` and `backlog-py` launchers |
+| `skills/backlog/tool/` | Runtime CLI and Python API package |
+
+## Validate
+
+```bash
+python3 ~/.codex/skills/.system/skill-creator/scripts/quick_validate.py \
+  skills/backlog
+python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py .
+```
