@@ -55,17 +55,26 @@ Select the **Backlog Plugin** marketplace and install or enable
 
 ### Install from Codex desktop
 
-1. Run the marketplace registration command once in a terminal:
+Codex Desktop cannot currently register an arbitrary GitHub repository from
+the Plugins screen. A UI-only installation is available only when the plugin
+already appears in the public plugin directory, a workspace marketplace, or
+**Personal → Shared with me**.
 
-   ```bash
-   codex plugin marketplace add husams/backlog-plugin
-   ```
+This plugin is currently distributed from GitHub and is not listed in the
+public plugin directory. Therefore, first register its GitHub marketplace using
+the command-line instructions above. After registration:
 
-2. Restart the desktop app.
-3. Select **Codex** and open **Plugins**.
-4. Select the **Backlog Plugin** marketplace.
-5. Open **Backlog** and select the **+** button to install it.
-6. Start a new Codex task so the bundled skill is loaded.
+1. Restart Codex Desktop.
+2. Select **Codex** and open **Plugins**.
+3. Open **Personal**, then select the **Backlog Plugin** marketplace.
+4. Open **Backlog** and select the **+** button to install it.
+5. Start a new Codex task so the bundled skill is loaded.
+
+If another user shares the plugin with you through Codex, open
+**Plugins → Personal → Shared with me**, select **Backlog**, and use the **+**
+button. No terminal command is needed for a shared or publicly listed plugin.
+
+A GitHub repository link by itself is not an install link in Codex Desktop.
 
 ### Install from a local checkout
 
