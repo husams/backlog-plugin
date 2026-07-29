@@ -31,27 +31,51 @@ PostgreSQL driver is installed automatically when PostgreSQL is selected.
 
 ## Install for Codex
 
-From the plugin repository:
+### Install from the command line
+
+Register the GitHub repository as a marketplace, then install the plugin:
+
+```bash
+codex plugin marketplace add husams/backlog-plugin
+codex plugin add backlog-plugin@backlog-plugin
+```
+
+Start a new Codex session after installation. The plugin is installed and
+enabled automatically.
+
+To inspect or manage it interactively instead, start Codex and open the plugin
+browser:
+
+```text
+/plugins
+```
+
+Select the **Backlog Plugin** marketplace and install or enable
+`backlog-plugin`.
+
+### Install from Codex desktop
+
+1. Run the marketplace registration command once in a terminal:
+
+   ```bash
+   codex plugin marketplace add husams/backlog-plugin
+   ```
+
+2. Restart the desktop app.
+3. Select **Codex** and open **Plugins**.
+4. Select the **Backlog Plugin** marketplace.
+5. Open **Backlog** and select the **+** button to install it.
+6. Start a new Codex task so the bundled skill is loaded.
+
+### Install from a local checkout
+
+For plugin development without GitHub:
 
 ```bash
 ./skills/backlog/bin/install.sh
 ```
 
-This links the skill to:
-
-```text
-~/.codex/skills/backlog
-```
-
-Start a new Codex task after installation so Codex discovers the skill. Under
-Codex, invoke the tools through the installed skill path:
-
-```bash
-~/.codex/skills/backlog/bin/backlog --version
-~/.codex/skills/backlog/bin/backlog where
-```
-
-The same installer also links the skill into Claude Code's skills directory.
+Restart Codex and start a new task after running the helper.
 
 ## Install for Claude Code
 
@@ -61,11 +85,10 @@ To try the plugin directly from its checkout:
 claude --plugin-dir /absolute/path/to/backlog-plugin
 ```
 
-To install it through the repository's local marketplace, run these commands
-inside Claude Code:
+To install it from GitHub, run these commands inside Claude Code:
 
 ```text
-/plugin marketplace add /absolute/path/to/backlog-plugin
+/plugin marketplace add husams/backlog-plugin
 /plugin install backlog@backlog-marketplace
 /reload-plugins
 ```
