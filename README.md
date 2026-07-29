@@ -89,7 +89,7 @@ To install it from GitHub, run these commands inside Claude Code:
 
 ```text
 /plugin marketplace add husams/backlog-plugin
-/plugin install backlog@backlog-marketplace
+/plugin install backlog-plugin@backlog-marketplace
 /reload-plugins
 ```
 

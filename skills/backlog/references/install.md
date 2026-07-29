@@ -49,7 +49,7 @@ or install through its own marketplace:
 
 ```
 /plugin marketplace add ~/workspace/backlog-plugin
-/plugin install backlog@backlog-marketplace
+/plugin install backlog-plugin@backlog-marketplace
 /reload-plugins
 ```
 

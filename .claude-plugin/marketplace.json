@@ -7,9 +7,9 @@
   "description": "Single-plugin marketplace for self-hosted backlog management with enforced custom workflows.",
   "plugins": [
     {
-      "name": "backlog",
+      "name": "backlog-plugin",
       "source": "./",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "description": "Self-hosted backlog management and workflow enforcement for Claude Code."
     }
   ]
