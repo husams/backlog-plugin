@@ -31,28 +31,51 @@ PostgreSQL driver is installed automatically when PostgreSQL is selected.
 
 ## Install for Codex
 
-Register the GitHub repository as a Codex marketplace:
+### Install from the command line
+
+Register the GitHub repository as a marketplace, then install the plugin:
 
 ```bash
 codex plugin marketplace add husams/backlog-plugin
+codex plugin add backlog-plugin@backlog-plugin
 ```
 
-Then install from either surface:
+Start a new Codex session after installation. The plugin is installed and
+enabled automatically.
 
-- **Codex desktop:** restart the app, open **Plugins**, select **Backlog
-  Plugin**, open **Backlog**, and select **Install**.
-- **Codex CLI:** start `codex`, enter `/plugins`, select the **Backlog Plugin**
-  marketplace, and install `backlog-plugin`.
+To inspect or manage it interactively instead, start Codex and open the plugin
+browser:
 
-Start a new task or CLI session after installation so Codex discovers the
-skill.
+```text
+/plugins
+```
 
-For local development from a checkout, the optional direct installer remains
-available:
+Select the **Backlog Plugin** marketplace and install or enable
+`backlog-plugin`.
+
+### Install from Codex desktop
+
+1. Run the marketplace registration command once in a terminal:
+
+   ```bash
+   codex plugin marketplace add husams/backlog-plugin
+   ```
+
+2. Restart the desktop app.
+3. Select **Codex** and open **Plugins**.
+4. Select the **Backlog Plugin** marketplace.
+5. Open **Backlog** and select the **+** button to install it.
+6. Start a new Codex task so the bundled skill is loaded.
+
+### Install from a local checkout
+
+For plugin development without GitHub:
 
 ```bash
 ./skills/backlog/bin/install.sh
 ```
+
+Restart Codex and start a new task after running the helper.
 
 ## Install for Claude Code
 
