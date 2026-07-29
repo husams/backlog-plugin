@@ -112,6 +112,10 @@ Ask for a status without changing it:
 
 ## 8. Post a review
 
+A posted review is stored as a review thread, not as an artifact. Attach an
+artifact only when you explicitly want to associate a review document or file
+with the task.
+
 > @backlog-plugin Open a review finding on story `S-001` as `<reviewer>`.
 > The finding is: “The error response reveals whether the email exists.”
 > Anchor it to `<path/to/file>` line `<line-number>`. Return the new review

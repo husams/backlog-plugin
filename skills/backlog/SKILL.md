@@ -96,6 +96,11 @@ afterwards, so an override stays visible.
 8. **Read only what you need.** For review work use `review inbox` — root
    comment, direct parent of the latest reply, latest reply. Reach for
    `--full` only when that is genuinely insufficient.
+9. **Review feedback is not an artifact.** Requests to post, add, leave,
+   answer, accept, reject, or reply to a review or feedback must use
+   `review open`, `review reply`, or another documented review command.
+   Use `artifact add` only when the user explicitly asks to attach or record a
+   file, document, report, patch, log, design, or other durable artifact.
 
 ## Start here
 
