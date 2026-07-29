@@ -66,17 +66,16 @@ launcher call runs `uv sync` to provision `tool/.venv`; every call after that
 execs the venv directly (~60ms, no resolver). The environment is re-synced only
 when `uv.lock` changes or a new extra is needed.
 
-The CLI itself uses nothing outside the standard library — including the Linear
-client, which is plain `urllib`. One optional extra exists: `psycopg`, installed
-automatically the first time `BACKLOG_DB=postgres`. To
+The CLI itself uses nothing outside the standard library. One optional extra
+exists: `psycopg`, installed automatically the first time
+`BACKLOG_DB=postgres`. To
 pre-install it:
 
 ```bash
 uv sync --project skills/backlog/tool --extra postgres
 ```
 
-`gh` is optional and only powers `pr sync`. `vault` is optional and only used by
-`linear` when you pass `--vault-path`.
+`gh` is optional and only powers `pr sync`.
 
 ## Adding a backlog to a project
 

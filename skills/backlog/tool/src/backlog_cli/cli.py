@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__, core, deps, linear, review, templates, workflow
+from . import __version__, core, deps, review, templates, workflow
 from .db import (
     BacklogError,
     Conn,
@@ -215,7 +215,7 @@ def cmd_doctor(ctx: Ctx, args) -> int:
     for tbl in ("template", "template_workflow", "template_status", "template_transition",
                 "project", "workflow", "workflow_status", "workflow_transition",
                 "task", "task_item", "dependency", "review_comment",
-                "review_thread", "artifact", "linear_link", "event"):
+                "review_thread", "artifact", "event"):
         info["counts"][tbl] = conn.execute(f"SELECT COUNT(*) AS c FROM {tbl}").fetchone()["c"]
 
     if not conn.integrity_ok():
@@ -976,7 +976,6 @@ _EXPORT_TABLES: list[tuple[str, str]] = [
     ("artifact", "id"),
     ("review_thread", "id"),
     ("review_comment", "id"),
-    ("linear_link", "task_id"),
     ("event", "id"),
 ]
 
@@ -1039,162 +1038,6 @@ def cmd_import(ctx: Ctx, args) -> int:
     ctx.emit({"imported": args.file, "sequences_resynced": moved},
              f"replaced backlog from {args.file}"
              + (f"\n  sequences resynced: {', '.join(moved)}" if moved else ""))
-    return 0
-
-
-# --------------------------------------------------------------------------- #
-# Linear
-# --------------------------------------------------------------------------- #
-
-_REPORT_ORDER = ["created", "updated", "relations", "conflicts", "skipped",
-                 "status_conflicts", "unmapped_state", "flattened", "stale",
-                 "pr_linked", "notes"]
-
-
-def _client(args, apply: bool = False) -> linear.Client:
-    token = linear.read_token(args.vault_path, args.vault_field, args.token_file)
-    return linear.Client(token, apply=apply)
-
-
-def _fetch(args, apply: bool = False) -> tuple[list[dict], linear.Client | None]:
-    if args.from_json:
-        return linear.load_json(args.from_json), None
-    client = _client(args, apply=apply)
-    raw = client.fetch_issues(args.team)
-    if getattr(args, "save_fetch", None):
-        Path(args.save_fetch).expanduser().write_text(json.dumps(raw, indent=1), encoding="utf-8")
-    return raw, client
-
-
-def _remote_map(raw: list[dict], project: str | None) -> dict[str, linear.Issue]:
-    issues = [linear.normalise(r) for r in raw if r.get("identifier")]
-    return linear.build_tree(issues, project)
-
-
-def _emit_report(ctx: Ctx, report: dict, head: str, first: str | None = None) -> None:
-    order = ([first] if first else []) + _REPORT_ORDER
-    lines = [head]
-    for label in order:
-        entries = report.get(label) or []
-        if entries:
-            lines.append(f"\n{label} ({len(entries)}):")
-            lines += [f"  {e}" for e in entries]
-    ctx.emit(report, "\n".join(lines))
-
-
-def cmd_linear_pull(ctx: Ctx, args) -> int:
-    raw, _ = _fetch(args)
-    report = linear.pull(ctx.conn, ctx.pid, raw, args.linear_project,
-                         actor=args.actor or "linear-sync", prefer=args.prefer,
-                         sync_relations=not args.no_relations)
-    scope = report.get("scope", {})
-    _emit_report(ctx, report,
-                 f"pulled {scope.get('in_scope', 0)} of {scope.get('source', 0)} issues: "
-                 f"{scope.get('features', 0)} features, {scope.get('stories', 0)} stories, "
-                 f"{scope.get('subtasks', 0)} subtasks\n"
-                 f"created {len(report['created'])}, updated {len(report['updated'])}, "
-                 f"skipped {len(report['skipped'])}, conflicts {len(report['conflicts'])}")
-    return 0
-
-
-def cmd_linear_push(ctx: Ctx, args) -> int:
-    apply = bool(args.apply)
-    raw, client = _fetch(args, apply=apply)
-    if client is None:
-        raise BacklogError("push needs live credentials; --from-json is read-only")
-    remote = _remote_map(raw, args.linear_project)
-    team = client.team(args.team) if args.team else None
-    users = None
-    if args.push_assignee:
-        users = {(u.get("displayName") or u.get("name") or "").strip().lower(): u["id"]
-                 for u in client.users() if u.get("active", True)}
-    project_id = None
-    if team and args.linear_project:
-        project_id = next((p["id"] for p in team.get("projects", {}).get("nodes", [])
-                           if p["name"] == args.linear_project), None)
-    only = {core.normalize_key(k) for k in args.only} if args.only else None
-    plan, report = linear.plan_push(ctx.conn, ctx.pid, remote, team, prefer=args.prefer,
-                                    only=only, create_missing=args.create_missing,
-                                    push_assignee=args.push_assignee, users=users)
-    if apply:
-        linear.apply_push(ctx.conn, ctx.pid, client, plan, report, team, project_id,
-                          actor=args.actor or "linear-sync")
-        if not args.no_relations:
-            linear.push_relations(ctx.conn, ctx.pid, client, remote, report, prune=args.prune)
-        _emit_report(ctx, report,
-                     f"pushed {len(report['created'])} created, {len(report['updated'])} "
-                     f"updated ({client.writes} Linear writes)")
-        return 0
-
-    report["planned"] = [
-        f"{s['key']} -> {s['identifier'] or '(new)'}  {s['action']}"
-        + (f"  [{', '.join(s['fields'])}]" if s["fields"] else "") for s in plan
-    ]
-    _emit_report(ctx, report,
-                 f"PLAN ONLY — {len(plan)} change(s). Re-run with --apply to write to Linear.",
-                 first="planned")
-    return 0
-
-
-def cmd_linear_sync(ctx: Ctx, args) -> int:
-    rc = cmd_linear_pull(ctx, args)
-    if rc:
-        return rc
-    print("")
-    return cmd_linear_push(ctx, args)
-
-
-def cmd_linear_status(ctx: Ctx, args) -> int:
-    raw, _ = _fetch(args)
-    remote = _remote_map(raw, args.linear_project)
-    buckets = linear.status_report(ctx.conn, ctx.pid, remote)
-    order = ["conflict", "local_ahead", "remote_ahead", "unlinked", "remote_only",
-             "remote_missing", "unsynced", "unchanged"]
-    lines = []
-    for name in order:
-        rows = buckets.get(name)
-        if not rows:
-            continue
-        lines.append(f"{name} ({len(rows)})")
-        if name == "unchanged" and not args.verbose:
-            continue
-        lines += [f"  {r}" for r in rows]
-    ctx.emit(buckets, "\n".join(lines) or "(nothing linked yet)")
-    return 0
-
-
-def cmd_linear_link(ctx: Ctx, args) -> int:
-    task = core.get_task(ctx.conn, ctx.pid, args.key)
-    ident = args.issue.strip().upper()
-    clash = linear.link_by_ident(ctx.conn, ident)
-    if clash is not None and clash["task_id"] != task["id"]:
-        other = core.get_task_by_id(ctx.conn, clash["task_id"])
-        raise BacklogError(f"{ident} is already linked to {other['key']}")
-    linear.upsert_link(ctx.conn, task["id"], identifier=ident,
-                       issue_id=args.issue_id or None, url=args.url or None)
-    ctx.emit({"key": task["key"], "identifier": ident}, f"{task['key']} <-> {ident}")
-    return 0
-
-
-def cmd_linear_unlink(ctx: Ctx, args) -> int:
-    task = core.get_task(ctx.conn, ctx.pid, args.key)
-    cur = ctx.conn.execute("DELETE FROM linear_link WHERE task_id = ?", (task["id"],))
-    ctx.conn.commit()
-    if not cur.rowcount:
-        raise BacklogError(f"{task['key']} is not linked to a Linear issue")
-    ctx.emit({"key": task["key"], "unlinked": True}, f"{task['key']} unlinked")
-    return 0
-
-
-def cmd_linear_links(ctx: Ctx, args) -> int:
-    rows = ctx.conn.execute(
-        "SELECT l.*, t.key FROM linear_link l JOIN task t ON t.id = l.task_id "
-        "WHERE t.project_id = ? ORDER BY t.key", (ctx.pid,)
-    ).fetchall()
-    ctx.emit([row_to_dict(r) for r in rows],
-             table(["KEY", "LINEAR", "LAST PULL", "LAST PUSH", "URL"],
-                   [[r["key"], r["identifier"], r["last_pull_at"] or "-",
-                     r["last_push_at"] or "-", r["url"]] for r in rows]))
     return 0
 
 
@@ -1580,53 +1423,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp = ap.add_parser("list")
     sp.add_argument("key")
     sp.set_defaults(func=cmd_artifact_list)
-
-    auth = argparse.ArgumentParser(add_help=False)
-    src = auth.add_mutually_exclusive_group()
-    src.add_argument("--vault-path", dest="vault_path")
-    src.add_argument("--token-file", dest="token_file")
-    src.add_argument("--from-json", dest="from_json")
-    auth.add_argument("--vault-field", dest="vault_field", default="key")
-    auth.add_argument("--team", help="Linear team key, e.g. HSE")
-    auth.add_argument("--linear-project", dest="linear_project",
-                  help="Linear project name to scope the sync to")
-    auth.add_argument("--save-fetch", dest="save_fetch")
-    auth.add_argument("--no-relations", dest="no_relations", action="store_true")
-
-    lp = sub.group("linear", help="two-way sync with Linear")
-    sp = lp.add_parser("pull", parents=[common, auth])
-    sp.add_argument("--prefer", choices=["skip", "remote"], default="skip")
-    sp.set_defaults(func=cmd_linear_pull)
-    sp = lp.add_parser("push", parents=[common, auth])
-    sp.add_argument("--apply", action="store_true")
-    sp.add_argument("--prefer", choices=["skip", "local"], default="skip")
-    sp.add_argument("--only", nargs="+", metavar="KEY")
-    sp.add_argument("--create-missing", dest="create_missing", action="store_true")
-    sp.add_argument("--push-assignee", dest="push_assignee", action="store_true")
-    sp.add_argument("--prune", action="store_true")
-    sp.set_defaults(func=cmd_linear_push)
-    sp = lp.add_parser("sync", parents=[common, auth])
-    sp.add_argument("--apply", action="store_true")
-    sp.add_argument("--prefer", choices=["skip"], default="skip")
-    sp.add_argument("--only", nargs="+", metavar="KEY")
-    sp.add_argument("--create-missing", dest="create_missing", action="store_true")
-    sp.add_argument("--push-assignee", dest="push_assignee", action="store_true")
-    sp.add_argument("--prune", action="store_true")
-    sp.set_defaults(func=cmd_linear_sync)
-    sp = lp.add_parser("status", parents=[common, auth])
-    sp.add_argument("--verbose", action="store_true")
-    sp.set_defaults(func=cmd_linear_status)
-    sp = lp.add_parser("link")
-    sp.add_argument("key")
-    sp.add_argument("--issue", required=True)
-    sp.add_argument("--issue-id", dest="issue_id")
-    sp.add_argument("--url")
-    sp.set_defaults(func=cmd_linear_link)
-    sp = lp.add_parser("unlink")
-    sp.add_argument("key")
-    sp.set_defaults(func=cmd_linear_unlink)
-    sp = lp.add_parser("links")
-    sp.set_defaults(func=cmd_linear_links)
 
     sp = sub.add_parser("export", help="JSON dump of the whole store")
     sp.add_argument("--out")

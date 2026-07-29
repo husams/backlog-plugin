@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories and subtasks in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, to change a project's status flow, or to sync with Linear."
+description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories and subtasks in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
 ---
 
 # Backlog
@@ -44,8 +44,8 @@ explicit inputs; use `$PY` to reduce computed or large task sets in-process.
 template ──copied at project creation──> project ──> task ──┬── task_item   criteria / checklist / notes
    │                                        │               ├── dependency  blocks / relates / duplicates
    └── the flow a new project starts with   │               ├── review_thread
-                                            └── workflow    ├── artifact
-                                               (per task    └── linear_link
+                                            └── workflow    └── artifact
+                                               (per task
                                                 type)
 ```
 
@@ -93,9 +93,7 @@ afterwards, so an override stays visible.
 6. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
 7. **Do not start blocked work.** If `move ... in_progress` fails on
    `dependencies_clear`, pick something else.
-8. **Never write to Linear without being asked.** `linear pull` and
-   `linear status` are safe; `linear push` needs an explicit `--apply`.
-9. **Read only what you need.** For review work use `review inbox` — root
+8. **Read only what you need.** For review work use `review inbox` — root
    comment, direct parent of the latest reply, latest reply. Reach for
    `--full` only when that is genuinely insufficient.
 
@@ -134,7 +132,6 @@ If no store exists: `$BL init .` from the repository root, then commit
 | Open, answer, accept or reject review comments | [references/review.md](references/review.md) |
 | Look up an exact command, flag or exit code | [references/cli.md](references/cli.md) |
 | Plan work: create features/stories/subtasks, criteria, checklists, assign | [references/planning.md](references/planning.md) |
-| Sync with Linear either direction, or resolve a sync conflict | [references/linear.md](references/linear.md) |
 | Put the store somewhere else: central file, shared PostgreSQL | [references/store.md](references/store.md) |
 | Attach a design doc, spec, log or report to a task | [references/artifacts.md](references/artifacts.md) |
 | A command failed, or the store looks wrong | [references/troubleshooting.md](references/troubleshooting.md) |

@@ -88,15 +88,14 @@ SELECT datname, state, count(*) FROM pg_stat_activity GROUP BY 1, 2 ORDER BY 3 D
 
 **Latency matters more than you expect.** Every command is a series of small
 queries, so round-trip time multiplies. On a LAN server this is invisible; over
-a proxy or a loaded host at ~100 ms per statement a full `linear pull` takes
+a proxy or a loaded host at ~100 ms per statement, larger operations can take
 minutes where SQLite takes seconds. Measure before committing a team to it, and
 set `BACKLOG_DB=sqlite` and unset `BACK_LOG_URL` for a fast local fallback.
 
 ## Moving between backends
 
 `export` / `import` is the transport, and it carries everything: features,
-stories, subtasks, dependencies, review threads, artifacts metadata, Linear
-links and history.
+stories, subtasks, dependencies, review threads, artifact metadata, and history.
 
 ```bash
 $BL export --out /tmp/widgets.json                      # from the old store

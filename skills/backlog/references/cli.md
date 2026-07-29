@@ -150,20 +150,3 @@ See [review.md](review.md).
 $BL artifact add KEY PATH [--title T] [--kind doc|spec|design|log|report|patch|data]
 $BL artifact list KEY
 ```
-
-## Linear
-
-```bash
-$BL linear status [auth] [--team HSE] [--linear-project cidx]     # writes nothing
-$BL linear pull   [auth] ... [--prefer skip|remote]
-$BL linear push   [auth] ... [--apply] [--prefer skip|local] [--only KEY ...]
-                  [--create-missing] [--push-assignee] [--prune]
-$BL linear sync   [auth] ... [--apply]
-$BL linear links | link KEY --issue HSE-42 | unlink KEY
-```
-
-`[auth]` is `--vault-path PATH` (preferred), `--token-file FILE`,
-`--from-json DUMP` (read-only), or `LINEAR_API_KEY`. Note `--linear-project`
-names the *Linear* project; `--project` names the *backlog* project.
-
-**`push` sends nothing without `--apply`.** See [linear.md](linear.md).

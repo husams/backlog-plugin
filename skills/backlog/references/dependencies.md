@@ -90,5 +90,4 @@ $BL dep add S-003 --blocks S-004     # extraction before the query surface
 $BL next --actor developer           # offers S-002 only
 ```
 
-Dependencies survive `export` / `import` and sync both ways with Linear issue
-relations — see [linear.md](linear.md).
+Dependencies survive `export` / `import`.

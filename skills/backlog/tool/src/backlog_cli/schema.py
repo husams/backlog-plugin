@@ -4,8 +4,7 @@ Shape (schema v3):
 
     project  ─┬─ task ─┬─ task_item      acceptance criteria / checklist / notes
               │        ├─ artifact       files attached to the task
-              │        ├─ review_thread ─ review_comment
-              │        └─ linear_link    binding to a Linear issue
+              │        └─ review_thread ─ review_comment
               └─ dependency              task -> task edges
 
 `task` is one table for features, stories and subtasks, discriminated by
@@ -305,7 +304,7 @@ KNOWN_AGENTS = {
     "claude", "codex", "cursor", "copilot", "devin", "aider", "gemini",
     "developer", "senior-developer", "qa-engineer", "architect",
     "product-manager", "business-analyst", "doc-writer", "devops",
-    "linear-sync", "backlog",
+    "backlog",
 }
 
 # --------------------------------------------------------------------------- #
@@ -606,20 +605,6 @@ CREATE TABLE IF NOT EXISTS review_comment (
 
 CREATE INDEX IF NOT EXISTS idx_comment_root ON review_comment(root_key, seq);
 CREATE INDEX IF NOT EXISTS idx_comment_task ON review_comment(task_id);
-
-CREATE TABLE IF NOT EXISTS linear_link (
-    task_id           INTEGER PRIMARY KEY REFERENCES task(id) ON DELETE CASCADE,
-    issue_id          TEXT NOT NULL DEFAULT '',
-    identifier        TEXT NOT NULL UNIQUE,
-    url               TEXT NOT NULL DEFAULT '',
-    team_key          TEXT NOT NULL DEFAULT '',
-    project_name      TEXT NOT NULL DEFAULT '',
-    remote_updated_at TEXT NOT NULL DEFAULT '',
-    remote_hash       TEXT NOT NULL DEFAULT '',
-    local_hash        TEXT NOT NULL DEFAULT '',
-    last_pull_at      TEXT,
-    last_push_at      TEXT
-);
 
 CREATE TABLE IF NOT EXISTS event (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

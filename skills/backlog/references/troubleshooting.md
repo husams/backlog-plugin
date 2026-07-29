@@ -97,20 +97,6 @@ The error prints the loop. One of those edges is wrong — decide which and drop
 it with `$BL dep rm`. Do not invert an edge to dodge the message; that just
 moves the false claim somewhere else.
 
-## A Linear sync reported a conflict
-
-Both sides changed the same item since they last agreed, so nothing was written.
-Look at what differs, then pick a side explicitly:
-
-```bash
-$BL linear status ... --project cidx      # which items, which direction
-$BL linear pull   ... --prefer remote     # Linear wins
-$BL linear push   ... --prefer local --apply
-```
-
-`skipped: local ahead` and `skipped: remote ahead` are not errors — they mean the
-other direction is the one to run. See [linear.md](linear.md).
-
 ## `cannot infer role`
 
 The comment author matches neither the item's `assignee` nor its `reviewer`.
@@ -169,7 +155,7 @@ parent, **tasks sitting in a status their flow does not define**, task types
 with no workflow, projects not bound to a template, dependency cycles,
 items that are In Progress or In Review while still blocked, threads with a
 missing last comment, items marked Accepted/Done while review threads are still
-open, Linear links pointing at deleted items, and artifact rows whose file
+open, and artifact rows whose file
 vanished. Exit 1 means it found problems, which it lists. If `doctor` reports
 damage the CLI cannot explain, restore from the last good commit of
 `.backlog/backlog.db` (or a `$BL export` dump) rather than editing the

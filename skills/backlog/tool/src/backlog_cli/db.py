@@ -500,7 +500,7 @@ def _bootstrap(conn: Conn) -> None:
 
 
 _V2_TABLES = ["feature", "item", "dependency", "review_comment", "review_thread",
-              "artifact", "linear_link", "event", "key_counter"]
+              "artifact", "event", "key_counter"]
 
 # The retired feature vocabulary, mapped onto the one status machine.
 _FEATURE_STATUS_IN = {
@@ -731,21 +731,6 @@ def _load_v2_into_v3(conn: Conn, project_id: int, old: dict[str, list[dict]]) ->
           c["author"], actor_kind(c["author"]), c["role"], c["action"], c["body"],
           c.get("file_path"), c.get("line"), c["created_at"])
          for c in old["review_comment"] if c.get("target_key") in ids],
-    )
-    conn.executemany(
-        "INSERT INTO linear_link(task_id, issue_id, identifier, url, team_key, project_name, "
-        "remote_updated_at, remote_hash, local_hash, last_pull_at, last_push_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-        # The watermarks are deliberately reset: this migration rewrote the
-        # status vocabulary and moved acceptance criteria into their own table,
-        # so every stored fingerprint is stale. Blank hashes make the first
-        # pull re-establish the baseline instead of reporting 110 false
-        # "local ahead" conflicts.
-        [(ids[l["entity_key"]], l.get("issue_id") or "", l["identifier"], l.get("url") or "",
-          l.get("team_key") or "", l.get("project_name") or "",
-          l.get("remote_updated_at") or "", "", "",
-          l.get("last_pull_at"), l.get("last_push_at"))
-         for l in old["linear_link"] if l.get("entity_key") in ids],
     )
     conn.executemany(
         "INSERT INTO event(ts, project_id, task_id, entity_key, actor, actor_kind, kind, "
