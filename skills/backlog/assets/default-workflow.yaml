@@ -55,6 +55,13 @@ transitions:
     action: refinement.accepted
     to: ready
 
+  # A blocker thread is not a task transition. The review subsystem emits
+  # feedback.resolved only when every blocker was accepted by a reviewer.
+  - task_types: [feature, story, subtask]
+    from: incomplete
+    action: feedback.resolved
+    to: ready
+
   # Implementation
   - task_types: [feature, story, subtask]
     from: ready

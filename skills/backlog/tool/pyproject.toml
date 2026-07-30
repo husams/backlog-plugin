@@ -1,6 +1,6 @@
 [project]
 name = "backlog-cli"
-version = "1.6.1"
+version = "1.6.2"
 description = "Backlog tracker for coding agents (features / stories / subtasks / dependencies / review threads)"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0"]

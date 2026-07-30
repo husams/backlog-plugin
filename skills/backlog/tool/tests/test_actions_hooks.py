@@ -259,6 +259,76 @@ transitions:
         )
         self.assertEqual([thread["root"] for thread in filtered], ["C-002"])
 
+    def test_task_waits_for_reviewer_acceptance_of_every_blocker(self):
+        self.run_cli("feature", "add", "--title", "Refinement review")
+        self.run_cli(
+            "assign", "F-001", "--to", "developer", "--reviewer", "reviewer"
+        )
+        self.run_cli("action", "F-001", "refinement.marked_incomplete")
+        forged_resolution = self.run_cli_raw(
+            "action", "F-001", "feedback.resolved"
+        )
+        self.assertNotEqual(forged_resolution.returncode, 0)
+        self.assertIn("invalid choice: 'feedback.resolved'", forged_resolution.stderr)
+        self.run_cli(
+            "review", "open", "F-001",
+            "--author", "reviewer",
+            "--severity", "blocker",
+            "--body", "First blocking issue.",
+        )
+        self.run_cli(
+            "review", "open", "F-001",
+            "--author", "reviewer",
+            "--severity", "blocker",
+            "--body", "Second blocking issue.",
+        )
+
+        developer_accept = self.run_cli_raw(
+            "review", "reply", "C-001",
+            "--author", "developer",
+            "--action", "accept",
+            "--body", "Looks done.",
+        )
+        self.assertNotEqual(developer_accept.returncode, 0)
+        self.assertIn("does not allow developer action 'accept'", developer_accept.stderr)
+
+        self.run_cli(
+            "review", "reply", "C-001",
+            "--author", "developer",
+            "--action", "fix",
+            "--body", "Fixed the first issue.",
+        )
+        self.run_cli(
+            "review", "reply", "C-003",
+            "--author", "reviewer",
+            "--action", "accept",
+            "--body", "First fix accepted.",
+        )
+        self.assertEqual(self.status("F-001"), "incomplete")
+
+        self.run_cli(
+            "review", "reply", "C-002",
+            "--author", "developer",
+            "--action", "fix",
+            "--body", "Fixed the second issue.",
+        )
+        self.run_cli(
+            "review", "reply", "C-005",
+            "--author", "reviewer",
+            "--action", "accept",
+            "--body", "Second fix accepted.",
+        )
+        self.assertEqual(self.status("F-001"), "ready")
+
+        first = self.run_cli(
+            "review", "thread", "C-001", json_output=True
+        )
+        second = self.run_cli(
+            "review", "thread", "C-002", json_output=True
+        )
+        self.assertEqual(first["resolution"], "accepted_by_reviewer")
+        self.assertEqual(second["resolution"], "accepted_by_reviewer")
+
 
 if __name__ == "__main__":
     unittest.main()

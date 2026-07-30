@@ -124,7 +124,11 @@ Accepted    + pr.merged                     → Done
 
 An action does not have one hard-coded destination. A project may map the same
 action differently from different current states. Actions such as
-`feedback.posted` or `pr.updated` may be recorded without changing state when
+Review-thread actions (`feedback.posted`, `feedback.replied`,
+`feedback.accepted`, `feedback.rejected`, and `feedback.reopened`) are managed
+by the review subsystem and cannot be submitted through the general action
+API. `feedback.resolved` is emitted only after every blocker has reviewer
+acceptance. Other actions such as `pr.updated` may be recorded without changing state when
 the active workflow has no transition for them.
 
 Backlog may add standard actions as supported integrations and APIs grow.

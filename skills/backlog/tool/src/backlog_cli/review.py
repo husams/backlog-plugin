@@ -9,7 +9,7 @@ party holds the ball at any time:
     comment -> ball flips to the other party
     fix     -> "I addressed this"; ball flips to the other party to verify
     reject  -> "I disagree, here is why"; ball flips to the other party
-    accept  -> thread CLOSES, regardless of which party accepted
+    accept  -> reviewer closes the thread after a developer reply
 
 An agent never needs the whole thread: `inbox` returns the root comment, the
 direct parent of the latest comment, and the latest comment.
@@ -21,6 +21,18 @@ from .core import get_task, get_task_by_id, normalize_key, trigger_action
 from .db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
 from .hooks import Action
 from .schema import REVIEW_ACTIONS, REVIEW_ROLES, REVIEW_SEVERITIES, ReviewSeverity
+
+
+_THREAD_TRANSITIONS: dict[tuple[str, str, str], tuple[str, str | None]] = {
+    ("awaiting_developer", "developer", "comment"): ("awaiting_reviewer", None),
+    ("awaiting_developer", "developer", "fix"): ("awaiting_reviewer", None),
+    ("awaiting_developer", "developer", "reject"): ("awaiting_reviewer", None),
+    ("awaiting_reviewer", "reviewer", "comment"): ("awaiting_developer", None),
+    ("awaiting_reviewer", "reviewer", "reject"): ("awaiting_developer", None),
+    ("awaiting_reviewer", "reviewer", "accept"): (
+        "closed", "accepted_by_reviewer"
+    ),
+}
 
 
 def normalize_severity(value: ReviewSeverity | str) -> ReviewSeverity:
@@ -61,6 +73,8 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
                 severity: ReviewSeverity | str = ReviewSeverity.BLOCKER) -> dict:
     task = get_task(conn, project_id, key)
     role = resolve_role(task, author, role)
+    if role != "reviewer":
+        raise BacklogError("only a reviewer can open a review thread")
     severity = normalize_severity(severity)
     ckey = next_comment_key(conn)
     ts = utcnow()
@@ -84,20 +98,6 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
     conn.commit()
-    trigger_action(
-        conn,
-        project_id,
-        task["key"],
-        Action.FEEDBACK_POSTED,
-        actor=author,
-        operation="review.open",
-        parameters={
-            "comment": ckey,
-            "body": body,
-            "role": role,
-            "severity": severity.value,
-        },
-    )
     return thread_summary(conn, ckey)
 
 
@@ -160,6 +160,18 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
         )
 
     role = resolve_role(task, author, role)
+    transition = _THREAD_TRANSITIONS.get((thread["state"], role, action))
+    if transition is None and not reopen:
+        allowed = sorted(
+            candidate_action
+            for state, candidate_role, candidate_action in _THREAD_TRANSITIONS
+            if state == thread["state"] and candidate_role == role
+        )
+        detail = ", ".join(allowed) if allowed else "none"
+        raise BacklogError(
+            f"thread {thread['root_key']} does not allow {role} action {action!r} "
+            f"from {thread['state']}; allowed for {role}: {detail}"
+        )
     ckey = next_comment_key(conn)
     ts = utcnow()
     seq = int(thread["comment_count"]) + 1
@@ -171,12 +183,16 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
          actor_kind(author), role, action, body, parent["file_path"], parent["line"], ts),
     )
 
-    if action == "accept":
-        state, resolution = "closed", f"accepted_by_{role}"
-        closed_by, closed_at = author, ts
-    else:
+    if reopen:
         state, resolution = _ball_after(role), None
         closed_by, closed_at = None, None
+    else:
+        assert transition is not None
+        state, resolution = transition
+        if state == "closed":
+            closed_by, closed_at = author, ts
+        else:
+            closed_by, closed_at = None, None
 
     conn.execute(
         "UPDATE review_thread SET state = ?, resolution = ?, last_comment_key = ?, "
@@ -188,28 +204,35 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
               detail=f"{action} on {thread['root_key']} ({ckey})")
     conn.commit()
     if emit_action:
-        action_event = {
-            "comment": Action.FEEDBACK_REPLIED,
-            "fix": Action.FEEDBACK_REPLIED,
-            "reject": Action.FEEDBACK_REJECTED,
-            "accept": Action.FEEDBACK_ACCEPTED,
-        }[action]
-        trigger_action(
-            conn,
-            project_id,
-            task["key"],
-            action_event,
-            actor=author,
-            operation="review.reply",
-            parameters={
-                "root": thread["root_key"],
-                "comment": ckey,
-                "reply_action": action,
-                "body": body,
-                "role": role,
-            },
-        )
+        if (
+            action == "accept"
+            and thread["severity"] == ReviewSeverity.BLOCKER.value
+            and not _unresolved_blockers(conn, task["id"])
+        ):
+            trigger_action(
+                conn,
+                project_id,
+                task["key"],
+                Action.FEEDBACK_RESOLVED,
+                actor=author,
+                operation="review.all_blockers_accepted",
+                parameters={
+                    "root": thread["root_key"],
+                    "comment": ckey,
+                    "accepted_by": author,
+                },
+            )
     return thread_summary(conn, thread["root_key"])
+
+
+def _unresolved_blockers(conn: Conn, task_id: int) -> list[Row]:
+    """Blockers count as resolved only after reviewer acceptance."""
+    return conn.execute(
+        "SELECT * FROM review_thread WHERE task_id = ? AND severity = 'blocker' "
+        "AND (state != 'closed' OR COALESCE(resolution, '') != 'accepted_by_reviewer') "
+        "ORDER BY root_key",
+        (task_id,),
+    ).fetchall()
 
 
 def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
@@ -220,6 +243,10 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
         raise BacklogError(f"no review thread rooted at {rk}")
     if thread["state"] != "closed":
         raise BacklogError(f"thread {rk} is already open ({thread['state']})")
+    task = get_task_by_id(conn, thread["task_id"])
+    resolved_role = resolve_role(task, author, role)
+    if resolved_role != "reviewer":
+        raise BacklogError("only a reviewer can reopen a review thread")
     conn.execute(
         "UPDATE review_thread SET state = 'awaiting_developer', resolution = NULL, "
         "closed_by = NULL, closed_at = NULL WHERE root_key = ?",
@@ -229,16 +256,6 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
     result = reply(
         conn, project_id, thread["last_comment_key"], author, "comment", body,
         role=role, reopen=True, emit_action=False
-    )
-    task = get_task_by_id(conn, thread["task_id"])
-    trigger_action(
-        conn,
-        project_id,
-        task["key"],
-        Action.FEEDBACK_REOPENED,
-        actor=author,
-        operation="review.reopen",
-        parameters={"root": rk, "body": body, "role": role},
     )
     return result
 

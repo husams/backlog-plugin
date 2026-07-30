@@ -367,6 +367,11 @@ class Backlog:
         """Submit an action; workflow configuration selects the destination."""
         if not isinstance(action, Action):
             raise TypeError("action must be an Action")
+        if action in hooks.THREAD_MANAGED_ACTIONS:
+            raise BacklogError(
+                f"{action.value} is managed by review threads; use review_open, "
+                "review_reply, or review_reopen"
+            )
         row, _, _ = core.trigger_action(
             self._conn,
             self.pid,
@@ -401,7 +406,7 @@ class Backlog:
                     role: str = "auto", title: str = "",
                     file: str | None = None, line: int | None = None,
                     severity: ReviewSeverity = ReviewSeverity.BLOCKER) -> Thread:
-        """Open review feedback and emit `feedback.posted`."""
+        """Open a thread without directly changing the task's workflow state."""
         if not isinstance(severity, ReviewSeverity):
             raise TypeError("severity must be a ReviewSeverity")
         return _thread(review.open_thread(

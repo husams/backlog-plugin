@@ -149,12 +149,16 @@ Use `reject` when you disagree:
 
 ## 10. Accept feedback
 
-Accepting a reply closes its review thread:
+Only the reviewer can accept a reply and close its review thread:
 
 > @backlog-plugin Review the latest reply in thread `<root-comment-key>` as
 > `<reviewer>`. If the evidence resolves the original finding, reply to the
 > current `reply_to` comment with action `accept` and body “Confirmed.” If it
 > does not resolve the finding, do not accept it; explain what remains.
+
+Accepting one thread must not transition the task while another blocker remains.
+The review subsystem emits the aggregate `feedback.resolved` event only after
+every blocker is reviewer-accepted; agents must not submit that event directly.
 
 ## 11. Reply to feedback
 

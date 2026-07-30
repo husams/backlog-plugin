@@ -1367,7 +1367,7 @@ def build_parser() -> argparse.ArgumentParser:
         "action", help="submit a semantic action; the workflow selects the destination"
     )
     sp.add_argument("key")
-    sp.add_argument("action", choices=[action.value for action in hooks.Action])
+    sp.add_argument("action", choices=[action.value for action in hooks.public_actions()])
     sp.add_argument("--operation", default="cli.action")
     sp.add_argument("--parameter", action="append", metavar="NAME=VALUE")
     sp.add_argument("--no-pr", action="store_true")

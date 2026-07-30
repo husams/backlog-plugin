@@ -14,12 +14,18 @@ Every thread has one fixed severity from the `ReviewSeverity` enum:
 
 Severity belongs to the root thread and applies to every reply. Existing
 threads and new threads without an explicit severity default to `blocker`.
-Only open `blocker` threads are evaluated by `review_threads_closed`.
+Only blocker threads closed with `accepted_by_reviewer` satisfy
+`review_threads_closed`.
 
-Opening feedback records a review event but does not choose a task status.
+Opening feedback and individual thread replies never choose a task status.
 When a blocker means a feature is not ready for implementation, submit the
-project's refinement-incomplete action separately. This keeps review storage
-distinct from the project's customizable transition policy.
+project's refinement-incomplete action separately.
+
+The review subsystem emits the task-level `feedback.resolved` action only after
+every blocker thread is closed by reviewer acceptance. Agents cannot submit
+`feedback.*` actions directly. A project may map that aggregate action to
+`Ready`; until the aggregate condition is true, the task remains in its current
+state.
 
 ## The five actions
 
@@ -29,10 +35,13 @@ distinct from the project's customizable transition policy.
 | `fix` | developer | "I addressed this"; ball → the other party to verify |
 | `reject` | either | "I disagree, here is why"; ball → the other party |
 | `comment` | either | question or note; ball → the other party |
-| `accept` | **either** | **closes the thread** |
+| `accept` | **reviewer only** | closes the thread as `accepted_by_reviewer` |
 
-A thread closes as soon as **either** the reviewer **or** the developer accepts.
-`fix` alone does not close it — the other party still has to accept.
+The thread itself is a state machine: reviewer opens → awaiting developer;
+developer fixes/comments/rejects → awaiting reviewer; reviewer accepts or
+responds → closed or awaiting developer. Only the party currently holding the
+ball may reply. A developer cannot accept their own fix, and `fix` never closes
+the thread.
 
 ## Reading: only three comments, never the whole thread
 
@@ -129,7 +138,8 @@ $BL review reopen C-003 --author senior-developer --body "This regressed in the 
 ## Why an item is stuck
 
 Open blocker threads block `Accepted`; `nice_to_have` and `info` threads remain
-visible without stopping delivery. To see what is left:
+visible without stopping delivery. A legacy blocker closed by a developer
+still blocks until a reviewer accepts it. To see what is left:
 
 ```bash
 $BL review list S-004 --state open --severity blocker

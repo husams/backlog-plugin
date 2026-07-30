@@ -71,6 +71,21 @@ class Action(str, Enum):
     DELIVERY_RELEASED = "delivery.released"
 
 
+THREAD_MANAGED_ACTIONS = frozenset({
+    Action.FEEDBACK_POSTED,
+    Action.FEEDBACK_ACCEPTED,
+    Action.FEEDBACK_REJECTED,
+    Action.FEEDBACK_REPLIED,
+    Action.FEEDBACK_RESOLVED,
+    Action.FEEDBACK_REOPENED,
+})
+
+
+def public_actions() -> list[Action]:
+    """Actions callers may submit directly; review actions come from thread APIs."""
+    return [action for action in Action if action not in THREAD_MANAGED_ACTIONS]
+
+
 def normalize_action(value: Action | str) -> Action:
     if isinstance(value, Action):
         return value
@@ -270,7 +285,10 @@ def available_actions(backlog_dir: Path, task_type: str,
         for row in load_workflow(backlog_dir)["transitions"]
         if task_type in row["task_types"] and row["from"] == current_state
     }
-    return sorted(found, key=lambda action: action.value)
+    return sorted(
+        (action for action in found if action not in THREAD_MANAGED_ACTIONS),
+        key=lambda action: action.value,
+    )
 
 
 def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:

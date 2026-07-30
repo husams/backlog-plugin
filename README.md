@@ -23,6 +23,11 @@ Only unresolved review threads with `ReviewSeverity.BLOCKER` stop acceptance
 or merge gates. Advisory and informational threads remain visible without
 blocking delivery.
 
+Review threads have their own enforced lifecycle. Developers submit fixes;
+reviewers accept them. Individual replies never transition the task, and only
+after every blocker is reviewer-accepted does the review subsystem emit the
+aggregate `feedback.resolved` workflow action.
+
 The skill is self-contained under `skills/backlog/`. It includes its launchers,
 Python API, predefined scripts, documentation, and database tooling.
 

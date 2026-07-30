@@ -104,6 +104,11 @@ the waiver afterwards, so an override stays visible.
    `review open`, `review reply`, or another documented review command.
    Use `artifact add` only when the user explicitly asks to attach or record a
    file, document, report, patch, log, design, or other durable artifact.
+10. **Thread resolution is reviewer-owned.** A developer submits `fix`,
+    `comment`, or `reject`; only the reviewer may `accept`. Never submit a
+    `feedback.*` task action. The review subsystem emits `feedback.resolved`
+    only after every blocker has reviewer acceptance; until then, leave the
+    task status unchanged.
 
 ## Start here
 

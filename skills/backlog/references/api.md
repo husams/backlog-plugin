@@ -56,8 +56,8 @@ for writes made through the session.
 | `bl.threads(key, state="open", severity=None)` | `list[Thread]` on one task, optionally filtered by `ReviewSeverity` |
 | `bl.trigger(key, action: Action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit a typed `Action`; the workflow selects and enforces the destination |
 | `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
-| `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | open typed feedback and emit `feedback.posted` |
-| `bl.review_reply(comment, author=, action=, body=, role=)` | reply and emit the matching `feedback.*` action |
+| `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | reviewer opens a typed thread; task status is unchanged |
+| `bl.review_reply(comment, author=, action=, body=, role=)` | advance the thread workflow; only reviewer acceptance closes it |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
@@ -86,6 +86,9 @@ with api.open(actor="github-actions") as bl:
 
 The Python API requires an `Action` enum member and rejects arbitrary strings.
 The CLI serializes the same enum values for shell and automation callers.
+`feedback.*` members are review-managed and are rejected by `bl.trigger`;
+`feedback.resolved` is emitted internally only when every blocker has reviewer
+acceptance.
 
 Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
 `assets/default-workflow.yaml`. It resolves `(task type, current state,
