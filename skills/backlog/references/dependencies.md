@@ -32,7 +32,7 @@ A blocker stops blocking once it reaches a status its flow marks *counts as
 finished* — `Accepted` and `Done` on the shipped flow, whatever a custom flow
 declares elsewhere. Until then:
 
-- `move KEY in_progress` fails with `FAIL dependencies_clear`
+- `action KEY work.started` fails with `FAIL dependencies_clear`
 - `next` moves the item out of *WORK TO DO* into a **BLOCKED** section
 - `board` tags it `[blocked by S-002]`
 - `show KEY` lists both directions under `dependencies:`
@@ -42,7 +42,7 @@ $BL dep check S-004        # exit 0 = startable, exit 2 = blocked
 $BL gate S-004 --for start # the same check in gate form
 ```
 
-Nothing blocks grooming: an item can still be moved to **Ready** while blocked.
+Nothing blocks grooming: `refinement.accepted` can still select **Ready** while blocked.
 Only starting the work is gated, because that is the decision the dependency
 exists to prevent.
 
@@ -50,7 +50,7 @@ To start anyway — because the blocker turned out to be irrelevant, or the work
 genuinely overlaps — waive it explicitly rather than deleting the edge:
 
 ```bash
-$BL move S-004 in_progress --allow-blocked
+$BL action S-004 work.started --allow-blocked
 ```
 
 `doctor` reports anything that is started while still blocked,

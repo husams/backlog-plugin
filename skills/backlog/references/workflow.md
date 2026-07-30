@@ -1,14 +1,15 @@
 # Status flow and gates
 
 **The flow is data, not something you remember.** Each project holds one
-workflow per task type — its statuses, the legal moves between them, and which
-gate checks each move demands. Two projects can run completely different flows.
-Read the one in front of you before moving anything:
+workflow per task type — its statuses, action-driven transitions, and the gate
+checks each transition demands. Two projects can run completely different
+flows. Inspect the task's available actions before changing workflow state:
 
 ```bash
 $BL statuses                       # all three task types
 $BL statuses --type story          # one
 $BL workflow show --type story     # the same table
+$BL actions S-001                  # actions valid from this task's current state
 ```
 
 Example output — the shipped `software-delivery` story flow:
@@ -27,28 +28,27 @@ Accepted     accepted     done      counts as finished  Done (pr_merged)
 Done         done         done      counts as finished, terminal
 ```
 
-## Moving
+## Submitting actions
 
 ```bash
-$BL move <KEY> <status> --actor <you> [--reason "why"]
+$BL actions <KEY>
+$BL action <KEY> <ACTION> --actor <you> \
+    [--operation <source>] [--parameter name=value]
 ```
 
-Status names are forgiving — slug, display name, any casing. A move that the
-flow does not allow **exits 1** and names what is legal instead:
+Agents cannot supply a destination status. The action configuration resolves
+`(task type, current state, action)` to a destination. The transition engine
+then runs the project hooks, validates the configured gates, and applies the
+result. An illegal or blocked transition exits `1` and explains why.
 
-```
-error: illegal transition for S-001 (a story): In Review -> Done.
-Legal next states from In Review: Accepted, Need work
-(`backlog workflow show --type story` prints this project's flow)
-```
-
-That refusal is the CLI reading `workflow_transition`, not a convention. Do not
-route around it — change the flow if the flow is wrong (see
-[templates.md](templates.md)).
+Do not infer a destination and do not call private transition internals. If the
+required action is absent from `$BL actions KEY`, either the event does not
+change state from here or the project's workflow configuration must be changed
+(see [templates.md](templates.md)).
 
 ## Gates
 
-A transition row may name gate checks. They run when you make that move, and a
+A transition row may name gate checks. They run when an action resolves to that transition, and a
 failure **exits 1** listing which check failed and why.
 
 | Gate | Passes when |
@@ -82,9 +82,9 @@ not merge**, and the output names each failing check.
 Three overrides exist, and each is a decision you should be able to defend:
 
 ```bash
-$BL move S-004 in_review --no-pr                 # genuinely ships without a PR
-$BL move S-004 in_progress --allow-blocked       # the blocker turned out irrelevant
-$BL move S-004 accepted --allow-open-subtasks    # a child is not needed
+$BL action S-004 review.submitted --no-pr
+$BL action S-004 work.started --allow-blocked
+$BL action S-004 review.approved --allow-open-subtasks
 ```
 
 `--no-pr` records a waiver on the task and relaxes the later PR gates too;
@@ -128,7 +128,7 @@ subtask.
 
 ## Closing the loop
 
-A task is closed only when its flow says so, and the CLI enforces every step.
+A task is closed only when its action flow says so, and the CLI enforces every step.
 On the shipped flow that means: every review thread closed and accepted, the PR
 approved, the PR merged, and every child finished. Then and only then does
-`move ... done` succeed, and `closed_at` is stamped.
+the completion action resolve to the terminal state and stamp `closed_at`.

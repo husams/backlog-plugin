@@ -61,18 +61,19 @@ they do not allow. Trust the exit code:
 
 | Command | Exit | Means |
 | --- | --- | --- |
-| `$BL move KEY STATUS` | `0` | applied |
+| `$BL action KEY ACTION` | `0` | action recorded; configured transition applied when one matches |
 | | `1` | illegal transition, or a gate failed — the message names which |
 | `$BL gate KEY --for merge` | `0` | merging is allowed |
 | | `2` | **blocked — do not merge** |
 | `$BL dep check KEY` | `0` / `2` | startable / blocked |
 
-There is no flag that sets a status directly: `action` and `move` are the only
-paths, and both consult the flow and run project transition hooks every time.
-Prefer `action` for integrations and semantic events; use `move` for an
-explicit human-requested destination. A gate can be waived deliberately (`--no-pr`,
-`--allow-blocked`, `--allow-open-subtasks`) and `doctor` reports the waiver
-afterwards, so an override stays visible.
+There is no agent-facing operation that accepts a destination status. Submit
+what happened with `action`; the project's action workflow selects the
+destination, runs gates, and invokes transition hooks. Before submitting a
+state-changing action, run `$BL actions KEY` to see the semantic actions
+configured for that task's current state. A gate can be waived deliberately
+(`--no-pr`, `--allow-blocked`, `--allow-open-subtasks`) and `doctor` reports
+the waiver afterwards, so an override stays visible.
 
 ## Hard rules
 
@@ -89,11 +90,11 @@ afterwards, so an override stays visible.
    SQL, schema imports, connection attributes, or internal API attributes. Use
    only the documented public API. Direct access bypasses the flow, gates and
    audit trail.
-5. **Read the flow before transitioning anything.** Statuses are per project and per
-   task type — this project may not have the ones you expect:
-   `$BL statuses` or `$BL workflow show --type story`.
+5. **Never request a destination status.** Before any state-changing event,
+   run `$BL actions KEY`, then submit the matching semantic action with
+   `$BL action KEY ACTION`. The workflow—not the agent—chooses the state.
 6. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
-7. **Do not start blocked work.** If `move ... in_progress` fails on
+7. **Do not start blocked work.** If `action ... work.started` fails on
    `dependencies_clear`, pick something else.
 8. **Read only what you need.** For review work use `review inbox` — root
    comment, direct parent of the latest reply, latest reply. Reach for
@@ -131,9 +132,9 @@ If no store exists: `$BL init .` from the repository root, then commit
 
 | Task | Read this |
 | --- | --- |
-| A common request — status change, standup, start, merge check, review triage | [references/scripts.md](references/scripts.md) |
+| A common request — workflow action, standup, start, merge check, review triage | [references/scripts.md](references/scripts.md) |
 | Something the CLI has no flag for: count, filter or compare across tasks | [references/api.md](references/api.md) |
-| Move a task through its flow; understand a gate that is blocking you | [references/workflow.md](references/workflow.md) |
+| Submit actions through a task's flow; understand a blocking gate | [references/workflow.md](references/workflow.md) |
 | Change a project's statuses or transitions, or author a template | [references/templates.md](references/templates.md) |
 | Record or inspect what blocks what; order a feature's stories | [references/dependencies.md](references/dependencies.md) |
 | Open, answer, accept or reject review comments | [references/review.md](references/review.md) |
@@ -153,12 +154,13 @@ $BL story add --title "Cache resolved symbols" --feature F-001 \
     --ac "Given a cold cache, when resolve runs, entries are written."
 $BL dep add S-004 --blocked-by S-002 --note "needs the session table"
 $BL assign S-004 --to claude --reviewer husam     # agent vs human is recorded
-$BL move S-004 ready         --actor product-manager
+$BL actions S-004
+$BL action S-004 refinement.accepted --actor product-manager
 $BL dep check S-004                               # exit 0 => safe to start
-$BL move S-004 in_progress   --actor developer
+$BL actions S-004
+$BL action S-004 work.started --actor developer
 $BL item add S-004 --kind checklist --content "wire the route"
-$BL pr set S-004 --url https://github.com/acme/repo/pull/91
-$BL move S-004 in_review     --actor developer
+$BL pr set S-004 --url https://github.com/acme/repo/pull/91 --state open
 
 $BL review open S-004 --author husam --severity blocker \
     --body "Lock is taken twice" --file src/cache.cpp --line 88
@@ -167,12 +169,11 @@ $BL review reply C-003 --author claude --action fix --body "Fixed in a1b2c3d"
 $BL review reply C-004 --author husam --action accept --body "Confirmed"
 
 $BL pr set S-004 --review-state approved
-$BL move S-004 accepted --actor husam             # refused while a thread is open
 $BL gate S-004 --for merge                        # exit 0 => merging is allowed
 # ...merge the PR...
 $BL pr set S-004 --state merged
-$BL move S-004 done --actor claude
 ```
 
-Every refusal above comes from a row in this project's flow, not from a rule
-written here.
+`pr set` emits `pr.created`, `pr.approved`, or `pr.merged`; those are semantic
+actions too. Every resulting status comes from this project's action workflow,
+never from an agent-supplied destination.

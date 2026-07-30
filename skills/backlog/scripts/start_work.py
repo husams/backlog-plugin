@@ -1,21 +1,20 @@
-"""Pick a task up safely: check it is startable, move it, print what it needs.
+"""Pick a task up safely: check it is startable, submit work.started, print what it needs.
 
     backlog-py scripts/start_work.py S-004 --actor claude
 
-Refuses with the reason rather than forcing the move. Exit 0 started, 2 refused.
+Refuses with the reason rather than forcing a status. Exit 0 started, 2 refused.
 """
 
 import argparse
 
 from backlog_cli import api
+from backlog_cli.api import Action
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("key")
     ap.add_argument("--actor", required=True)
-    ap.add_argument("--status", default="in_progress",
-                    help="target status (default: in_progress)")
     ap.add_argument("--project")
     args = ap.parse_args()
 
@@ -28,7 +27,19 @@ def main() -> int:
             return 2
 
         try:
-            task = bl.move(task.key, args.status, reason="picked up")
+            previous_status = task.status
+            task = bl.trigger(
+                task.key,
+                Action.WORK_STARTED,
+                operation="script.start_work",
+                parameters={"reason": "picked up"},
+            )
+            if task.status == previous_status:
+                print(
+                    "refused: work.started has no transition from "
+                    f"{previous_status!r} in this project's action workflow"
+                )
+                return 2
         except api.BacklogError as exc:
             print(f"refused: {exc}")
             return 2

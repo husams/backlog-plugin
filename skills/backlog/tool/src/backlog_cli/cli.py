@@ -423,18 +423,6 @@ def cmd_show(ctx: Ctx, args) -> int:
     return 0
 
 
-def cmd_move(ctx: Ctx, args) -> int:
-    row, checks = core.move(ctx.conn, ctx.pid, args.key, args.status, actor=args.actor,
-                            reason=args.reason or "", no_pr=args.no_pr,
-                            allow_open_children=args.allow_open_subtasks,
-                            allow_blocked=args.allow_blocked)
-    wf = workflow.get(ctx.conn, ctx.pid, row["task_type"])
-    ctx.emit({"task": row_to_dict(row), "checks": [c.as_dict() for c in checks]},
-             f"{row['key']}  -> {wf.display(row['status'])}"
-             + ("\n" + "\n".join(f"  OK   {c.name}: {c.detail}" for c in checks) if checks else ""))
-    return 0
-
-
 def cmd_action(ctx: Ctx, args) -> int:
     parameters = {}
     for item in args.parameter or []:
@@ -474,6 +462,20 @@ def cmd_action(ctx: Ctx, args) -> int:
                 else f"recorded; status remains {wf.display(row['status'])}"
             )
         ),
+    )
+    return 0
+
+
+def cmd_actions(ctx: Ctx, args) -> int:
+    task = core.get_task(ctx.conn, ctx.pid, args.key)
+    config_dir = hooks.project_backlog_dir(ctx.dir)
+    actions = hooks.available_actions(
+        config_dir, task["task_type"], task["status"]
+    )
+    ctx.emit(
+        [action.value for action in actions],
+        "\n".join(action.value for action in actions) if actions
+        else "(no configured actions)",
     )
     return 0
 
@@ -992,11 +994,15 @@ def cmd_next(ctx: Ctx, args) -> int:
     if rev_items:
         parts.append("AWAITING YOUR REVIEW\n" + tasks_table(rev_items))
     if ready_to_accept:
-        parts.append("GATES PASS — move to Accepted\n" + tasks_table(ready_to_accept)
-                     + "\n  e.g. backlog move " + ready_to_accept[0]["key"] + " accepted")
+        parts.append(
+            "GATES PASS — submit the review or delivery approval action\n"
+            + tasks_table(ready_to_accept)
+        )
     if ready_to_done:
-        parts.append("PR MERGED — move to Done\n" + tasks_table(ready_to_done)
-                     + "\n  e.g. backlog move " + ready_to_done[0]["key"] + " done")
+        parts.append(
+            "DELIVERY READY — submit the delivery or PR completion action\n"
+            + tasks_table(ready_to_done)
+        )
     ctx.emit(
         {"actor": actor, "project": ctx.project["slug"], "review_threads": threads,
          "work_to_do": [row_to_dict(r) for r in dev_items],
@@ -1357,17 +1363,6 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--reviewer-kind", dest="reviewer_kind", choices=["human", "agent"])
     sp.set_defaults(func=cmd_assign)
 
-    sp = sub.add_parser("move", help="transition status (gates enforced, per task type)")
-    sp.add_argument("key")
-    sp.add_argument("status")
-    sp.add_argument("--reason")
-    sp.add_argument("--no-pr", action="store_true")
-    sp.add_argument("--allow-open-subtasks", action="store_true",
-                    help="accept a task whose children are not all complete")
-    sp.add_argument("--allow-blocked", action="store_true",
-                    help="start work whose blocking dependencies are unfinished")
-    sp.set_defaults(func=cmd_move)
-
     sp = sub.add_parser(
         "action", help="submit a semantic action; the workflow selects the destination"
     )
@@ -1379,6 +1374,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--allow-open-subtasks", action="store_true")
     sp.add_argument("--allow-blocked", action="store_true")
     sp.set_defaults(func=cmd_action)
+
+    sp = sub.add_parser(
+        "actions", help="list semantic actions configured for a task's current state"
+    )
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_actions)
 
     sp = sub.add_parser("gate", help="check a gate without transitioning (exit 2 = blocked)")
     sp.add_argument("key")

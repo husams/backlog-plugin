@@ -212,23 +212,22 @@ backlog story add --feature F-001 --title "Request a recovery link" \
 backlog subtask add --story S-001 --title "Add the recovery endpoint"
 ```
 
-Inspect the configured story flow before changing status:
+Inspect and submit semantic workflow actions:
 
 ```bash
-backlog workflow show --type story
-backlog move S-001 ready --actor product-manager
-backlog move S-001 in_progress --actor codex
+backlog actions S-001
+backlog action S-001 refinement.accepted --actor product-manager
+backlog actions S-001
+backlog action S-001 work.started --actor codex
 ```
 
-For a small set of named tasks, use the predefined status script:
+Agents cannot supply a destination status. The action workflow selects the
+destination and enforces gates and hooks. The predefined start helper follows
+the same contract:
 
 ```bash
-backlog-py scripts/change_status.py S-001 in_review --actor codex
-backlog-py scripts/change_status.py T-001 --done --actor codex
+backlog-py scripts/start_work.py S-001 --actor codex
 ```
-
-The script does not bypass the workflow. It refuses a move when the transition
-is illegal or a configured gate fails.
 
 ## Custom workflows
 

@@ -165,14 +165,20 @@ def post_transition(
         self.assertIn("post:pr.approved:in_review:accepted", log)
         self.assertIn("post:pr.merged:accepted:done", log)
 
-    def test_legacy_move_also_runs_hooks(self):
-        self.run_cli("feature", "add", "--title", "Legacy move")
-        self.run_cli("move", "F-001", "ready")
-        self.assertEqual(self.status("F-001"), "ready")
-        self.assertIn(
-            "post:refinement.accepted:created:ready",
-            self.log.read_text(encoding="utf-8"),
+    def test_direct_status_transition_is_not_agent_facing(self):
+        self.run_cli("feature", "add", "--title", "Action only")
+        available = self.run_cli("actions", "F-001", json_output=True)
+        self.assertEqual(
+            available,
+            ["refinement.accepted", "refinement.marked_incomplete"],
         )
+        result = self.run_cli_raw("move", "F-001", "ready")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid choice: 'move'", result.stderr)
+
+        from backlog_cli.api import Backlog
+
+        self.assertFalse(hasattr(Backlog, "move"))
 
     def test_project_workflow_replaces_default_action_mapping(self):
         self.run_cli("story", "add", "--title", "Custom workflow")
@@ -209,9 +215,9 @@ transitions:
             ["blocker", "nice_to_have", "info"],
         )
         self.run_cli("feature", "add", "--title", "Severity")
-        self.run_cli("move", "F-001", "ready")
-        self.run_cli("move", "F-001", "in_progress")
-        self.run_cli("move", "F-001", "in_review")
+        self.run_cli("action", "F-001", "refinement.accepted")
+        self.run_cli("action", "F-001", "work.started")
+        self.run_cli("action", "F-001", "review.submitted")
 
         blocker = self.run_cli(
             "review", "open", "F-001",

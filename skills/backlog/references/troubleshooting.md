@@ -51,13 +51,13 @@ uv sync --project ${CLAUDE_PLUGIN_ROOT}/tool --extra postgres
 
 ## `illegal transition`
 
-This project's flow does not allow that move. The error lists what it does
-allow. This is not a bug and there is no force flag — the CLI is reading
-`workflow_transition`, so the fix is either to take the legal path or to change
-the flow:
+This project's flow does not allow the transition selected by that action.
+This is not a bug and there is no direct-status or force command. Inspect the
+configured actions and flow:
 
 ```bash
-$BL statuses --type story                # what is allowed here
+$BL actions S-001                        # semantic actions valid now
+$BL statuses --type story                # configured states and transitions
 $BL workflow move-add --type story --from A --to B   # if the flow is wrong
 ```
 

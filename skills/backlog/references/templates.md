@@ -59,9 +59,9 @@ $BL workflow move-add --type story --from qa --to accepted \
 $BL workflow move-rm  --type story --from in_review --to accepted
 ```
 
-The story flow now routes through QA, and `move S-001 accepted` from In Review
-is refused. Removing a status that tasks are currently in is refused too —
-move them first.
+The story flow now routes through QA. Actions must follow that configured path;
+an action resolving directly from In Review to Accepted is refused. Removing a
+status that tasks are currently in is refused too — transition them first.
 
 Useful flags on `status-add`:
 

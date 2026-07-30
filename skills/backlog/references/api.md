@@ -21,9 +21,9 @@ PY
 2. **Print the answer, not the data.** Reduce inside Python — count it, sort it,
    pick the top three — and print a sentence or a short table. Never print a
    task list you intend to read and re-summarise, and never print JSON.
-3. **The rules still apply.** `move` obeys this project's flow, `can` runs the
-   real gates, every write is logged. There is no SQL escape hatch, by design.
-   Use only the documented methods below; internal attributes are not API.
+3. **The rules still apply.** `trigger` submits a typed action and lets this
+   project's workflow choose the destination; `can` runs the real gates and
+   every write is logged. There is no direct-status or SQL escape hatch.
 
 ## Opening a session
 
@@ -47,18 +47,18 @@ for writes made through the session.
 | `bl.counts()` | `{status: n}` across the project |
 | `bl.statuses(task_type="story")` | the statuses this project's flow defines |
 | `bl.flow(task_type="story")` | the `Workflow`: `.allows(a,b)`, `.next_from(s)`, `.display(s)`, `.initial`, `.terminal` |
+| `bl.actions(key)` | the `list[Action]` configured for this task's current state |
 | `bl.startable(actor=None)` | open tasks with no unfinished blockers |
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
 | `bl.can(key, target="merge", **waivers)` | `Gate` — evaluates, never moves |
 | `bl.inbox(actor=None, role=None, severity=None)` | `list[Thread]` waiting on someone, optionally filtered by `ReviewSeverity` |
 | `bl.threads(key, state="open", severity=None)` | `list[Thread]` on one task, optionally filtered by `ReviewSeverity` |
-| `bl.trigger(key, action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit an `Action`; the workflow selects and enforces the destination |
+| `bl.trigger(key, action: Action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit a typed `Action`; the workflow selects and enforces the destination |
 | `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
 | `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | open typed feedback and emit `feedback.posted` |
 | `bl.review_reply(comment, author=, action=, body=, role=)` | reply and emit the matching `feedback.*` action |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
-| `bl.move(key, status, actor=None, reason="", **waivers)` | transition; refuses exactly as the CLI does |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
 
@@ -84,6 +84,9 @@ with api.open(actor="github-actions") as bl:
     )
 ```
 
+The Python API requires an `Action` enum member and rejects arbitrary strings.
+The CLI serializes the same enum values for shell and automation callers.
+
 Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
 `assets/default-workflow.yaml`. It resolves `(task type, current state,
 action)` to a destination, imports `pre_transition` and `post_transition` from
@@ -92,7 +95,7 @@ commits, then runs the post hook.
 
 Both hooks receive the active public `Backlog` session as their fifth
 argument. They may call documented methods such as `task`, `tasks`, `can`,
-`threads`, `trigger`, `set_pr`, `review_open`, and `review_reply`. They must not
+`actions`, `threads`, `trigger`, `set_pr`, `review_open`, and `review_reply`. They must not
 use private attributes or access database tables.
 
 Review severity is also a public enum, not a free-form string:
@@ -112,8 +115,9 @@ Its fixed members are `BLOCKER`, `NICE_TO_HAVE`, and `INFO`. Passing a string
 to the Python API is a type error. CLI values use the enum's lowercase
 serialized value.
 
-`move` remains available for human-requested destination changes and also runs
-the hooks using the standard action inferred from the transition.
+No public API accepts a destination status. `trigger` is the only general
+state-transition entry point; project hooks may override the action's proposed
+state through `pre_transition`.
 
 ## Task
 
@@ -172,19 +176,20 @@ with api.open() as bl:
 PY
 ```
 
-Move a batch through one transition, reporting only the refusals:
+Submit one semantic action to a batch, reporting only the refusals:
 
 ```bash
 backlog-py <<'PY'
 from backlog_cli import api
 with api.open(actor="claude") as bl:
-    moved, refused = [], []
+    completed, refused = [], []
     for t in bl.tasks(status="accepted"):
         try:
-            bl.move(t.key, "done"); moved.append(t.key)
+            bl.trigger(t.key, api.Action.DELIVERY_RELEASED)
+            completed.append(t.key)
         except api.BacklogError as exc:
             refused.append(f"{t.key}: {exc}")
-    print(f"{len(moved)} done" + (f"; refused {'; '.join(refused)}" if refused else ""))
+    print(f"{len(completed)} completed" + (f"; refused {'; '.join(refused)}" if refused else ""))
 PY
 ```
 

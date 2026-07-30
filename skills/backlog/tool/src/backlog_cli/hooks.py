@@ -71,20 +71,6 @@ class Action(str, Enum):
     DELIVERY_RELEASED = "delivery.released"
 
 
-_INFERRED_ACTIONS = {
-    ("created", "incomplete"): Action.REFINEMENT_MARKED_INCOMPLETE,
-    ("created", "ready"): Action.REFINEMENT_ACCEPTED,
-    ("incomplete", "ready"): Action.REFINEMENT_ACCEPTED,
-    ("ready", "in_progress"): Action.WORK_STARTED,
-    ("needs_work", "in_progress"): Action.WORK_RESUMED,
-    ("needs_work", "in_review"): Action.REVIEW_SUBMITTED,
-    ("in_progress", "in_review"): Action.REVIEW_SUBMITTED,
-    ("in_review", "needs_work"): Action.REVIEW_CHANGES_REQUESTED,
-    ("in_review", "accepted"): Action.REVIEW_APPROVED,
-    ("accepted", "done"): Action.DELIVERY_RELEASED,
-}
-
-
 def normalize_action(value: Action | str) -> Action:
     if isinstance(value, Action):
         return value
@@ -99,15 +85,6 @@ def normalize_action(value: Action | str) -> Action:
                 f"unknown action {value!r}. Valid: "
                 + ", ".join(action.value for action in Action)
             ) from None
-
-
-def infer_action(current_state: str, new_state: str) -> Action:
-    return _INFERRED_ACTIONS.get(
-        (current_state, new_state),
-        Action.ITEM_UPDATED,
-    )
-
-
 def bundled_workflow_path() -> Path:
     return Path(__file__).resolve().parents[3] / "assets" / "default-workflow.yaml"
 
@@ -283,6 +260,17 @@ def resolve_transition(
             f"{task_type} + {current_state} + {wanted}"
         )
     return matches[0] if matches else None
+
+
+def available_actions(backlog_dir: Path, task_type: str,
+                      current_state: str) -> list[Action]:
+    """Semantic actions configured for this task type and current state."""
+    found = {
+        normalize_action(row["action"])
+        for row in load_workflow(backlog_dir)["transitions"]
+        if task_type in row["task_types"] and row["from"] == current_state
+    }
+    return sorted(found, key=lambda action: action.value)
 
 
 def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:

@@ -84,7 +84,8 @@ feature is a root. `--ac` replaces the acceptance criteria, one per line.
 Assignee and reviewer names are free text — the human/agent kind is guessed
 from the name and shown with a `*` on agents.
 
-There is **no** `--status` flag anywhere. `move` is the only way status changes.
+There is no agent-facing command that accepts a destination status. Status
+changes only when a semantic action resolves through the configured workflow.
 
 ## Task items — criteria, checklists, notes
 
@@ -100,15 +101,17 @@ $BL item rm ID
 
 ```bash
 $BL action KEY ACTION [--operation NAME] [--parameter NAME=VALUE]
-$BL move KEY STATUS [--reason "..."] [--no-pr] [--allow-open-subtasks] [--allow-blocked]
+$BL actions KEY
 $BL gate KEY --for start|in_review|accepted|done|merge [same waivers]
 ```
 
 `action` resolves the destination from `.backlog/workflow.yaml`, or from the
 bundled default when the project has no custom file. It runs project
-`pre_transition` and `post_transition` hooks and uses the same gates as `move`.
+`pre_transition` and `post_transition` hooks and enforces the configured gates.
+`actions` lists only the semantic actions configured for that task type and
+current state.
 
-`move` exits `1` on an illegal transition or a failed gate. `gate` exits `0`
+`action` exits `1` on an illegal transition or a failed gate. `gate` exits `0`
 pass, `2` blocked, `1` command error. Both read this project's flow — see
 [workflow.md](workflow.md).
 

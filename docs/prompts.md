@@ -69,14 +69,15 @@ Save the returned key, such as `F-001`, for later prompts.
 > with either `ready for approval` or `needs revision`, and show the feature's
 > resulting status.
 
-## 5. Approve the feature and move it to Ready
+## 5. Approve the feature for implementation
 
 Use this only after the review finds no unresolved gaps:
 
-> @backlog-plugin Approve the scope of feature `F-001` and move it to the
-> project’s Ready status as actor `<product-manager>`. Use the configured
-> workflow rather than assuming the status name. If the move is refused,
-> explain the failed rule or gate and leave the feature unchanged.
+> @backlog-plugin Approve the scope of feature `F-001` as actor
+> `<product-manager>`. List the actions configured for its current state, then
+> submit `refinement.accepted`. Do not request or supply a destination status.
+> Report the resulting state selected by the workflow. If the action is
+> refused, explain the failed rule or gate and leave the feature unchanged.
 
 Here, “approve” means approving the feature for implementation. It does not
 mean forcing it into a status named `Accepted`.
@@ -94,18 +95,18 @@ mean forcing it into a status named `Accepted`.
 > Assign it to `<developer>` and assign `<reviewer>` as reviewer. Show me the
 > story key, parent feature, initial status, and allowed next statuses.
 
-## 7. Change statuses
+## 7. Submit workflow actions
 
-Move one item:
+Approve one backlog item:
 
-> @backlog-plugin Move story `S-001` to Ready as actor `<product-manager>`.
-> First inspect the story workflow. Apply the transition only if it is legal,
-> and report any failed gate without overriding it.
+> @backlog-plugin List the actions available for story `S-001`, then submit
+> `refinement.accepted` as actor `<product-manager>`. Do not supply a target
+> status. Report the state selected by the workflow.
 
 Start work safely:
 
 > @backlog-plugin Start work on `S-001` as `<developer>`. Check dependencies
-> first, move it through the configured transition, and then show its
+> first, submit `work.started`, and then show its
 > acceptance criteria, checklist, and open subtasks.
 
 Ask for a status without changing it:

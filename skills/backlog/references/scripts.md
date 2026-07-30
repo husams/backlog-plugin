@@ -1,6 +1,6 @@
 # Ready-made scripts
 
-Five common requests, already written. Each runs in one process and prints a few
+Four common requests, already written. Each runs in one process and prints a few
 lines — no JSON, no files, nothing left behind.
 
 ```bash
@@ -10,21 +10,6 @@ backlog-py scripts/<name>.py [args]
 Paths are relative to this skill's directory. Do not read the scripts; this page
 is their documentation. If none of them fits, write a snippet against
 [api.md](api.md) instead of editing these.
-
-## change_status.py — move named work or mark it done
-
-```bash
-backlog-py scripts/change_status.py S-004 in_review --actor claude
-backlog-py scripts/change_status.py F-002 T-009 --done --actor claude
-```
-
-Changes only the named features, stories, or subtasks. Every change goes through
-the task type's configured flow and gates. `--done` resolves that flow's single
-terminal status; it does not skip intermediate states. Exit `0` when every move
-succeeds, `2` when any is refused. Add `--reason "..."` to the audit entry.
-
-This is for a small, explicit set of task keys. For a computed batch, filter and
-move through the public API documented in [api.md](api.md).
 
 ## standup.py — where am I, what is next
 
@@ -44,15 +29,15 @@ cycle. Replaces the four-command opening sequence.
 backlog-py scripts/start_work.py S-004 --actor claude
 ```
 
-Checks the start gate, moves the task, then prints its acceptance criteria,
-checklist and open subtasks. Refuses with the reason instead of forcing:
+Checks the start gate, submits `Action.WORK_STARTED`, then prints its acceptance
+criteria, checklist and open subtasks. The configured action workflow chooses
+the destination. Refuses with the reason instead of forcing:
 
 ```
 refused: dependencies_clear: blocked by S-001=in_progress
 ```
 
-Exit `0` started, `2` refused. `--status` overrides the target (default
-`in_progress`).
+Exit `0` started, `2` refused. There is no destination-status override.
 
 ## merge_check.py — is it safe to merge
 

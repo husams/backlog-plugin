@@ -12,7 +12,7 @@ connection, and returns Python objects you reduce to a short answer yourself.
         print(f"{len(stale)} stale: {', '.join(t.key for t in stale)}")
 
 Everything here obeys the same workflow rows, gates and audit trail as the CLI:
-`move` still refuses an illegal transition, `can` still evaluates real gates.
+`trigger` submits a semantic action and `can` evaluates real gates.
 There is deliberately no way to execute SQL -- that would bypass all of it.
 """
 
@@ -297,6 +297,14 @@ class Backlog:
         """The Workflow object: `.allows(a, b)`, `.next_from(s)`, `.display(s)`."""
         return workflow.get(self._conn, self.pid, core.normalize_type(task_type))
 
+    def actions(self, key: str) -> list[Action]:
+        """Semantic actions configured for the task's current state."""
+        task = self.task(key)
+        config_dir = hooks.project_backlog_dir(require_backlog_dir())
+        return hooks.available_actions(
+            config_dir, task.task_type, task.status
+        )
+
     def startable(self, actor: str | None = None) -> list[Task]:
         """Open, unblocked tasks -- optionally only those assigned to `actor`."""
         out = []
@@ -353,17 +361,12 @@ class Backlog:
 
     # -- writing ---------------------------------------------------------- #
 
-    def move(self, key: str, to_status: str, actor: str | None = None,
-             reason: str = "", **waivers) -> Task:
-        """Transition a task. Refuses exactly as the CLI does, and commits."""
-        row, _ = core.move(self._conn, self.pid, key, to_status,
-                           actor=actor or self.actor, reason=reason, **waivers)
-        return Task(row, self)
-
-    def trigger(self, key: str, action: Action | str, *,
+    def trigger(self, key: str, action: Action, *,
                 actor: str | None = None, operation: str = "api.trigger",
                 parameters: dict | None = None, **waivers) -> Task:
         """Submit an action; workflow configuration selects the destination."""
+        if not isinstance(action, Action):
+            raise TypeError("action must be an Action")
         row, _, _ = core.trigger_action(
             self._conn,
             self.pid,
@@ -454,7 +457,7 @@ def open(project: str | None = None, actor: str | None = None):
         with api.open(actor="claude") as bl:
             print(len(bl.startable("claude")), "ready to start")
 
-    The connection is closed on exit; writes made through `move`/`assign` are
+    The connection is closed on exit; writes made through `trigger`/`assign` are
     already committed, and anything left pending is committed for you.
     """
     spec = resolve_spec()

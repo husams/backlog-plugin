@@ -53,19 +53,17 @@ not by a tick — that is what the `review_threads_closed` gate is for.
 Everything starts in the initial status. Grooming decides which way it goes:
 
 ```bash
-$BL move S-001 ready --actor product-manager
+$BL action S-001 refinement.accepted --actor product-manager
 
 # Under-specified: park it and say what is missing
-$BL move S-002 incomplete --actor business-analyst --reason "No criteria for the failure path"
+$BL action S-002 refinement.marked_incomplete --actor business-analyst \
+    --parameter reason="No criteria for the failure path"
 $BL item set S-002 --kind acceptance_criteria --content "..."
-$BL move S-002 ready --actor business-analyst
-
-# Or accept it as scoped without building it (a scope decision, not delivery)
-$BL move S-003 accepted --actor product-manager --reason "Covered by S-001"
+$BL action S-002 refinement.accepted --actor business-analyst
 ```
 
-Write the criteria before a task leaves the backlog. If a move is refused, the
-message names what this project's flow allows instead.
+Write the criteria before a task leaves the backlog. If an action is refused,
+the message names the failed transition or gate.
 
 ## Assignment, and who is an agent
 
@@ -119,8 +117,7 @@ If a subtask turns out to be unnecessary, close it honestly rather than waiving
 the gate:
 
 ```bash
-$BL move T-004 incomplete --reason "Superseded by T-006"
-$BL move T-004 accepted   --reason "Not needed"
+$BL action T-004 item.cancelled --parameter reason="Superseded by T-006"
 ```
 
 ## More than one project

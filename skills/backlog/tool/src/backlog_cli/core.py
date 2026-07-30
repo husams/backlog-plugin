@@ -696,13 +696,12 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
     return all(c.ok for c in checks), checks
 
 
-def move(conn: Conn, project_id: int, key: str, to_status: str,
-         actor: str | None = None, reason: str = "", no_pr: bool = False,
-         allow_open_children: bool = False,
-         allow_blocked: bool = False, action=None,
-         trigger: dict[str, Any] | None = None,
-         run_hooks: bool = True) -> tuple[Row, list[Check]]:
-    """Transition a task, obeying the project's workflow for its task type."""
+def _transition(conn: Conn, project_id: int, key: str, to_status: str,
+                actor: str | None = None, reason: str = "", no_pr: bool = False,
+                allow_open_children: bool = False,
+                allow_blocked: bool = False, action=None,
+                trigger: dict[str, Any] | None = None) -> tuple[Row, list[Check]]:
+    """Private transition executor reached only after resolving an action."""
     task = get_task(conn, project_id, key)
     wf = workflow.get(conn, project_id, task["task_type"])
     target = wf.resolve(to_status) if _known(wf, to_status) else normalize_status(to_status, wf)
@@ -711,43 +710,38 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
     if target == current:
         raise BacklogError(f"{task['key']} is already {wf.display(current)}")
 
-    hook_action = None
-    hook_trigger = None
-    backlog_dir = None
-    if run_hooks:
-        from . import hooks
-        from .api import Backlog
+    from . import hooks
+    from .api import Backlog
 
-        hook_action = hooks.normalize_action(action) if action is not None \
-            else hooks.infer_action(current, target)
-        hook_trigger = dict(trigger or {})
-        hook_trigger.setdefault("operation", "move")
-        hook_trigger.setdefault("actor", actor)
-        hook_trigger.setdefault("task_key", task["key"])
-        hook_trigger.setdefault("parameters", {})
-        hook_trigger["parameters"].setdefault("requested_state", target)
-        hook_trigger["parameters"].setdefault("reason", reason)
-        backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
-        project = conn.execute(
-            "SELECT * FROM project WHERE id = ?", (project_id,)
-        ).fetchone()
-        assert project is not None and conn.spec is not None
-        hook_backlog = Backlog(conn, project, conn.spec, actor=actor)
-        proposed = hooks.pre_transition(
-            backlog_dir, hook_action, hook_trigger, current, target, hook_backlog
-        )
-        target = wf.resolve(proposed)
+    if action is None:
+        raise BacklogError("internal transition requires a semantic action")
+    hook_action = hooks.normalize_action(action)
+    hook_trigger = dict(trigger or {})
+    hook_trigger.setdefault("operation", "action")
+    hook_trigger.setdefault("actor", actor)
+    hook_trigger.setdefault("task_key", task["key"])
+    hook_trigger.setdefault("parameters", {})
+    hook_trigger["parameters"].setdefault("resolved_state", target)
+    hook_trigger["parameters"].setdefault("reason", reason)
+    backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
+    project = conn.execute(
+        "SELECT * FROM project WHERE id = ?", (project_id,)
+    ).fetchone()
+    assert project is not None and conn.spec is not None
+    hook_backlog = Backlog(conn, project, conn.spec, actor=actor)
+    proposed = hooks.pre_transition(
+        backlog_dir, hook_action, hook_trigger, current, target, hook_backlog
+    )
+    target = wf.resolve(proposed)
 
     if target == current:
-        if run_hooks:
-            log_event(
-                conn, "transition_skipped", project_id, task["id"], task["key"], actor,
-                from_value=current, to_value=current,
-                detail=f"{hook_action.value}: pre_transition kept current state",
-            )
-            conn.commit()
-            return get_task_by_id(conn, task["id"]), []
-        raise BacklogError(f"{task['key']} is already {wf.display(current)}")
+        log_event(
+            conn, "transition_skipped", project_id, task["id"], task["key"], actor,
+            from_value=current, to_value=current,
+            detail=f"{hook_action.value}: pre_transition kept current state",
+        )
+        conn.commit()
+        return get_task_by_id(conn, task["id"]), []
     if not wf.allows(current, target):
         legal = ", ".join(sorted(wf.display(t) for t in wf.next_from(current))) \
             or "(none — terminal state)"
@@ -781,13 +775,9 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
               from_value=current, to_value=target, detail=reason)
     conn.commit()
     updated = get_task_by_id(conn, task["id"])
-    if run_hooks:
-        from . import hooks
-
-        assert backlog_dir is not None and hook_action is not None and hook_trigger is not None
-        hooks.post_transition(
-            backlog_dir, hook_action, hook_trigger, current, updated["status"], hook_backlog
-        )
+    hooks.post_transition(
+        backlog_dir, hook_action, hook_trigger, current, updated["status"], hook_backlog
+    )
     return updated, checks
 
 
@@ -827,7 +817,7 @@ def trigger_action(
     conn.commit()
     if destination is None:
         return get_task_by_id(conn, task["id"]), [], False
-    row, checks = move(
+    row, checks = _transition(
         conn,
         project_id,
         task["key"],
