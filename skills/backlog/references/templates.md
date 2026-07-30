@@ -16,14 +16,14 @@ $BL templates
 
 | Template | Flow |
 | --- | --- |
-| `software-delivery` *(default)* | Stories and subtasks follow Created → Ready → In Progress → In Review → Accepted → Done with PR gates. A newly reviewed feature follows Created → In Review → Ready, then progresses without PR gates. |
+| `software-delivery` *(default)* | Features, stories, and subtasks follow Created → Ready → In Progress → In Review → Accepted → Done, with an Incomplete refinement path and a Needs Work implementation-review loop. Stories and subtasks enforce PR gates. |
 | `lightweight` | Created → Ready → In Progress → Done (+ Dropped). No review stage, no PR gates. |
 | `research` | Proposed → Investigating → Drafted → Reviewed → Published (+ Parked). |
 
 They install themselves on first use and are editable and copyable like any
 template you write.
 
-The proposed action-driven workflow also ships a file-based default at
+The action-driven workflow also ships a file-based default at
 `assets/default-workflow.yaml`. When a project has no
 `.backlog/workflow.yaml`, the action workflow loader uses that bundled file.
 A project workflow replaces the default as a complete definition; the two are

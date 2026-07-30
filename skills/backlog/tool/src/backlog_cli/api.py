@@ -22,7 +22,8 @@ import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from . import core, deps, review, workflow
+from . import core, deps, hooks, review, workflow
+from .hooks import Action
 from .db import (
     BacklogError,
     Conn,
@@ -33,7 +34,9 @@ from .db import (
     resolve_spec,
 )
 
-__all__ = ["open", "Backlog", "Task", "Gate", "Thread", "Store", "BacklogError"]
+__all__ = [
+    "open", "Backlog", "Task", "Gate", "Thread", "Store", "Action", "BacklogError"
+]
 
 
 def _age_days(stamp: str | None) -> float:
@@ -343,6 +346,69 @@ class Backlog:
                            actor=actor or self.actor, reason=reason, **waivers)
         return Task(row, self)
 
+    def trigger(self, key: str, action: Action | str, *,
+                actor: str | None = None, operation: str = "api.trigger",
+                parameters: dict | None = None, **waivers) -> Task:
+        """Submit an action; workflow configuration selects the destination."""
+        row, _, _ = core.trigger_action(
+            self._conn,
+            self.pid,
+            key,
+            action,
+            actor=actor or self.actor,
+            operation=operation,
+            parameters=parameters,
+            **waivers,
+        )
+        return Task(row, self)
+
+    def set_pr(self, key: str, *, url: str | None = None,
+               number: int | None = None, repo: str | None = None,
+               state: str | None = None, review_state: str | None = None,
+               actor: str | None = None) -> Task:
+        """Record PR state and emit the corresponding standard PR action."""
+        row = core.set_pr(
+            self._conn,
+            self.pid,
+            key,
+            url=url,
+            number=number,
+            repo=repo,
+            state=state,
+            review_state=review_state,
+            actor=actor or self.actor,
+        )
+        return Task(row, self)
+
+    def review_open(self, key: str, *, author: str, body: str,
+                    role: str = "auto", title: str = "",
+                    file: str | None = None, line: int | None = None) -> Thread:
+        """Open review feedback and emit `feedback.posted`."""
+        return _thread(review.open_thread(
+            self._conn,
+            self.pid,
+            key,
+            author,
+            body,
+            role=role,
+            title=title,
+            file_path=file,
+            line=line,
+        ))
+
+    def review_reply(self, comment: str, *, author: str, action: str,
+                     body: str, role: str = "auto") -> Thread:
+        """Reply to review feedback and emit the matching feedback action."""
+        return _thread(review.reply(
+            self._conn,
+            self.pid,
+            comment,
+            author,
+            action,
+            body,
+            role=role,
+        ))
+
     def assign(self, key: str, to: str | None = None, reviewer: str | None = None,
                actor: str | None = None) -> Task:
         row = core.assign(self._conn, self.pid, key, to=to, reviewer=reviewer,
@@ -368,6 +434,7 @@ def open(project: str | None = None, actor: str | None = None):
     conn = connect(spec=spec)
     try:
         project_row = require_project(conn, project or spec.project)
+        hooks.apply_workflow(conn, int(project_row["id"]), require_backlog_dir())
         bl = Backlog(conn, project_row, spec, actor=actor)
         yield bl
         conn.commit()

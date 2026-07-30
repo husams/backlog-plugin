@@ -180,30 +180,26 @@ DEFAULT_TRANSITIONS = {
         ("created", "ready", ""),
         ("created", "incomplete", ""),
         ("incomplete", "ready", ""),
-        ("incomplete", "accepted", ""),
         ("ready", "in_progress", "dependencies_clear"),
         ("in_progress", "in_review", "pr_recorded"),
         ("in_review", "accepted", "review_threads_closed,pr_approved,children_complete"),
         ("in_review", "needs_work", ""),
-        ("needs_work", "in_review", "pr_recorded"),
+        ("needs_work", "in_progress", ""),
+        ("accepted", "needs_work", ""),
         ("accepted", "done", "pr_merged"),
     ],
-    # Feature review is scope/grooming review: opening the first review moves a
-    # new feature into In Review, and closing its threads allows it to become
-    # Ready. A feature carries no pull request of its own.
+    # Features use the same delivery states but carry no pull request gates.
     "feature": [
         ("created", "ready", ""),
         ("created", "incomplete", ""),
-        ("created", "in_review", ""),
         ("incomplete", "ready", ""),
-        ("incomplete", "accepted", ""),
-        ("incomplete", "in_review", ""),
-        ("in_review", "ready", "review_threads_closed"),
-        ("in_review", "incomplete", ""),
         ("ready", "in_progress", "dependencies_clear"),
-        ("in_progress", "accepted", "review_threads_closed,children_complete"),
-        ("in_progress", "incomplete", ""),
-        ("accepted", "done", ""),
+        ("in_progress", "in_review", ""),
+        ("in_review", "needs_work", ""),
+        ("needs_work", "in_progress", ""),
+        ("in_review", "accepted", "review_threads_closed,children_complete"),
+        ("accepted", "needs_work", ""),
+        ("accepted", "done", "children_complete"),
     ],
 }
 DEFAULT_TRANSITIONS["subtask"] = DEFAULT_TRANSITIONS["story"]

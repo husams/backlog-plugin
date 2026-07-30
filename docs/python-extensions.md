@@ -1,7 +1,7 @@
 # Python transition hooks
 
-> Design status: proposed. The hook loader and interfaces described here are
-> not implemented yet.
+The hook loader, action dispatcher, bundled workflow fallback, and public
+Python and command interfaces described here are implemented in Backlog 1.4.
 
 A project may add one optional Python file at:
 

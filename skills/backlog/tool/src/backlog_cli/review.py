@@ -17,10 +17,10 @@ direct parent of the latest comment, and the latest comment.
 
 from __future__ import annotations
 
-from .core import get_task, get_task_by_id, move, normalize_key
+from .core import get_task, get_task_by_id, normalize_key, trigger_action
 from .db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
+from .hooks import Action
 from .schema import REVIEW_ACTIONS, REVIEW_ROLES
-from . import workflow
 
 
 def resolve_role(task: Row, author: str, role: str | None) -> str:
@@ -69,28 +69,22 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
     )
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
-    if task["task_type"] == "feature":
-        wf = workflow.get(conn, project_id, "feature")
-        if wf.category(task["status"]) != "review":
-            review_targets = [
-                status for status in wf.next_from(task["status"])
-                if wf.category(status) == "review"
-            ]
-            if len(review_targets) == 1:
-                move(
-                    conn,
-                    project_id,
-                    task["key"],
-                    review_targets[0],
-                    actor=author,
-                    reason=f"review opened: {ckey}",
-                )
     conn.commit()
+    trigger_action(
+        conn,
+        project_id,
+        task["key"],
+        Action.FEEDBACK_POSTED,
+        actor=author,
+        operation="review.open",
+        parameters={"comment": ckey, "body": body, "role": role},
+    )
     return thread_summary(conn, ckey)
 
 
 def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: str,
-          body: str, role: str | None = None, reopen: bool = False) -> dict:
+          body: str, role: str | None = None, reopen: bool = False,
+          emit_action: bool = True) -> dict:
     ck = normalize_key(comment_key)
     parent = conn.execute("SELECT * FROM review_comment WHERE key = ?", (ck,)).fetchone()
     if parent is None:
@@ -140,6 +134,28 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
               from_value=thread["state"], to_value=state,
               detail=f"{action} on {thread['root_key']} ({ckey})")
     conn.commit()
+    if emit_action:
+        action_event = {
+            "comment": Action.FEEDBACK_REPLIED,
+            "fix": Action.FEEDBACK_REPLIED,
+            "reject": Action.FEEDBACK_REJECTED,
+            "accept": Action.FEEDBACK_ACCEPTED,
+        }[action]
+        trigger_action(
+            conn,
+            project_id,
+            task["key"],
+            action_event,
+            actor=author,
+            operation="review.reply",
+            parameters={
+                "root": thread["root_key"],
+                "comment": ckey,
+                "reply_action": action,
+                "body": body,
+                "role": role,
+            },
+        )
     return thread_summary(conn, thread["root_key"])
 
 
@@ -157,8 +173,21 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
         (rk,),
     )
     conn.commit()
-    return reply(conn, project_id, thread["last_comment_key"], author, "comment", body,
-                 role=role, reopen=True)
+    result = reply(
+        conn, project_id, thread["last_comment_key"], author, "comment", body,
+        role=role, reopen=True, emit_action=False
+    )
+    task = get_task_by_id(conn, thread["task_id"])
+    trigger_action(
+        conn,
+        project_id,
+        task["key"],
+        Action.FEEDBACK_REOPENED,
+        actor=author,
+        operation="review.reopen",
+        parameters={"root": rk, "body": body, "role": role},
+    )
+    return result
 
 
 def _comment_dict(row: Row) -> dict:

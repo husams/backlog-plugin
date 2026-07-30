@@ -67,8 +67,10 @@ they do not allow. Trust the exit code:
 | | `2` | **blocked — do not merge** |
 | `$BL dep check KEY` | `0` / `2` | startable / blocked |
 
-There is no flag that sets a status directly: `move` is the only path, and it
-consults the flow every time. A gate can be waived deliberately (`--no-pr`,
+There is no flag that sets a status directly: `action` and `move` are the only
+paths, and both consult the flow and run project transition hooks every time.
+Prefer `action` for integrations and semantic events; use `move` for an
+explicit human-requested destination. A gate can be waived deliberately (`--no-pr`,
 `--allow-blocked`, `--allow-open-subtasks`) and `doctor` reports the waiver
 afterwards, so an override stays visible.
 
@@ -87,7 +89,7 @@ afterwards, so an override stays visible.
    SQL, schema imports, connection attributes, or internal API attributes. Use
    only the documented public API. Direct access bypasses the flow, gates and
    audit trail.
-5. **Read the flow before moving anything.** Statuses are per project and per
+5. **Read the flow before transitioning anything.** Statuses are per project and per
    task type — this project may not have the ones you expect:
    `$BL statuses` or `$BL workflow show --type story`.
 6. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**

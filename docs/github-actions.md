@@ -8,9 +8,10 @@ workflow records pull-request information and requests status transitions when:
 - the `CI` workflow fails, times out, or is cancelled;
 - the pull request is merged or closed.
 
-Every requested status change goes through `backlog move`. The active project
-workflow and its gates remain authoritative. If GitHub requests an illegal
-transition, the command refuses it and the workflow run fails visibly.
+GitHub events are submitted as standard Backlog actions. The active project
+workflow selects the destination, runs transition hooks, and enforces its
+gates. If an event requests an illegal transition, the command refuses it and
+the workflow run fails visibly.
 
 ## Install the example
 
@@ -37,15 +38,6 @@ The example uses PostgreSQL because independent GitHub runners need a shared
 store. Repository-local SQLite would require safely committing a changed
 database back to the repository and coordinating concurrent workflow runs.
 
-Edit the four status variables in the workflow to match the project:
-
-```yaml
-BACKLOG_REVIEW_STATUS: in_review
-BACKLOG_NEEDS_WORK_STATUS: needs_work
-BACKLOG_ACCEPTED_STATUS: accepted
-BACKLOG_DONE_STATUS: done
-```
-
 If the project's CI workflow is not named `CI`, change:
 
 ```yaml
@@ -71,19 +63,17 @@ A workflow run fails with a clear message when the branch has no backlog key.
 
 | GitHub event | Backlog operation |
 | --- | --- |
-| PR opened, reopened, synchronized, or ready | record PR as open; request `in_review` |
+| PR opened, reopened, synchronized, or ready | record PR; emit the matching `pr.*` action |
 | PR converted to draft | record PR as draft |
-| Review approved | record approval; request `accepted` |
-| Review requests changes | record changes requested; request `needs_work` |
-| Review dismissed | reset review state to pending |
-| CI failed, timed out, or cancelled | request `needs_work` |
-| CI passed | no transition by default |
-| PR merged | record merged; request `done` |
+| Review approved | record approval; emit `pr.approved` |
+| Review requests changes | record changes requested; emit `pr.changes_requested` |
+| Review dismissed | reset review state; emit `review.dismissed` |
+| CI completed | emit `check.passed`, `check.failed`, `check.timed_out`, or `check.cancelled` |
+| PR merged | record merged; emit `pr.merged` |
 | PR closed without merge | record closed |
 
-The same event-to-status mapping can be changed without bypassing project
-policy. Backlog still validates each destination against the task's current
-state, configured transition, and gates.
+The workflow configuration maps each action and current state to a destination.
+GitHub never chooses the destination state.
 
 ## Security
 
@@ -101,17 +91,14 @@ Do not print `BACK_LOG_URL` or pass it as a command-line argument.
 
 ## Action-based API
 
-The current example uses the existing `pr set` and `move` interfaces. After the
-proposed action API is implemented, the mapping can emit semantic actions such
-as:
+The same integration is available through Python:
 
 ```python
-bl.trigger(task_key, Action.PR_CREATED, trigger=github_event)
-bl.trigger(task_key, Action.REVIEW_APPROVED, trigger=github_event)
-bl.trigger(task_key, Action.CHECK_FAILED, trigger=github_event)
-bl.trigger(task_key, Action.PR_MERGED, trigger=github_event)
+bl.trigger(task_key, Action.PR_CREATED, parameters=github_event)
+bl.trigger(task_key, Action.REVIEW_APPROVED, parameters=github_event)
+bl.trigger(task_key, Action.CHECK_FAILED, parameters=github_event)
+bl.trigger(task_key, Action.PR_MERGED, parameters=github_event)
 ```
 
-The workflow would no longer select destination statuses. The project workflow
-would map each action and current state to the destination, then run
-`pre_transition` and `post_transition`.
+The project workflow maps each action and current state to the destination,
+then runs `pre_transition` and `post_transition`.

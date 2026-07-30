@@ -25,7 +25,7 @@ Python API, predefined scripts, documentation, and database tooling.
 
 - [Example agent prompts](docs/prompts.md)
 - [GitHub Actions integration example](docs/github-actions.md)
-- [Python transition hooks — proposed design and developer guide](docs/python-extensions.md)
+- [Python transition hooks and action workflow](docs/python-extensions.md)
 
 ## Requirements
 
@@ -278,7 +278,7 @@ or access internal connection attributes.
 | `.codex-plugin/plugin.json` | Codex plugin manifest |
 | `.claude-plugin/plugin.json` | Claude Code plugin manifest |
 | `.claude-plugin/marketplace.json` | Local Claude Code marketplace |
-| `docs/` | User prompts and proposed developer-extension documentation |
+| `docs/` | User prompts, integrations, and transition-hook documentation |
 | `skills/backlog/SKILL.md` | Core agent rules and documentation routing |
 | `skills/backlog/bin/install.sh` | Optional direct-install helper for Codex and Claude Code |
 | `skills/backlog/references/` | Task-specific documentation |

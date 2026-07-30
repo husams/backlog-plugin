@@ -160,9 +160,3 @@ transitions:
     action: pr.merged
     to: done
     gates: [review_threads_closed, children_complete, pr_merged]
-
-  - task_types: [story, subtask]
-    from: accepted
-    action: delivery.released
-    to: done
-    gates: [review_threads_closed, children_complete]

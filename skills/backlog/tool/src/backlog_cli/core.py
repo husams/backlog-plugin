@@ -11,9 +11,19 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from . import deps, workflow
-from .db import BacklogError, Conn, Row, actor_kind, log_event, next_key, utcnow
+from .db import (
+    BacklogError,
+    Conn,
+    Row,
+    actor_kind,
+    log_event,
+    next_key,
+    require_backlog_dir,
+    utcnow,
+)
 from .schema import (
     ITEM_KIND_ALIASES,
     ITEM_KINDS,
@@ -350,7 +360,8 @@ def remove_item(conn: Conn, project_id: int, item_id: int, actor: str | None = N
 
 def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
            number: int | None = None, repo: str | None = None, state: str | None = None,
-           review_state: str | None = None, actor: str | None = None) -> Row:
+           review_state: str | None = None, actor: str | None = None,
+           emit_action: bool = True) -> Row:
     task = get_task(conn, project_id, key)
     if task["task_type"] not in PR_BEARING_TYPES:
         raise BacklogError(
@@ -402,7 +413,40 @@ def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
     conn.execute(f"UPDATE task SET {', '.join(sets)} WHERE id = ?", values)
     log_event(conn, "pr", project_id, task["id"], task["key"], actor, detail="; ".join(notes))
     conn.commit()
-    return get_task_by_id(conn, task["id"])
+    updated = get_task_by_id(conn, task["id"])
+    if emit_action:
+        from .hooks import Action
+
+        if state == "merged":
+            action = Action.PR_MERGED
+        elif review_state == "approved":
+            action = Action.PR_APPROVED
+        elif review_state == "changes_requested":
+            action = Action.PR_CHANGES_REQUESTED
+        elif state == "closed":
+            action = Action.PR_CLOSED
+        elif state == "open" and task["pr_state"] == "closed":
+            action = Action.PR_REOPENED
+        elif state == "open" and task["pr_state"] == "draft":
+            action = Action.PR_MARKED_READY
+        elif url is not None and not task["pr_url"]:
+            action = Action.PR_CREATED
+        else:
+            action = Action.PR_UPDATED
+        updated, _, _ = trigger_action(
+            conn,
+            project_id,
+            task["key"],
+            action,
+            actor=actor,
+            operation="pr.set",
+            parameters={
+                "url": updated["pr_url"],
+                "state": updated["pr_state"],
+                "review_state": updated["pr_review_state"],
+            },
+        )
+    return updated
 
 
 def _parse_pr_url(url: str) -> tuple[str, int] | None:
@@ -647,7 +691,9 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
 def move(conn: Conn, project_id: int, key: str, to_status: str,
          actor: str | None = None, reason: str = "", no_pr: bool = False,
          allow_open_children: bool = False,
-         allow_blocked: bool = False) -> tuple[Row, list[Check]]:
+         allow_blocked: bool = False, action=None,
+         trigger: dict[str, Any] | None = None,
+         run_hooks: bool = True) -> tuple[Row, list[Check]]:
     """Transition a task, obeying the project's workflow for its task type."""
     task = get_task(conn, project_id, key)
     wf = workflow.get(conn, project_id, task["task_type"])
@@ -655,6 +701,37 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
     current = task["status"]
 
     if target == current:
+        raise BacklogError(f"{task['key']} is already {wf.display(current)}")
+
+    hook_action = None
+    hook_trigger = None
+    backlog_dir = None
+    if run_hooks:
+        from . import hooks
+
+        hook_action = hooks.normalize_action(action) if action is not None \
+            else hooks.infer_action(current, target)
+        hook_trigger = dict(trigger or {})
+        hook_trigger.setdefault("operation", "move")
+        hook_trigger.setdefault("actor", actor)
+        hook_trigger.setdefault("parameters", {})
+        hook_trigger["parameters"].setdefault("requested_state", target)
+        hook_trigger["parameters"].setdefault("reason", reason)
+        backlog_dir = require_backlog_dir()
+        proposed = hooks.pre_transition(
+            backlog_dir, hook_action, hook_trigger, current, target
+        )
+        target = wf.resolve(proposed)
+
+    if target == current:
+        if run_hooks:
+            log_event(
+                conn, "transition_skipped", project_id, task["id"], task["key"], actor,
+                from_value=current, to_value=current,
+                detail=f"{hook_action.value}: pre_transition kept current state",
+            )
+            conn.commit()
+            return get_task_by_id(conn, task["id"]), []
         raise BacklogError(f"{task['key']} is already {wf.display(current)}")
     if not wf.allows(current, target):
         legal = ", ".join(sorted(wf.display(t) for t in wf.next_from(current))) \
@@ -681,14 +758,73 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
         conn.execute("UPDATE task SET pr_waived = 1 WHERE id = ?", (task["id"],))
     closed = ts if wf.category(target) in ("done", "dropped") else None
     conn.execute(
-        "UPDATE task SET status = ?, updated_at = ?, closed_at = COALESCE(?, closed_at) "
+        "UPDATE task SET status = ?, updated_at = ?, closed_at = ? "
         "WHERE id = ?",
         (target, ts, closed, task["id"]),
     )
     log_event(conn, "status", project_id, task["id"], task["key"], actor,
               from_value=current, to_value=target, detail=reason)
     conn.commit()
-    return get_task_by_id(conn, task["id"]), checks
+    updated = get_task_by_id(conn, task["id"])
+    if run_hooks:
+        from . import hooks
+
+        assert backlog_dir is not None and hook_action is not None and hook_trigger is not None
+        hooks.post_transition(
+            backlog_dir, hook_action, hook_trigger, current, updated["status"]
+        )
+    return updated, checks
+
+
+def trigger_action(
+    conn: Conn,
+    project_id: int,
+    key: str,
+    action,
+    *,
+    actor: str | None = None,
+    operation: str = "api.trigger",
+    parameters: dict[str, Any] | None = None,
+    no_pr: bool = False,
+    allow_open_children: bool = False,
+    allow_blocked: bool = False,
+) -> tuple[Row, list[Check], bool]:
+    """Submit a semantic action and let the configured workflow select state."""
+    from . import hooks
+
+    task = get_task(conn, project_id, key)
+    action = hooks.normalize_action(action)
+    trigger = {
+        "operation": operation,
+        "actor": actor,
+        "parameters": dict(parameters or {}),
+    }
+    backlog_dir = require_backlog_dir()
+    destination = hooks.resolve_transition(
+        backlog_dir, task["task_type"], task["status"], action
+    )
+    log_event(
+        conn, "action", project_id, task["id"], task["key"], actor,
+        from_value=task["status"], to_value=action.value,
+        detail=operation,
+    )
+    conn.commit()
+    if destination is None:
+        return get_task_by_id(conn, task["id"]), [], False
+    row, checks = move(
+        conn,
+        project_id,
+        task["key"],
+        destination,
+        actor=actor,
+        reason=f"{action.value} via {operation}",
+        no_pr=no_pr,
+        allow_open_children=allow_open_children,
+        allow_blocked=allow_blocked,
+        action=action,
+        trigger=trigger,
+    )
+    return row, checks, row["status"] != task["status"]
 
 
 def _known(wf, value: str) -> bool:

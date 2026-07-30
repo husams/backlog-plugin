@@ -99,9 +99,14 @@ $BL item rm ID
 ## Status and gates
 
 ```bash
+$BL action KEY ACTION [--operation NAME] [--parameter NAME=VALUE]
 $BL move KEY STATUS [--reason "..."] [--no-pr] [--allow-open-subtasks] [--allow-blocked]
 $BL gate KEY --for start|in_review|accepted|done|merge [same waivers]
 ```
+
+`action` resolves the destination from `.backlog/workflow.yaml`, or from the
+bundled default when the project has no custom file. It runs project
+`pre_transition` and `post_transition` hooks and uses the same gates as `move`.
 
 `move` exits `1` on an illegal transition or a failed gate. `gate` exits `0`
 pass, `2` blocked, `1` command error. Both read this project's flow — see

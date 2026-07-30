@@ -53,11 +53,43 @@ for writes made through the session.
 | `bl.can(key, target="merge", **waivers)` | `Gate` — evaluates, never moves |
 | `bl.inbox(actor=None, role=None)` | `list[Thread]` waiting on someone, oldest first |
 | `bl.threads(key, state="open")` | `list[Thread]` on one task |
+| `bl.trigger(key, action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit an `Action`; the workflow selects and enforces the destination |
+| `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
+| `bl.review_open(key, author=, body=, role=, title=, file=, line=)` | open feedback and emit `feedback.posted` |
+| `bl.review_reply(comment, author=, action=, body=, role=)` | reply and emit the matching `feedback.*` action |
 | `bl.move(key, status, actor=None, reason="", **waivers)` | transition; refuses exactly as the CLI does |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
 
 Waivers match the CLI flags: `allow_blocked`, `no_pr`, `allow_open_children`.
+
+## Actions and transition hooks
+
+Import the standard action enum from the public API:
+
+```python
+from backlog_cli.api import Action
+```
+
+Submit facts rather than destination states:
+
+```python
+with api.open(actor="github-actions") as bl:
+    task = bl.trigger(
+        "S-004",
+        Action.PR_MERGED,
+        operation="github.pull_request.closed",
+        parameters={"pull_request": 91},
+    )
+```
+
+Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
+`assets/default-workflow.yaml`. It resolves `(task type, current state,
+action)` to a destination, runs `.backlog/hooks.py::pre_transition`, enforces
+the normal transition and gates, commits, then runs `post_transition`.
+
+`move` remains available for human-requested destination changes and also runs
+the hooks using the standard action inferred from the transition.
 
 ## Task
 

@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__, core, deps, review, templates, workflow
+from . import __version__, core, deps, hooks, review, templates, workflow
 from .db import (
     BacklogError,
     Conn,
@@ -84,6 +84,7 @@ class Ctx:
         if self._project is None:
             slug = self.project_override or self.spec.project
             self._project = require_project(self.conn, slug)
+            hooks.apply_workflow(self.conn, int(self._project["id"]), self.dir)
         return self._project
 
     @property
@@ -429,6 +430,49 @@ def cmd_move(ctx: Ctx, args) -> int:
     ctx.emit({"task": row_to_dict(row), "checks": [c.as_dict() for c in checks]},
              f"{row['key']}  -> {wf.display(row['status'])}"
              + ("\n" + "\n".join(f"  OK   {c.name}: {c.detail}" for c in checks) if checks else ""))
+    return 0
+
+
+def cmd_action(ctx: Ctx, args) -> int:
+    parameters = {}
+    for item in args.parameter or []:
+        if "=" not in item:
+            raise BacklogError(f"parameter must be NAME=VALUE, got {item!r}")
+        name, value = item.split("=", 1)
+        if not name:
+            raise BacklogError("parameter name cannot be empty")
+        parameters[name] = value
+    before = core.get_task(ctx.conn, ctx.pid, args.key)
+    row, checks, transitioned = core.trigger_action(
+        ctx.conn,
+        ctx.pid,
+        args.key,
+        args.action,
+        actor=args.actor,
+        operation=args.operation,
+        parameters=parameters,
+        no_pr=args.no_pr,
+        allow_open_children=args.allow_open_subtasks,
+        allow_blocked=args.allow_blocked,
+    )
+    wf = workflow.get(ctx.conn, ctx.pid, row["task_type"])
+    ctx.emit(
+        {
+            "action": hooks.normalize_action(args.action).value,
+            "transitioned": transitioned,
+            "from": before["status"],
+            "task": row_to_dict(row),
+            "checks": [check.as_dict() for check in checks],
+        },
+        (
+            f"{row['key']}  action={hooks.normalize_action(args.action).value}  "
+            + (
+                f"{wf.display(before['status'])} -> {wf.display(row['status'])}"
+                if transitioned
+                else f"recorded; status remains {wf.display(row['status'])}"
+            )
+        ),
+    )
     return 0
 
 
@@ -1308,6 +1352,18 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--allow-blocked", action="store_true",
                     help="start work whose blocking dependencies are unfinished")
     sp.set_defaults(func=cmd_move)
+
+    sp = sub.add_parser(
+        "action", help="submit a semantic action; the workflow selects the destination"
+    )
+    sp.add_argument("key")
+    sp.add_argument("action", choices=[action.value for action in hooks.Action])
+    sp.add_argument("--operation", default="cli.action")
+    sp.add_argument("--parameter", action="append", metavar="NAME=VALUE")
+    sp.add_argument("--no-pr", action="store_true")
+    sp.add_argument("--allow-open-subtasks", action="store_true")
+    sp.add_argument("--allow-blocked", action="store_true")
+    sp.set_defaults(func=cmd_action)
 
     sp = sub.add_parser("gate", help="check a gate without transitioning (exit 2 = blocked)")
     sp.add_argument("key")
