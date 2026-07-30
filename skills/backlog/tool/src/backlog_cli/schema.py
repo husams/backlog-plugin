@@ -573,6 +573,7 @@ CREATE TABLE IF NOT EXISTS execution_result (
     detail                   TEXT NOT NULL DEFAULT '',
     source_revision          TEXT,
     source_dirty_fingerprint TEXT,
+    source_revision_unavailable INTEGER NOT NULL DEFAULT 0,
     started_at               TEXT NOT NULL,
     finished_at              TEXT NOT NULL
 );

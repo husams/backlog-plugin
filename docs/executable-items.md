@@ -1,9 +1,10 @@
 # Executable item contract
 
-Task items remain plain text by default. An item becomes executable only when
-an `executable_item` row is attached through the Python API. Existing stores
-are migrated additively and existing criteria, checklist entries, and notes
-keep their current behavior.
+Task items remain plain text by default. Acceptance criteria and checklist
+items become executable only when an `executable_item` row is attached through
+the Python API; notes cannot declare execution. Existing stores are migrated
+additively and existing criteria, checklist entries, and notes keep their
+current behavior.
 
 An executable item declares `requirement: required|advisory` (default:
 `required`) and exactly one executor:
@@ -56,4 +57,6 @@ visible but do not block acceptance.
 Source identity is optional. A clean Git checkout records `HEAD`. A dirty
 checkout also records a deterministic hash over tracked and non-ignored
 untracked files. Ignored paths are excluded. A non-Git checkout remains
-gate-eligible; callers can report `source_revision_unavailable` diagnostically.
+gate-eligible and persists `source_revision_unavailable`. `backlog doctor`
+reports items whose latest fresh attempt still has that limitation; a later
+source-identified attempt supersedes and clears the diagnostic.

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import tempfile
 import subprocess
+import json
+import os
+import sys
 import unittest
 from pathlib import Path
 
@@ -57,6 +60,18 @@ class ExecutionContractTest(unittest.TestCase):
         self.assertEqual(row["executor"], "shell")
         self.assertEqual(row["requirement"], "required")
         self.assertTrue(row["spec_fingerprint"].startswith("sha256:"))
+        from backlog_cli import core
+        project = db.require_project(self.conn, "sample")
+        note = core.add_item(
+            self.conn, project["id"], self.task["key"], "note", "Remember this"
+        )
+        with self.assertRaisesRegex(BacklogError, "only acceptance criteria and checklist"):
+            execution.set_executable(self.conn, note["id"], self.shell())
+        self.assertIsNone(
+            self.conn.execute(
+                "SELECT item_id FROM executable_item WHERE item_id=?", (note["id"],)
+            ).fetchone()
+        )
 
     def test_fingerprint_ignores_task_metadata_and_changes_with_spec(self):
         first = execution.set_executable(self.conn, self.item["id"], self.shell())
@@ -106,6 +121,54 @@ class ExecutionContractTest(unittest.TestCase):
             reason="policy_denied",
         )
         self.assertEqual((result["status"], result["reason"]), ("skipped", "policy_denied"))
+
+    def test_unavailable_source_is_persisted_reported_and_superseded(self):
+        row = execution.set_executable(self.conn, self.item["id"], self.shell())
+        first = execution.record_result(
+            self.conn, self.item["id"], row["spec_fingerprint"], "pass",
+            source=execution.SourceIdentity(unavailable=True),
+        )
+        self.assertEqual(first["source_revision_unavailable"], 1)
+        self.assertEqual(
+            execution.source_revision_unavailable_items(self.conn), [self.item["id"]]
+        )
+        doctor = subprocess.run(
+            [sys.executable, "-m", "backlog_cli.cli", "--json", "doctor"],
+            cwd=self.root,
+            env={
+                **os.environ,
+                "BACKLOG_DB": "sqlite",
+                "BACK_LOG_URL": str(self.conn.spec.db_path),
+                "BACKLOG_PROJECT": "sample",
+                "BACKLOG_DIR": str(self.root / ".backlog"),
+            },
+            text=True, capture_output=True, check=True,
+        )
+        report = json.loads(doctor.stdout)
+        self.assertEqual(
+            report["diagnostics"],
+            [f"source_revision_unavailable: latest fresh result for item "
+             f"#{self.item['id']} has no VCS source identity"],
+        )
+        second = execution.record_result(
+            self.conn, self.item["id"], row["spec_fingerprint"], "pass",
+            source=execution.SourceIdentity(revision="abc123"),
+        )
+        self.assertEqual(second["source_revision_unavailable"], 0)
+        self.assertEqual(execution.source_revision_unavailable_items(self.conn), [])
+        cleared = subprocess.run(
+            [sys.executable, "-m", "backlog_cli.cli", "--json", "doctor"],
+            cwd=self.root,
+            env={
+                **os.environ,
+                "BACKLOG_DB": "sqlite",
+                "BACK_LOG_URL": str(self.conn.spec.db_path),
+                "BACKLOG_PROJECT": "sample",
+                "BACKLOG_DIR": str(self.root / ".backlog"),
+            },
+            text=True, capture_output=True, check=True,
+        )
+        self.assertEqual(json.loads(cleared.stdout)["diagnostics"], [])
 
     def test_local_policy_defaults_disabled_and_enforces_all_restrictions(self):
         spec = execution.parse_spec(self.shell())

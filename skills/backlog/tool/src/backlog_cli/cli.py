@@ -203,6 +203,7 @@ def cmd_project_set(ctx: Ctx, args) -> int:
 
 def cmd_doctor(ctx: Ctx, args) -> int:
     problems: list[str] = []
+    diagnostics: list[str] = []
     try:
         spec = ctx.spec
     except BacklogError as exc:
@@ -299,12 +300,23 @@ def cmd_doctor(ctx: Ctx, args) -> int:
                    if not (d / a["rel_path"]).exists()]
     problems += [f"artifact file missing on disk: .backlog/{p}" for p in missing_art]
 
+    from .execution import source_revision_unavailable_items
+    unavailable = source_revision_unavailable_items(conn)
+    diagnostics += [
+        "source_revision_unavailable: latest fresh result for item "
+        f"#{item_id} has no VCS source identity"
+        for item_id in unavailable
+    ]
+    info["diagnostics"] = diagnostics
+
     ok = not problems
     text = ("OK  " if ok else "FAIL ") + (
         f"{spec.location}  ({spec.dialect}/{spec.scope})  schema v{info['schema_version']}\n"
     ) + table(["TABLE", "ROWS"], [[k, str(v)] for k, v in sorted(info["counts"].items())])
     if problems:
         text += "\n\nproblems:\n" + "\n".join(f"  - {p}" for p in problems)
+    if diagnostics:
+        text += "\n\ndiagnostics:\n" + "\n".join(f"  - {d}" for d in diagnostics)
     ctx.emit({"ok": ok, "problems": problems, **info}, text)
     return 0 if ok else 1
 

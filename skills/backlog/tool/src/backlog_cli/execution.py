@@ -209,8 +209,14 @@ def load_policy(project_root: Path) -> ExecutionPolicy:
 
 def set_executable(conn: Conn, item_id: int, value: Mapping[str, Any]) -> dict[str, Any]:
     spec = parse_spec(value)
-    if conn.execute("SELECT id FROM task_item WHERE id = ?", (item_id,)).fetchone() is None:
+    item = conn.execute("SELECT id, kind FROM task_item WHERE id = ?", (item_id,)).fetchone()
+    if item is None:
         raise BacklogError(f"no task item with id {item_id}")
+    if item["kind"] not in ("acceptance_criteria", "checklist"):
+        raise BacklogError(
+            "only acceptance criteria and checklist items may declare execution; "
+            f"item {item_id} is {item['kind']}"
+        )
     now = utcnow()
     encoded = json.dumps(spec.canonical(), sort_keys=True, separators=(",", ":"))
     conn.execute(
@@ -250,10 +256,11 @@ def record_result(
     now = utcnow()
     rid = conn.insert_returning_id(
         "INSERT INTO execution_result(item_id,spec_fingerprint,status,reason,detail,"
-        "source_revision,source_dirty_fingerprint,started_at,finished_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?)",
+        "source_revision,source_dirty_fingerprint,source_revision_unavailable,"
+        "started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
         (item_id, spec_fingerprint, terminal.value, reason, detail, source.revision,
-         source.dirty_fingerprint, started_at or now, finished_at or now),
+         source.dirty_fingerprint, 1 if source.unavailable else 0,
+         started_at or now, finished_at or now),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM execution_result WHERE id = ?", (rid,)).fetchone()
@@ -285,6 +292,19 @@ def required_validations_pass(conn: Conn, task_id: int) -> tuple[bool, list[int]
         if latest is None or latest["status"] != TerminalStatus.PASS.value:
             failed.append(int(row["item_id"]))
     return not failed, failed
+
+
+def source_revision_unavailable_items(conn: Conn) -> list[int]:
+    """Items whose latest fresh attempt still lacks source identity."""
+    rows = conn.execute(
+        "SELECT e.item_id FROM executable_item e "
+        "JOIN execution_result r ON r.id = ("
+        "  SELECT r2.id FROM execution_result r2 "
+        "  WHERE r2.item_id=e.item_id AND r2.spec_fingerprint=e.spec_fingerprint "
+        "  ORDER BY r2.id DESC LIMIT 1"
+        ") WHERE r.source_revision_unavailable=1 ORDER BY e.item_id"
+    ).fetchall()
+    return [int(row["item_id"]) for row in rows]
 
 
 def source_identity(project_root: Path) -> SourceIdentity:
