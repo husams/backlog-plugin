@@ -1,0 +1,168 @@
+name: Sync pull requests to Backlog
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+      - converted_to_draft
+      - closed
+  pull_request_review:
+    types:
+      - submitted
+      - dismissed
+  workflow_run:
+    workflows:
+      - CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+concurrency:
+  group: backlog-${{ github.event.pull_request.number || github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      BACKLOG_DB: postgres
+      BACK_LOG_URL: ${{ secrets.BACK_LOG_URL }}
+      BACKLOG_PROJECT: ${{ vars.BACKLOG_PROJECT }}
+
+      # Change these destinations to match the project's workflow.
+      BACKLOG_REVIEW_STATUS: in_review
+      BACKLOG_NEEDS_WORK_STATUS: needs_work
+      BACKLOG_ACCEPTED_STATUS: accepted
+      BACKLOG_DONE_STATUS: done
+
+    steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Backlog
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/husams/backlog-plugin \
+            "$RUNNER_TEMP/backlog-plugin"
+
+      - name: Apply GitHub event
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_FILE: ${{ github.event_path }}
+          ACTOR: github:${{ github.actor }}
+        run: |
+          set -euo pipefail
+
+          BL="$RUNNER_TEMP/backlog-plugin/skills/backlog/bin/backlog"
+          PY="$RUNNER_TEMP/backlog-plugin/skills/backlog/bin/backlog-py"
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            pr_count="$(jq '.workflow_run.pull_requests | length' "$EVENT_FILE")"
+            if [[ "$pr_count" == "0" ]]; then
+              echo "The workflow run is not associated with a pull request."
+              exit 0
+            fi
+            branch="$(jq -r '.workflow_run.head_branch' "$EVENT_FILE")"
+            pr_number="$(jq -r '.workflow_run.pull_requests[0].number' "$EVENT_FILE")"
+            pr_url="https://github.com/$GITHUB_REPOSITORY/pull/$pr_number"
+            conclusion="$(jq -r '.workflow_run.conclusion' "$EVENT_FILE")"
+          else
+            branch="$(jq -r '.pull_request.head.ref' "$EVENT_FILE")"
+            pr_url="$(jq -r '.pull_request.html_url' "$EVENT_FILE")"
+          fi
+
+          if [[ "$branch" =~ (^|/)([FfSsTt]-[0-9]+)(-|/|$) ]]; then
+            task_key="$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:lower:]' '[:upper:]')"
+          else
+            echo "No backlog key found in branch '$branch'."
+            echo "Use a branch such as S-004-short-description."
+            exit 1
+          fi
+
+          move_to() {
+            local status="$1"
+            local reason="$2"
+            local current
+            current="$(
+              TASK_KEY="$task_key" "$PY" <<'PY'
+          import os
+          from backlog_cli import api
+
+          with api.open() as backlog:
+              print(backlog.task(os.environ["TASK_KEY"]).status)
+          PY
+            )"
+            if [[ "$current" == "$status" ]]; then
+              echo "$task_key is already $status."
+              return
+            fi
+            "$BL" move "$task_key" "$status" --actor "$ACTOR" --reason "$reason"
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            case "$conclusion" in
+              failure|timed_out|cancelled)
+                move_to "$BACKLOG_NEEDS_WORK_STATUS" "GitHub CI concluded: $conclusion"
+                ;;
+              success)
+                echo "CI passed; no status transition configured."
+                ;;
+            esac
+            exit 0
+          fi
+
+          "$BL" pr set "$task_key" --url "$pr_url"
+
+          if [[ "$EVENT_NAME" == "pull_request_review" ]]; then
+            review_state="$(jq -r '.review.state' "$EVENT_FILE")"
+            case "$EVENT_ACTION:$review_state" in
+              submitted:approved)
+                "$BL" pr set "$task_key" --review-state approved
+                move_to "$BACKLOG_ACCEPTED_STATUS" "Pull request approved"
+                ;;
+              submitted:changes_requested)
+                "$BL" pr set "$task_key" --review-state changes_requested
+                move_to "$BACKLOG_NEEDS_WORK_STATUS" "Pull request changes requested"
+                ;;
+              dismissed:*)
+                "$BL" pr set "$task_key" --review-state pending
+                ;;
+              *)
+                echo "Review recorded; no status transition configured."
+                ;;
+            esac
+            exit 0
+          fi
+
+          case "$EVENT_ACTION" in
+            opened|reopened|synchronize|ready_for_review)
+              draft="$(jq -r '.pull_request.draft' "$EVENT_FILE")"
+              if [[ "$draft" == "true" ]]; then
+                "$BL" pr set "$task_key" --state draft
+              else
+                "$BL" pr set "$task_key" --state open
+                move_to "$BACKLOG_REVIEW_STATUS" "Pull request is ready for review"
+              fi
+              ;;
+            converted_to_draft)
+              "$BL" pr set "$task_key" --state draft
+              ;;
+            closed)
+              merged="$(jq -r '.pull_request.merged' "$EVENT_FILE")"
+              if [[ "$merged" == "true" ]]; then
+                "$BL" pr set "$task_key" --state merged
+                move_to "$BACKLOG_DONE_STATUS" "Pull request merged"
+              else
+                "$BL" pr set "$task_key" --state closed
+              fi
+              ;;
+          esac

@@ -24,6 +24,7 @@ Python API, predefined scripts, documentation, and database tooling.
 ## Documentation
 
 - [Example agent prompts](docs/prompts.md)
+- [GitHub Actions integration example](docs/github-actions.md)
 - [Python transition hooks — proposed design and developer guide](docs/python-extensions.md)
 
 ## Requirements
