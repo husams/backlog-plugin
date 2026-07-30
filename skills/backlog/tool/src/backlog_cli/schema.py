@@ -582,12 +582,26 @@ CREATE TABLE IF NOT EXISTS execution_result (
     source_revision          TEXT,
     source_dirty_fingerprint TEXT,
     source_revision_unavailable INTEGER NOT NULL DEFAULT 0,
+    actor                    TEXT NOT NULL DEFAULT 'unknown',
     started_at               TEXT NOT NULL,
     finished_at              TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_execution_result_item
     ON execution_result(item_id, id);
+
+CREATE TABLE IF NOT EXISTS validation_waiver (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id          INTEGER NOT NULL REFERENCES task_item(id) ON DELETE CASCADE,
+    spec_fingerprint TEXT NOT NULL,
+    actor            TEXT NOT NULL,
+    reason           TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    superseded_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_validation_waiver_item
+    ON validation_waiver(item_id, id);
 
 -- Dependency edges, now a plain foreign key on both ends.
 CREATE TABLE IF NOT EXISTS dependency (

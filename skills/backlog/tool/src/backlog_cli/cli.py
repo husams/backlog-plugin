@@ -218,6 +218,7 @@ def cmd_doctor(ctx: Ctx, args) -> int:
     for tbl in ("template", "template_workflow", "template_status", "template_transition",
                 "project", "workflow", "workflow_status", "workflow_transition",
                 "task", "task_item", "executable_item", "execution_result",
+                "validation_waiver",
                 "dependency", "review_comment",
                 "review_thread", "artifact", "event"):
         info["counts"][tbl] = conn.execute(f"SELECT COUNT(*) AS c FROM {tbl}").fetchone()["c"]
@@ -307,6 +308,13 @@ def cmd_doctor(ctx: Ctx, args) -> int:
         f"#{item_id} has no VCS source identity"
         for item_id in unavailable
     ]
+    for detail in execution.validation_diagnostics(conn):
+        diagnostics.append(
+            f"validation_{detail['kind']}: {detail['task']} item "
+            f"#{detail['item_id']} ({detail['executor']}) actor={detail['actor']} "
+            f"reason={detail['reason']} prior={detail['prior_result']} "
+            f"at={detail['timestamp']} content={detail['item']}"
+        )
     info["diagnostics"] = diagnostics
 
     ok = not problems
@@ -589,14 +597,35 @@ def cmd_action(ctx: Ctx, args) -> int:
 def _execution_text(results) -> str:
     lines = []
     for result in results:
+        payload = _execution_payload(result)
         line = (
-            f"#{result.item_id}  {result.status.upper():7} "
-            f"executor={result.executor} duration={result.duration_ms}ms"
+            f"#{payload['item_id']}  {payload['status'].upper():7} "
+            f"executor={payload['executor']} duration={payload['duration_ms']}ms"
         )
-        if result.diagnostic:
-            line += f"  {result.diagnostic}"
+        if payload["diagnostic"]:
+            line += f"  {payload['diagnostic']}"
         lines.append(line)
-    return "\n".join(lines) if lines else "no shell executable items"
+    return "\n".join(lines) if lines else "no executable items"
+
+
+def _execution_payload(result) -> dict:
+    if hasattr(result, "as_dict"):
+        return result.as_dict()
+    record = result.record
+    return {
+        "item_id": int(record["item_id"]),
+        "status": result.status.value,
+        "executor": "hook",
+        "expected": result.expected,
+        "actual": result.actual,
+        "actual_exit_code": None,
+        "stdout": "",
+        "stderr": "",
+        "duration_ms": int(record["duration_ms"]),
+        "diagnostic": result.detail or result.reason,
+        "hook_name": result.hook_name,
+        "implementation_identity": result.implementation_identity,
+    }
 
 
 def cmd_validation_run(ctx: Ctx, args) -> int:
@@ -604,12 +633,13 @@ def cmd_validation_run(ctx: Ctx, args) -> int:
     from . import execution
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
-    result = execution.run_shell(
+    result = execution.run_validation(
         backlog, args.item_id, Path(args.project_root),
         actor=args.actor,
     )
-    ctx.emit(result.as_dict(), _execution_text([result]))
-    return 0 if result.status == "pass" else 2
+    payload = _execution_payload(result)
+    ctx.emit(payload, _execution_text([result]))
+    return 0 if payload["status"] == "pass" else 2
 
 
 def cmd_validation_run_all(ctx: Ctx, args) -> int:
@@ -617,13 +647,56 @@ def cmd_validation_run_all(ctx: Ctx, args) -> int:
     from . import execution
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
-    results = execution.run_task_shells(
+    results = execution.run_task_validations(
         backlog, args.key, Path(args.project_root),
         fail_fast=args.fail_fast, actor=args.actor,
     )
-    payload = [result.as_dict() for result in results]
+    payload = [_execution_payload(result) for result in results]
     ctx.emit(payload, _execution_text(results))
-    return 0 if all(result.status == "pass" for result in results) else 2
+    task = backlog.task(args.key)
+    ok, _ = execution.required_results_pass(
+        ctx.conn, task.id, Path(args.project_root)
+    )
+    return 0 if ok else 2
+
+
+def cmd_validation_history(ctx: Ctx, args) -> int:
+    rows = execution.execution_history(
+        ctx.conn, args.item_id, limit=args.limit,
+        project_root=Path(args.project_root),
+    )
+    text_rows = [
+        [
+            str(row["id"]), row["status"], row["actor"], row["finished_at"],
+            "yes" if row["stale"] else "no",
+            json.dumps(row["expected"], sort_keys=True),
+            json.dumps(row["actual"], sort_keys=True),
+            row["diagnostic"],
+        ]
+        for row in rows
+    ]
+    ctx.emit(
+        rows,
+        table(
+            ["ID", "STATUS", "ACTOR", "TIMESTAMP", "STALE",
+             "EXPECTED", "ACTUAL", "DIAGNOSTIC"],
+            text_rows,
+        ),
+    )
+    return 0
+
+
+def cmd_validation_waive(ctx: Ctx, args) -> int:
+    waiver = execution.waive_validation(
+        ctx.conn, ctx.pid, args.item_id, actor=args.actor or "",
+        reason=args.reason,
+    )
+    ctx.emit(
+        waiver,
+        f"#{args.item_id}  WAIVED by {waiver['actor']} at "
+        f"{waiver['created_at']}: {waiver['reason']}",
+    )
+    return 0
 
 
 def cmd_actions(ctx: Ctx, args) -> int:
@@ -875,7 +948,10 @@ def cmd_item_list(ctx: Ctx, args) -> int:
 
 
 def cmd_item_check(ctx: Ctx, args) -> int:
-    row = core.tick_item(ctx.conn, ctx.pid, args.id, done=not args.undo, actor=args.actor)
+    row = core.tick_item(
+        ctx.conn, ctx.pid, args.id, done=not args.undo, actor=args.actor,
+        waive_validation=args.waive_validation, waiver_reason=args.reason,
+    )
     ctx.emit(row_to_dict(row),
              f"#{row['id']}  {'[x]' if row['done'] else '[ ]'} {row['content']}")
     return 0
@@ -1475,17 +1551,26 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_history)
 
     vp = sub.group("validation", help="execute declared item validations")
-    sp = vp.add_parser("run", help="run one shell executable item")
+    sp = vp.add_parser("run", help="run one shell or hook executable item")
     sp.add_argument("item_id", type=int)
     sp.add_argument("--project-root", default=".",
                     help="trusted local project checkout (default: current directory)")
     sp.set_defaults(func=cmd_validation_run)
-    sp = vp.add_parser("run-all", help="run all shell executable items for a task")
+    sp = vp.add_parser("run-all", help="run all executable items for a task")
     sp.add_argument("key")
     sp.add_argument("--project-root", default=".",
                     help="trusted local project checkout (default: current directory)")
     sp.add_argument("--fail-fast", action="store_true")
     sp.set_defaults(func=cmd_validation_run_all)
+    sp = vp.add_parser("history", help="inspect bounded validation result history")
+    sp.add_argument("item_id", type=int)
+    sp.add_argument("--limit", type=int, default=20)
+    sp.add_argument("--project-root", default=".")
+    sp.set_defaults(func=cmd_validation_history)
+    sp = vp.add_parser("waive", help="audit an explicit validation waiver")
+    sp.add_argument("item_id", type=int)
+    sp.add_argument("--reason", required=True)
+    sp.set_defaults(func=cmd_validation_waive)
 
     def add_create_flags(sp, with_branch=True):
         sp.add_argument("--title", required=True)
@@ -1629,6 +1714,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp = ip.add_parser("check", help="tick a checklist entry")
     sp.add_argument("id", type=int)
     sp.add_argument("--undo", action="store_true")
+    sp.add_argument("--waive-validation", action="store_true",
+                    help="auditably complete without a current pass")
+    sp.add_argument("--reason", help="required non-empty waiver reason")
     sp.set_defaults(func=cmd_item_check)
     sp = ip.add_parser("rm")
     sp.add_argument("id", type=int)

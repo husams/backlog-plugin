@@ -331,7 +331,8 @@ def set_items(conn: Conn, project_id: int, key: str, kind: str, lines: list[str]
 
 
 def tick_item(conn: Conn, project_id: int, item_id: int, done: bool = True,
-              actor: str | None = None) -> Row:
+              actor: str | None = None, waive_validation: bool = False,
+              waiver_reason: str | None = None) -> Row:
     row = conn.execute("SELECT * FROM task_item WHERE id = ?", (item_id,)).fetchone()
     if row is None:
         raise BacklogError(f"no task item with id {item_id}")
@@ -341,6 +342,24 @@ def tick_item(conn: Conn, project_id: int, item_id: int, done: bool = True,
             "Acceptance criteria are proven by review, not by a tick."
         )
     task = get_task_by_id(conn, row["task_id"])
+    executable = conn.execute(
+        "SELECT item_id FROM executable_item WHERE item_id=?", (item_id,)
+    ).fetchone()
+    if done and executable is not None:
+        from pathlib import Path
+        from . import execution
+
+        state = execution.item_state(conn, item_id, Path.cwd())
+        if state != "pass":
+            if not waive_validation:
+                raise BacklogError(
+                    f"executable checklist item {item_id} has {state} validation; "
+                    "run it successfully or use --waive-validation with --reason"
+                )
+            execution.waive_validation(
+                conn, project_id, item_id, actor=actor or "",
+                reason=waiver_reason or "",
+            )
     conn.execute(
         "UPDATE task_item SET done = ?, updated_at = ? WHERE id = ?",
         (1 if done else 0, utcnow(), item_id),
@@ -599,12 +618,15 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                 checks.append(Check(name, task["pr_state"] == "merged",
                                     f"pr_state={task['pr_state']}"))
         elif name == "required_validations_pass":
+            from pathlib import Path
             from .execution import required_validations_pass
 
-            ok, pending_or_failed = required_validations_pass(conn, task["id"])
+            ok, pending_or_failed = required_validations_pass(
+                conn, task["id"], Path.cwd()
+            )
             checks.append(Check(
                 name, ok,
-                "all required executable items have a fresh pass" if ok
+                "all required executable items have a current pass or audited waiver" if ok
                 else "pending or non-passing required items: "
                 + ", ".join(f"#{item_id}" for item_id in pending_or_failed),
             ))
