@@ -27,7 +27,6 @@ _THREAD_TRANSITIONS: dict[tuple[str, str, str], tuple[str, str | None]] = {
     ("awaiting_developer", "developer", "comment"): ("awaiting_reviewer", None),
     ("awaiting_developer", "developer", "fix"): ("awaiting_reviewer", None),
     ("awaiting_developer", "developer", "reject"): ("awaiting_reviewer", None),
-    ("awaiting_reviewer", "reviewer", "comment"): ("awaiting_developer", None),
     ("awaiting_reviewer", "reviewer", "reject"): ("awaiting_developer", None),
     ("awaiting_reviewer", "reviewer", "accept"): (
         "closed", "accepted_by_reviewer"
@@ -63,6 +62,34 @@ def resolve_role(task: Row, author: str, role: str | None) -> str:
     )
 
 
+def resolve_reply_role(thread: Row, author: str, role: str | None) -> str:
+    """Keep the opening reviewer fixed and infer every other responder as a
+    developer. Reply callers never need to repeat task assignment metadata."""
+    fixed_reviewer = thread["opened_by"]
+    requested = role.strip().lower() if role and role != "auto" else None
+    if requested and requested not in REVIEW_ROLES:
+        raise BacklogError(f"role must be one of {', '.join(REVIEW_ROLES)}")
+    if author == fixed_reviewer:
+        if requested == "developer":
+            raise BacklogError(
+                f"{author!r} opened thread {thread['root_key']} as reviewer "
+                "and cannot reply as developer"
+            )
+        return "reviewer"
+    if requested == "reviewer":
+        raise BacklogError(
+            f"thread {thread['root_key']} reviewer is {fixed_reviewer!r}; "
+            f"{author!r} cannot replace them"
+        )
+    return "developer"
+
+
+def _require_body(body: str) -> str:
+    if not body or not body.strip():
+        raise BacklogError("review comments require a non-empty body")
+    return body
+
+
 def _ball_after(role: str) -> str:
     return "awaiting_developer" if role == "reviewer" else "awaiting_reviewer"
 
@@ -71,6 +98,7 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
                 role: str | None = None, title: str = "", file_path: str | None = None,
                 line: int | None = None,
                 severity: ReviewSeverity | str = ReviewSeverity.BLOCKER) -> dict:
+    body = _require_body(body)
     task = get_task(conn, project_id, key)
     role = resolve_role(task, author, role)
     if role != "reviewer":
@@ -152,6 +180,7 @@ def set_severity(conn: Conn, project_id: int, root_key: str,
 def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: str,
           body: str, role: str | None = None, reopen: bool = False,
           emit_action: bool = True) -> dict:
+    body = _require_body(body)
     ck = normalize_key(comment_key)
     parent = conn.execute("SELECT * FROM review_comment WHERE key = ?", (ck,)).fetchone()
     if parent is None:
@@ -173,7 +202,7 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
             f"Use `backlog review reopen {thread['root_key']}` if it must be re-litigated."
         )
 
-    role = resolve_role(task, author, role)
+    role = resolve_reply_role(thread, author, role)
     transition = _THREAD_TRANSITIONS.get((thread["state"], role, action))
     if transition is None and not reopen:
         allowed = sorted(
@@ -251,6 +280,7 @@ def _unresolved_blockers(conn: Conn, task_id: int) -> list[Row]:
 
 def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
            role: str | None = None) -> dict:
+    body = _require_body(body)
     rk = normalize_key(root_key)
     thread = conn.execute("SELECT * FROM review_thread WHERE root_key = ?", (rk,)).fetchone()
     if thread is None:
@@ -258,7 +288,7 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
     if thread["state"] != "closed":
         raise BacklogError(f"thread {rk} is already open ({thread['state']})")
     task = get_task_by_id(conn, thread["task_id"])
-    resolved_role = resolve_role(task, author, role)
+    resolved_role = resolve_reply_role(thread, author, role)
     if resolved_role != "reviewer":
         raise BacklogError("only a reviewer can reopen a review thread")
     conn.execute(
@@ -289,12 +319,15 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
     return result
 
 
-def _comment_dict(row: Row) -> dict:
+def _comment_dict(row: Row, reviewer: str) -> dict:
     return {
         "key": row["key"],
+        "root": row["root_key"],
         "seq": row["seq"],
         "parent": row["parent_key"],
         "author": row["author"],
+        "assignee": row["author"] if row["role"] == "developer" else None,
+        "reviewer": reviewer,
         "author_kind": row["author_kind"],
         "role": row["role"],
         "action": row["action"],
@@ -343,11 +376,14 @@ def thread_summary(conn: Conn, root_key: str) -> dict:
         "line": thread["line"],
         "comment_count": thread["comment_count"],
         "opened_by": thread["opened_by"],
+        "reviewer": thread["opened_by"],
         "opened_at": thread["opened_at"],
         "updated_at": thread["updated_at"],
-        "root_comment": _comment_dict(root),
-        "parent_comment": _comment_dict(parent) if parent is not None else None,
-        "last_comment": _comment_dict(last),
+        "root_comment": _comment_dict(root, thread["opened_by"]),
+        "parent_comment": (
+            _comment_dict(parent, thread["opened_by"]) if parent is not None else None
+        ),
+        "last_comment": _comment_dict(last, thread["opened_by"]),
         "hidden_comments": max(0, int(thread["comment_count"]) - (2 if parent is None else 3)),
         "reply_to": thread["last_comment_key"],
     }
@@ -359,8 +395,32 @@ def full_thread(conn: Conn, root_key: str) -> dict:
         "SELECT * FROM review_comment WHERE root_key = ? ORDER BY seq",
         (normalize_key(root_key),),
     ).fetchall()
-    out["comments"] = [_comment_dict(r) for r in rows]
+    out["comments"] = [_comment_dict(r, out["reviewer"]) for r in rows]
     return out
+
+
+def comment_updates(conn: Conn, root_key: str, after: str | None = None) -> list[dict]:
+    """Return only comments added after a caller's last observed comment."""
+    rk = normalize_key(root_key)
+    thread = conn.execute(
+        "SELECT * FROM review_thread WHERE root_key = ?", (rk,)
+    ).fetchone()
+    if thread is None:
+        raise BacklogError(f"no review thread rooted at {rk}")
+    after_seq = 0
+    if after:
+        marker = conn.execute(
+            "SELECT seq, root_key FROM review_comment WHERE key = ?",
+            (normalize_key(after),),
+        ).fetchone()
+        if marker is None or marker["root_key"] != rk:
+            raise BacklogError(f"comment {normalize_key(after)} is not in thread {rk}")
+        after_seq = int(marker["seq"])
+    rows = conn.execute(
+        "SELECT * FROM review_comment WHERE root_key = ? AND seq > ? ORDER BY seq",
+        (rk, after_seq),
+    ).fetchall()
+    return [_comment_dict(row, thread["opened_by"]) for row in rows]
 
 
 def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | None = None,

@@ -40,16 +40,16 @@ Advisory and informational threads do not change task status.
 | `open` | reviewer | starts a thread; ball → the other party |
 | `fix` | developer | "I addressed this"; ball → the other party to verify |
 | `reject` | either | "I disagree, here is why"; ball → the other party |
-| `comment` | either | question or note; ball → the other party |
-| `accept` | **reviewer only** | closes the thread as `accepted_by_reviewer` |
+| `comment` | developer | question or implementation note; ball → reviewer |
+| `accept` | **opening reviewer only** | closes the thread as `accepted_by_reviewer` |
 
 The thread itself is a state machine: reviewer opens → awaiting developer;
-developer fixes/comments/rejects → awaiting reviewer; reviewer accepts or
-responds → closed or awaiting developer. Only the party currently holding the
+developer fixes/comments/rejects → awaiting reviewer; the opening reviewer
+accepts or rejects → closed or awaiting developer. Only the party currently holding the
 ball may reply. A developer cannot accept their own fix, and `fix` never closes
 the thread.
 
-## Reading: only three comments, never the whole thread
+## Reading: new comments only
 
 ```bash
 $BL review inbox --actor developer
@@ -63,8 +63,11 @@ For each thread waiting on you this returns:
 - `reply_to` — the comment key to reply to,
 - `hidden_comments` — how many middle comments were omitted.
 
-That is all you need to act. Only reach for `$BL review thread <ROOT> --full`
-when the summary is genuinely ambiguous, and say why.
+That is the first read. Keep `reply_to` in session context. On later checks use
+`bl.review_updates(ROOT, after=LAST_SEEN)` and read only the returned comments.
+Never re-read the inbox, task description, or full thread in the same session.
+Only use a full read if context was lost or a new reply is genuinely ambiguous,
+and say why.
 
 Other reads:
 
@@ -106,15 +109,11 @@ $BL review severity C-003 --severity nice_to_have --author senior-developer
 
 ## Roles
 
-Every comment carries a role, `reviewer` or `developer`. It is inferred from the
-item: an author matching the item's `reviewer` is a reviewer, an author matching
-`assignee` is a developer. If the author is neither, pass `--role` explicitly:
-
-```bash
-$BL review reply C-003 --author qa-engineer --role reviewer --action reject --body "..."
-```
-
-Assign both sides up front so inference just works:
+The reviewer is fixed when the thread opens. Every later reply automatically
+reuses that reviewer. Any other responding author is the developer and becomes
+the assignee for that reply; callers do not repeat role, reviewer, or assignee.
+Assign both sides before opening the thread so the opening reviewer is
+validated:
 
 ```bash
 $BL assign S-004 --to developer --reviewer senior-developer
@@ -149,9 +148,9 @@ Incomplete. The same operation is available through
 
 ## Why an item is stuck
 
-Open blocker threads block `Accepted`; `nice_to_have` and `info` threads remain
-visible without stopping delivery. A legacy blocker closed by a developer
-still blocks until a reviewer accepts it. To see what is left:
+Every open thread blocks `Accepted`, including `nice_to_have` and `info`.
+Severity still controls Ready invalidation, but it never permits feedback to be
+ignored. A thread stays open until the opening reviewer accepts it:
 
 ```bash
 $BL review list S-004 --state open --severity blocker

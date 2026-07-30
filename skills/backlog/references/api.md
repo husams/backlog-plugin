@@ -57,7 +57,8 @@ for writes made through the session.
 | `bl.trigger(key, action: Action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit a typed `Action`; the workflow selects and enforces the destination |
 | `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
 | `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | reviewer opens a typed thread; task status is unchanged |
-| `bl.review_reply(comment, author=, action=, body=, role=)` | advance the thread workflow; only reviewer acceptance closes it |
+| `bl.review_reply(comment, author=, action=, body=)` | advance the thread workflow; participant roles come from the thread |
+| `bl.review_updates(root, after=)` | only comments added after the last comment key already in context |
 | `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
@@ -156,6 +157,21 @@ reasons — print it directly.
 
 Only ever the root comment and the latest reply. If that is genuinely not
 enough, `backlog review show <root> --full`.
+
+## Incremental review reads
+
+Read an inbox once. Keep each thread's `reply_to` key in session context, then
+read only later additions:
+
+```python
+updates = bl.review_updates("C-003", after="C-007")
+```
+
+The result is `list[ReviewComment]`; an empty list means nothing changed.
+Each comment exposes `key`, `root_key`, `parent_key`, `author`, `assignee`,
+`reviewer`, `role`, `action`, `body`, `file`, `line`, and `created_at`.
+`reviewer` is inherited from the thread opener. For a developer reply,
+`assignee` is the responding author.
 
 ## Worked examples
 

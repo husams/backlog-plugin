@@ -209,7 +209,7 @@ transitions:
                 (self.root / ".backlog").resolve(),
             )
 
-    def test_review_severity_is_fixed_enum_and_only_blockers_gate(self):
+    def test_review_severity_is_fixed_enum_and_all_feedback_must_be_resolved(self):
         self.assertEqual(
             [level.value for level in ReviewSeverity],
             ["blocker", "nice_to_have", "info"],
@@ -240,7 +240,7 @@ transitions:
 
         blocked = self.run_cli_raw("gate", "F-001", "--for", "accepted")
         self.assertEqual(blocked.returncode, 2)
-        self.assertIn("1 blocking: C-001", blocked.stdout)
+        self.assertIn("2 blocking: C-001, C-002", blocked.stdout)
 
         changed = self.run_cli(
             "review", "severity", "C-001",
@@ -249,8 +249,9 @@ transitions:
             json_output=True,
         )
         self.assertEqual(changed["severity"], "info")
-        allowed = self.run_cli_raw("gate", "F-001", "--for", "accepted")
-        self.assertEqual(allowed.returncode, 0, allowed.stderr or allowed.stdout)
+        still_blocked = self.run_cli_raw("gate", "F-001", "--for", "accepted")
+        self.assertEqual(still_blocked.returncode, 2)
+        self.assertIn("2 blocking: C-001, C-002", still_blocked.stdout)
 
         filtered = self.run_cli(
             "review", "list", "F-001",
@@ -258,6 +259,86 @@ transitions:
             json_output=True,
         )
         self.assertEqual([thread["root"] for thread in filtered], ["C-002"])
+
+    def test_thread_inherits_reviewer_and_updates_are_incremental(self):
+        self.run_cli("story", "add", "--title", "Thread participants")
+        self.run_cli(
+            "assign", "S-001", "--to", "original-developer",
+            "--reviewer", "opening-reviewer",
+        )
+        opened = self.run_cli(
+            "review", "open", "S-001",
+            "--author", "opening-reviewer",
+            "--body", "Please simplify this.",
+            json_output=True,
+        )
+        self.assertEqual(opened["reviewer"], "opening-reviewer")
+
+        reply = self.run_cli(
+            "review", "reply", opened["reply_to"],
+            "--author", "replacement-developer",
+            "--action", "fix",
+            "--body", "Simplified through the public API.",
+            json_output=True,
+        )
+        self.assertEqual(reply["last_comment"]["assignee"], "replacement-developer")
+        self.assertEqual(reply["last_comment"]["reviewer"], "opening-reviewer")
+
+        impostor = self.run_cli_raw(
+            "review", "reply", reply["reply_to"],
+            "--author", "different-reviewer",
+            "--role", "reviewer",
+            "--action", "accept",
+            "--body", "Trying to take over.",
+        )
+        self.assertNotEqual(impostor.returncode, 0)
+        self.assertIn("cannot replace", impostor.stderr)
+
+        neutral = self.run_cli_raw(
+            "review", "reply", reply["reply_to"],
+            "--author", "opening-reviewer",
+            "--action", "comment",
+            "--body", "No decision.",
+        )
+        self.assertNotEqual(neutral.returncode, 0)
+        self.assertIn("allowed for reviewer: accept, reject", neutral.stderr)
+
+        empty = self.run_cli_raw(
+            "review", "reply", reply["reply_to"],
+            "--author", "opening-reviewer",
+            "--action", "accept",
+            "--body", "   ",
+        )
+        self.assertNotEqual(empty.returncode, 0)
+        self.assertIn("non-empty body", empty.stderr)
+
+        from backlog_cli import api
+
+        with patch.object(Path, "cwd", return_value=self.root), patch.dict(
+            os.environ, self.env, clear=False
+        ):
+            with api.open() as bl:
+                initial = bl.review_updates(opened["root"])
+                self.assertEqual([comment.key for comment in initial], ["C-001", "C-002"])
+                self.assertEqual(initial[-1].assignee, "replacement-developer")
+                self.assertEqual(initial[-1].reviewer, "opening-reviewer")
+                self.assertEqual(
+                    bl.review_updates(opened["root"], after=initial[-1].key), []
+                )
+
+        accepted = self.run_cli(
+            "review", "reply", reply["reply_to"],
+            "--author", "opening-reviewer",
+            "--action", "accept",
+            "--body", "Accepted after verification.",
+            json_output=True,
+        )
+        with patch.object(Path, "cwd", return_value=self.root), patch.dict(
+            os.environ, self.env, clear=False
+        ):
+            with api.open() as bl:
+                updates = bl.review_updates(opened["root"], after=reply["reply_to"])
+                self.assertEqual([comment.key for comment in updates], [accepted["reply_to"]])
 
     def test_task_waits_for_reviewer_acceptance_of_every_blocker(self):
         self.run_cli("feature", "add", "--title", "Refinement review")

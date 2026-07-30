@@ -143,7 +143,7 @@ def open_threads(conn: Conn, task_id: int) -> list[Row]:
 
 def blocking_threads(conn: Conn, task_id: int) -> list[Row]:
     return conn.execute(
-        "SELECT * FROM review_thread WHERE task_id = ? AND severity = 'blocker' "
+        "SELECT * FROM review_thread WHERE task_id = ? "
         "AND (state != 'closed' OR COALESCE(resolution, '') != 'accepted_by_reviewer') "
         "ORDER BY root_key",
         (task_id,),

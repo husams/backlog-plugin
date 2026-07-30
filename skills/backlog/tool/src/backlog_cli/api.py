@@ -36,7 +36,7 @@ from .db import (
 )
 
 __all__ = [
-    "open", "Backlog", "Task", "Gate", "Thread", "Store", "Action",
+    "open", "Backlog", "Task", "Gate", "Thread", "ReviewComment", "Store", "Action",
     "ReviewSeverity", "BacklogError"
 ]
 
@@ -158,6 +158,7 @@ class Thread:
     task_key: str
     task_title: str
     opened_by: str
+    reviewer: str
     severity: ReviewSeverity
     state: str
     awaiting_role: str | None
@@ -197,6 +198,7 @@ def _thread(t: dict) -> Thread:
         task_key=t["target"],
         task_title=t.get("target_title", ""),
         opened_by=t.get("opened_by") or root.get("author", ""),
+        reviewer=t.get("reviewer") or t.get("opened_by") or root.get("author", ""),
         severity=ReviewSeverity(t.get("severity", ReviewSeverity.BLOCKER.value)),
         state=t.get("state", ""),
         awaiting_role=t.get("awaiting_role"),
@@ -209,6 +211,41 @@ def _thread(t: dict) -> Thread:
         hidden_comments=int(t.get("hidden_comments") or 0),
         reply_to=t.get("reply_to", ""),
         age_days=_age_days(t.get("opened_at")),
+    )
+
+
+@dataclass(frozen=True)
+class ReviewComment:
+    """One newly observed review comment."""
+
+    key: str
+    root_key: str
+    parent_key: str | None
+    author: str
+    assignee: str | None
+    reviewer: str
+    role: str
+    action: str
+    body: str
+    file: str | None
+    line: int | None
+    created_at: str
+
+
+def _review_comment(row: dict) -> ReviewComment:
+    return ReviewComment(
+        key=row["key"],
+        root_key=row.get("root") or row.get("root_key") or "",
+        parent_key=row.get("parent"),
+        author=row["author"],
+        assignee=row.get("assignee"),
+        reviewer=row["reviewer"],
+        role=row["role"],
+        action=row["action"],
+        body=row["body"],
+        file=row.get("file"),
+        line=row.get("line"),
+        created_at=row.get("at", ""),
     )
 
 
@@ -358,6 +395,18 @@ class Backlog:
         return [_thread(t) for t in review.list_threads(
             self._conn, self.pid, key, state, severity=severity
         )]
+
+    def review_updates(self, root: str, *,
+                       after: str | None = None) -> list[ReviewComment]:
+        """Only comments not yet seen by this session/caller.
+
+        Save the latest returned comment key and pass it as ``after`` on the
+        next read. An empty list means there is no new feedback.
+        """
+        return [
+            _review_comment(comment)
+            for comment in review.comment_updates(self._conn, root, after=after)
+        ]
 
     # -- writing ---------------------------------------------------------- #
 

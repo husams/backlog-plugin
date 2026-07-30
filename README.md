@@ -20,12 +20,14 @@ transitions and failed gates are refused, so a custom flow remains consistent
 regardless of which agent is operating it.
 
 Only unresolved review threads with `ReviewSeverity.BLOCKER` stop acceptance
-or merge gates. Advisory and informational threads remain visible without
-blocking delivery.
+or merge gates. Advisory and informational threads do not invalidate Ready,
+but they must still receive a response and reviewer decision before acceptance.
 
 Review threads have their own enforced lifecycle. Developers submit fixes;
-reviewers accept them. Individual replies never transition the task, and only
-after every blocker is reviewer-accepted does the review subsystem emit the
+reviewers accept them. Individual replies never transition the task, and all
+review feedback must receive a developer response and an opening-reviewer
+decision before acceptance. After every blocker is reviewer-accepted, the
+review subsystem emits the
 aggregate `feedback.resolved` workflow action.
 
 If a reviewer opens a new blocker or reopens an accepted blocker with a reply,

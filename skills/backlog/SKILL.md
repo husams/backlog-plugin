@@ -21,9 +21,11 @@ Add `--actor <name>` so the audit trail records who acted, and `--project
 <slug>` to act on a project other than the current one. `--json` exists but you
 rarely want it: prefer computing the answer over reading a dump.
 
-**Use `$BL` by default.** Reach for `$PY` when the question needs counting,
-filtering or comparing across many tasks — one process answers it instead of a
-chain of CLI calls. Feed it a snippet on stdin and print the conclusion:
+**Use the documented Python API by default for every multi-step, computed, or
+structured task.** `$BL` is only for one simple, documented command. You MUST
+NOT generate shell scripts, command pipelines, loops, or chains of CLI calls
+when the public Python API can do the work more directly. Feed a short Python
+snippet on stdin and print only the conclusion:
 
 ```bash
 $PY <<'PY'
@@ -84,32 +86,48 @@ the waiver afterwards, so an override stays visible.
 2. **Compute in Python, answer in prose.** When you use `$PY`, reduce inside the
    snippet and print the conclusion — a count, a list of keys, a verdict. Do not
    print a dataset back into your own context and summarise it there.
-3. **Leave nothing behind.** Snippets go in on stdin. Never write a `.py` file, a
+3. **Never build complex shell workflows.** The shell is limited to launching
+   one documented command or one short `$PY` snippet. MUST NOT create shell
+   scripts, pipelines, loops, temporary scripts, or repeated CLI sequences for
+   work supported by the public API.
+4. **Leave nothing behind.** Snippets go in on stdin. Never write a `.py` file, a
    temp file or a scratch artifact to answer a question.
-4. **Never touch tables or the database directly.** No `sqlite3`, no `psql`, no
+5. **Never touch tables or the database directly.** No `sqlite3`, no `psql`, no
    SQL, schema imports, connection attributes, or internal API attributes. Use
    only the documented public API. Direct access bypasses the flow, gates and
    audit trail.
-5. **Never request a destination status.** Before any state-changing event,
+6. **Never request a destination status.** Before any state-changing event,
    run `$BL actions KEY`, then submit the matching semantic action with
    `$BL action KEY ACTION`. The workflow—not the agent—chooses the state.
-6. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
-7. **Do not start blocked work.** If `action ... work.started` fails on
+7. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
+8. **Do not start blocked work.** If `action ... work.started` fails on
    `dependencies_clear`, pick something else.
-8. **Read only what you need.** For review work use `review inbox` — root
-   comment, direct parent of the latest reply, latest reply. Reach for
-   `--full` only when that is genuinely insufficient.
-9. **Review feedback is not an artifact.** Requests to post, add, leave,
+9. **Never re-read context in the same session.** On the first review read, keep
+   each thread's `reply_to` key in context. Later call
+   `bl.review_updates(ROOT, after=LAST_SEEN)` and read only newly added
+   comments. MUST NOT re-read task descriptions, inbox summaries, full threads,
+   or other large text already present in context. A full read is allowed only
+   when context was lost or a new comment is genuinely ambiguous, and the agent
+   must state that reason.
+10. **Review feedback is not an artifact.** Requests to post, add, leave,
    answer, accept, reject, or reply to a review or feedback must use
    `review open`, `review reply`, or another documented review command.
    Use `artifact add` only when the user explicitly asks to attach or record a
    file, document, report, patch, log, design, or other durable artifact.
-10. **Thread resolution is reviewer-owned.** A developer submits `fix`,
-    `comment`, or `reject`; only the reviewer may `accept`. Never submit a
+11. **Every review thread requires a response and decision.** This includes
+    `nice_to_have` and `info` threads. A developer MUST reply with `fix`,
+    `comment`, or `reject`; the fixed thread reviewer MUST then reply with
+    `accept` or `reject` and a non-empty body. Reviewers cannot silently skip
+    feedback or use a neutral comment instead of a decision.
+12. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
+    thread may accept or reject a developer response. The API reuses that
+    reviewer automatically and treats any other responding author as the
+    developer/assignee for that reply. Callers MUST NOT repeat or alter role,
+    reviewer, or assignee metadata. Never submit a
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
-11. **Reopen through the thread API.** To reactivate an accepted finding, use
+13. **Reopen through the thread API.** To reactivate an accepted finding, use
     `review reopen ROOT --author REVIEWER --body REASON` or
     `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
     on a Ready task emits a managed event that the shipped workflow resolves to
