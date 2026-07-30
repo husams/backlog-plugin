@@ -116,6 +116,64 @@ the active workflow has no transition for them.
 Backlog may add standard actions as supported integrations and APIs grow.
 Projects do not need to define action classes.
 
+## Transition configuration
+
+Backlog ships a default action-to-state configuration at:
+
+```text
+skills/backlog/assets/default-workflow.yaml
+```
+
+The loader resolves the configuration in this order:
+
+1. Use `<project>/.backlog/workflow.yaml` when it exists.
+2. Otherwise, use the bundled default workflow.
+
+There is no configuration merge. A project file replaces the bundled default
+as one complete workflow, which keeps the active transition table clear and
+predictable.
+
+The bundled workflow provides the default flow for features, stories, and
+subtasks:
+
+```text
+Created → Incomplete → Ready
+    └────────────────→ Ready
+
+Ready → In Progress → In Review → Needs Work → In Progress
+                               └→ Accepted → Done
+```
+
+It maps standard actions such as `refinement.accepted`, `work.started`,
+`review.submitted`, `review.approved`, `review.changes_requested`,
+`check.failed`, `pr.created`, `pr.approved`, and `pr.merged` to those
+transitions.
+
+A custom workflow uses the same simple primitives:
+
+```yaml
+version: 1
+name: project-workflow
+
+states:
+  - slug: created
+    display: Created
+    category: backlog
+    initial: true
+  - slug: ready
+    display: Ready
+    category: ready
+
+transitions:
+  - task_types: [feature, story, subtask]
+    from: created
+    action: refinement.accepted
+    to: ready
+```
+
+Each transition contains only the applicable task types, current state,
+standard action, destination state, and optional existing gates.
+
 ## Hook functions
 
 The project may define either or both functions:

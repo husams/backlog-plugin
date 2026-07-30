@@ -23,6 +23,12 @@ $BL templates
 They install themselves on first use and are editable and copyable like any
 template you write.
 
+The proposed action-driven workflow also ships a file-based default at
+`assets/default-workflow.yaml`. When a project has no
+`.backlog/workflow.yaml`, the action workflow loader uses that bundled file.
+A project workflow replaces the default as a complete definition; the two are
+not merged.
+
 ```bash
 $BL template show research --type story
 ```
