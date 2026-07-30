@@ -288,9 +288,10 @@ def cmd_doctor(ctx: Ctx, args) -> int:
 
     closed_with_open = conn.execute(
         "SELECT t.key, COUNT(r.id) AS n FROM task t JOIN review_thread r ON r.task_id = t.id "
-        "WHERE t.status IN ('accepted','done') AND r.state != 'closed' GROUP BY t.key"
+        "WHERE t.status IN ('accepted','done') AND r.state != 'closed' "
+        "AND r.severity = 'blocker' GROUP BY t.key"
     ).fetchall()
-    problems += [f"{r['key']} is accepted/done but has {r['n']} open review thread(s)"
+    problems += [f"{r['key']} is accepted/done but has {r['n']} open blocker thread(s)"
                  for r in closed_with_open]
 
     missing_art = [a["rel_path"] for a in conn.execute("SELECT rel_path FROM artifact").fetchall()
@@ -817,7 +818,7 @@ def cmd_pr_sync(ctx: Ctx, args) -> int:
 def cmd_review_open(ctx: Ctx, args) -> int:
     t = review.open_thread(ctx.conn, ctx.pid, args.key, args.author, args.body,
                            role=args.role, title=args.title or "", file_path=args.file,
-                           line=args.line)
+                           line=args.line, severity=args.severity)
     ctx.emit(t, render_thread(t))
     return 0
 
@@ -836,7 +837,10 @@ def cmd_review_reopen(ctx: Ctx, args) -> int:
 
 
 def cmd_review_inbox(ctx: Ctx, args) -> int:
-    threads = review.inbox(ctx.conn, ctx.pid, actor=args.actor, role=args.role, key=args.item)
+    threads = review.inbox(
+        ctx.conn, ctx.pid, actor=args.actor, role=args.role, key=args.item,
+        severity=args.severity,
+    )
     text = ("\n\n".join(render_thread(t) for t in threads) if threads
             else "(no review threads waiting on you)")
     ctx.emit(threads, text)
@@ -851,8 +855,18 @@ def cmd_review_thread(ctx: Ctx, args) -> int:
 
 
 def cmd_review_list(ctx: Ctx, args) -> int:
-    threads = review.list_threads(ctx.conn, ctx.pid, args.key, state=args.state)
+    threads = review.list_threads(
+        ctx.conn, ctx.pid, args.key, state=args.state, severity=args.severity
+    )
     ctx.emit(threads, "\n\n".join(render_thread(t) for t in threads) if threads else "(no threads)")
+    return 0
+
+
+def cmd_review_severity(ctx: Ctx, args) -> int:
+    t = review.set_severity(
+        ctx.conn, ctx.pid, args.root, args.severity, author=args.author
+    )
+    ctx.emit(t, render_thread(t))
     return 0
 
 
@@ -1443,6 +1457,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--title")
     sp.add_argument("--file")
     sp.add_argument("--line", type=int)
+    sp.add_argument(
+        "--severity",
+        choices=["blocker", "nice_to_have", "info"],
+        default="blocker",
+    )
     sp.set_defaults(func=cmd_review_open)
     sp = rp.add_parser("reply")
     sp.add_argument("comment")
@@ -1460,6 +1479,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = rp.add_parser("inbox")
     sp.add_argument("--role", choices=["reviewer", "developer"])
     sp.add_argument("--item")
+    sp.add_argument("--severity", choices=["blocker", "nice_to_have", "info"])
     sp.set_defaults(func=cmd_review_inbox)
     sp = rp.add_parser("thread")
     sp.add_argument("root")
@@ -1468,7 +1488,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = rp.add_parser("list")
     sp.add_argument("key")
     sp.add_argument("--state", choices=["open", "closed", "all"], default="open")
+    sp.add_argument("--severity", choices=["blocker", "nice_to_have", "info"])
     sp.set_defaults(func=cmd_review_list)
+    sp = rp.add_parser("severity")
+    sp.add_argument("root")
+    sp.add_argument("--severity", required=True,
+                    choices=["blocker", "nice_to_have", "info"])
+    sp.add_argument("--author", required=True)
+    sp.set_defaults(func=cmd_review_severity)
 
     ap = sub.group("artifact", help="files attached to a task")
     sp = ap.add_parser("add")

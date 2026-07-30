@@ -20,7 +20,18 @@ from __future__ import annotations
 from .core import get_task, get_task_by_id, normalize_key, trigger_action
 from .db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
 from .hooks import Action
-from .schema import REVIEW_ACTIONS, REVIEW_ROLES
+from .schema import REVIEW_ACTIONS, REVIEW_ROLES, REVIEW_SEVERITIES, ReviewSeverity
+
+
+def normalize_severity(value: ReviewSeverity | str) -> ReviewSeverity:
+    if isinstance(value, ReviewSeverity):
+        return value
+    try:
+        return ReviewSeverity(str(value).strip().lower())
+    except ValueError:
+        raise BacklogError(
+            f"severity must be one of {', '.join(REVIEW_SEVERITIES)}"
+        ) from None
 
 
 def resolve_role(task: Row, author: str, role: str | None) -> str:
@@ -46,9 +57,11 @@ def _ball_after(role: str) -> str:
 
 def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
                 role: str | None = None, title: str = "", file_path: str | None = None,
-                line: int | None = None) -> dict:
+                line: int | None = None,
+                severity: ReviewSeverity | str = ReviewSeverity.BLOCKER) -> dict:
     task = get_task(conn, project_id, key)
     role = resolve_role(task, author, role)
+    severity = normalize_severity(severity)
     ckey = next_comment_key(conn)
     ts = utcnow()
     if not title:
@@ -62,10 +75,11 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
          file_path, line, ts),
     )
     conn.execute(
-        "INSERT INTO review_thread(task_id, root_key, state, title, file_path, line, "
+        "INSERT INTO review_thread(task_id, root_key, state, severity, title, file_path, line, "
         "last_comment_key, comment_count, opened_by, opened_at, updated_at) "
-        "VALUES(?,?,?,?,?,?,?,1,?,?,?)",
-        (task["id"], ckey, _ball_after(role), title, file_path, line, ckey, author, ts, ts),
+        "VALUES(?,?,?,?,?,?,?,?,1,?,?,?)",
+        (task["id"], ckey, _ball_after(role), severity.value, title, file_path, line,
+         ckey, author, ts, ts),
     )
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
@@ -77,9 +91,48 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
         Action.FEEDBACK_POSTED,
         actor=author,
         operation="review.open",
-        parameters={"comment": ckey, "body": body, "role": role},
+        parameters={
+            "comment": ckey,
+            "body": body,
+            "role": role,
+            "severity": severity.value,
+        },
     )
     return thread_summary(conn, ckey)
+
+
+def set_severity(conn: Conn, project_id: int, root_key: str,
+                 severity: ReviewSeverity | str, author: str) -> dict:
+    """Change a thread's severity through an audited public operation."""
+    rk = normalize_key(root_key)
+    level = normalize_severity(severity)
+    thread = conn.execute(
+        "SELECT r.* FROM review_thread r JOIN task t ON t.id = r.task_id "
+        "WHERE r.root_key = ? AND t.project_id = ?",
+        (rk, project_id),
+    ).fetchone()
+    if thread is None:
+        raise BacklogError(f"no review thread rooted at {rk}")
+    if thread["severity"] == level.value:
+        return thread_summary(conn, rk)
+    task = get_task_by_id(conn, thread["task_id"])
+    conn.execute(
+        "UPDATE review_thread SET severity = ?, updated_at = ? WHERE root_key = ?",
+        (level.value, utcnow(), rk),
+    )
+    log_event(
+        conn,
+        "review",
+        project_id,
+        task["id"],
+        task["key"],
+        author,
+        from_value=thread["severity"],
+        to_value=level.value,
+        detail=f"severity changed on {rk}",
+    )
+    conn.commit()
+    return thread_summary(conn, rk)
 
 
 def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: str,
@@ -236,6 +289,7 @@ def thread_summary(conn: Conn, root_key: str) -> dict:
         "target_type": task["task_type"],
         "state": thread["state"],
         "resolution": thread["resolution"],
+        "severity": thread["severity"],
         "awaiting_role": None if thread["state"] == "closed"
         else thread["state"].removeprefix("awaiting_"),
         "awaiting_actor": awaiting,
@@ -264,7 +318,8 @@ def full_thread(conn: Conn, root_key: str) -> dict:
 
 
 def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | None = None,
-          key: str | None = None, include_closed: bool = False) -> list[dict]:
+          key: str | None = None, include_closed: bool = False,
+          severity: ReviewSeverity | str | None = None) -> list[dict]:
     sql = ("SELECT r.root_key FROM review_thread r JOIN task t ON t.id = r.task_id "
            "WHERE t.project_id = ?")
     params: list = [project_id]
@@ -273,6 +328,9 @@ def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | Non
     if key:
         sql += " AND t.key = ?"
         params.append(normalize_key(key))
+    if severity is not None:
+        sql += " AND r.severity = ?"
+        params.append(normalize_severity(severity).value)
     if role:
         role = role.strip().lower()
         if role not in REVIEW_ROLES:
@@ -287,7 +345,8 @@ def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | Non
     return [thread_summary(conn, r["root_key"]) for r in conn.execute(sql, params).fetchall()]
 
 
-def list_threads(conn: Conn, project_id: int, key: str, state: str = "open") -> list[dict]:
+def list_threads(conn: Conn, project_id: int, key: str, state: str = "open",
+                 severity: ReviewSeverity | str | None = None) -> list[dict]:
     task = get_task(conn, project_id, key)
     sql = "SELECT root_key FROM review_thread WHERE task_id = ?"
     params: list = [task["id"]]
@@ -297,5 +356,8 @@ def list_threads(conn: Conn, project_id: int, key: str, state: str = "open") -> 
         sql += " AND state = 'closed'"
     elif state != "all":
         raise BacklogError("state must be open, closed or all")
+    if severity is not None:
+        sql += " AND severity = ?"
+        params.append(normalize_severity(severity).value)
     sql += " ORDER BY root_key"
     return [thread_summary(conn, r["root_key"]) for r in conn.execute(sql, params).fetchall()]

@@ -523,6 +523,13 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
 
     if from_version >= 3 or not conn.table_exists("feature"):
         _add_column(conn, "project", "template_id", "INTEGER")
+        _add_column(
+            conn,
+            "review_thread",
+            "severity",
+            "TEXT NOT NULL DEFAULT 'blocker' "
+            "CHECK (severity IN ('blocker','nice_to_have','info'))",
+        )
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
         conn.executescript(SCHEMA_SQL)

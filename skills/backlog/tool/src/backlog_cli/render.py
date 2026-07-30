@@ -162,7 +162,9 @@ def render_task(conn: Conn, row: Row) -> str:
     threads = open_threads(conn, row["id"])
     out.append(f"  open review threads: {len(threads)}")
     for t in threads:
-        out.append(f"    {t['root_key']}  {t['state']:<18} {t['title']}")
+        out.append(
+            f"    {t['root_key']}  {t['severity']:<12} {t['state']:<18} {t['title']}"
+        )
 
     kids = children_of(conn, row["id"])
     if kids:
@@ -180,7 +182,7 @@ def render_task(conn: Conn, row: Row) -> str:
 
 
 def render_thread(t: dict, full: bool = False) -> str:
-    head = f"{t['root']}  on {t['target']}  [{t['state']}]"
+    head = f"{t['root']}  on {t['target']}  [{t['severity']}] [{t['state']}]"
     if t["resolution"]:
         head += f"  ({t['resolution']})"
     if t["awaiting_actor"]:

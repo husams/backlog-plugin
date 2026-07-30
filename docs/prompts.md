@@ -62,10 +62,12 @@ Save the returned key, such as `F-001`, for later prompts.
 
 > @backlog-plugin Review feature `F-001` as `<product-reviewer>`. Check whether
 > its goal, scope, priority, and acceptance criteria are clear and testable.
-> Post each specific gap as a review thread, not as an artifact. Opening the
-> review should move the feature through the configured transition to its
-> review-category status. Finish with either `ready for approval` or
-> `needs revision`, and show the feature's resulting status.
+> Post each specific gap as a review thread, not as an artifact. Use severity
+> `blocker` for gaps that prevent implementation readiness, `nice_to_have` for
+> optional improvements, and `info` for context. If any blockers are found,
+> use the configured refinement action to mark the feature Incomplete. Finish
+> with either `ready for approval` or `needs revision`, and show the feature's
+> resulting status.
 
 ## 5. Approve the feature and move it to Ready
 
@@ -119,12 +121,14 @@ with the task.
 
 > @backlog-plugin Open a review finding on story `S-001` as `<reviewer>`.
 > The finding is: “The error response reveals whether the email exists.”
-> Anchor it to `<path/to/file>` line `<line-number>`. Return the new review
-> comment key and identify who must reply next.
+> Mark it as severity `blocker`, anchor it to `<path/to/file>` line
+> `<line-number>`, return the new review comment key, and identify who must
+> reply next.
 
-When the target is a newly created feature, opening the review also moves it
-from `Created` to `In Review` when that transition exists in the configured
-feature workflow. Story and subtask reviews do not move status automatically.
+Review severity is a fixed enum: `blocker`, `nice_to_have`, or `info`. Only an
+open blocker prevents acceptance or merge. Posting feedback records the review
+event; use the project's workflow action separately when the finding requires
+a status transition.
 
 ## 9. Post feedback
 

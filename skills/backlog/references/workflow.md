@@ -55,7 +55,7 @@ failure **exits 1** listing which check failed and why.
 | --- | --- |
 | `dependencies_clear` | nothing that `blocks` this task is still open |
 | `children_complete` | every child task has reached a status marked *counts as finished* |
-| `review_threads_closed` | no review thread on the task is open |
+| `review_threads_closed` | no `blocker` review thread on the task is open |
 | `pr_recorded` | a pull request is referenced |
 | `pr_approved` | `pr_review_state` is `approved` |
 | `pr_merged` | `pr_state` is `merged` |

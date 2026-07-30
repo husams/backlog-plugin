@@ -15,7 +15,9 @@ key.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 6
+from enum import Enum
+
+SCHEMA_VERSION = 7
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -145,7 +147,7 @@ STATUS_CATEGORIES = ["backlog", "ready", "active", "review", "done", "dropped"]
 GATE_CHECKS = [
     "dependencies_clear",     # nothing that blocks this task is still open
     "children_complete",      # every child task is finished
-    "review_threads_closed",  # no open review thread
+    "review_threads_closed",  # no open blocker review thread
     "pr_recorded",            # a pull request is referenced
     "pr_approved",            # the pull request is approved
     "pr_merged",              # the pull request is merged
@@ -154,7 +156,7 @@ GATE_CHECKS = [
 GATE_DESCRIPTIONS = {
     "dependencies_clear": "nothing that blocks this task is still open",
     "children_complete": "every child task has reached a finished status",
-    "review_threads_closed": "no review thread is still open",
+    "review_threads_closed": "no blocking review thread is still open",
     "pr_recorded": "a pull request is referenced (waivable with --no-pr)",
     "pr_approved": "the pull request is approved (waivable with --no-pr)",
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
@@ -362,6 +364,17 @@ DEPENDENCY_KIND_ALIASES = {
 REVIEW_ACTIONS = ["open", "comment", "fix", "reject", "accept"]
 REVIEW_ROLES = ["reviewer", "developer"]
 THREAD_STATES = ["awaiting_developer", "awaiting_reviewer", "closed"]
+
+
+class ReviewSeverity(str, Enum):
+    """Fixed impact levels for a review thread."""
+
+    BLOCKER = "blocker"
+    NICE_TO_HAVE = "nice_to_have"
+    INFO = "info"
+
+
+REVIEW_SEVERITIES = [severity.value for severity in ReviewSeverity]
 
 ARTIFACT_KINDS = ["doc", "spec", "design", "log", "report", "patch", "data"]
 
@@ -571,6 +584,8 @@ CREATE TABLE IF NOT EXISTS review_thread (
     state            TEXT NOT NULL
                      CHECK (state IN ('awaiting_developer','awaiting_reviewer','closed')),
     resolution       TEXT CHECK (resolution IN ('accepted_by_reviewer','accepted_by_developer')),
+    severity         TEXT NOT NULL DEFAULT 'blocker'
+                     CHECK (severity IN ('blocker','nice_to_have','info')),
     title            TEXT NOT NULL DEFAULT '',
     file_path        TEXT,
     line             INTEGER,

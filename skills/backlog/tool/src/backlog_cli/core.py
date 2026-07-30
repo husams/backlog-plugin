@@ -141,6 +141,14 @@ def open_threads(conn: Conn, task_id: int) -> list[Row]:
     ).fetchall()
 
 
+def blocking_threads(conn: Conn, task_id: int) -> list[Row]:
+    return conn.execute(
+        "SELECT * FROM review_thread WHERE task_id = ? AND state != 'closed' "
+        "AND severity = 'blocker' ORDER BY root_key",
+        (task_id,),
+    ).fetchall()
+
+
 def task_items(conn: Conn, task_id: int, kind: str | None = None) -> list[Row]:
     sql = "SELECT * FROM task_item WHERE task_id = ?"
     params: list = [task_id]
@@ -555,11 +563,11 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                 + ", ".join(f"{k['key']}={k['status']}" for k in open_kids),
             ))
         elif name == "review_threads_closed":
-            opens = open_threads(conn, task["id"])
+            opens = blocking_threads(conn, task["id"])
             checks.append(Check(
                 name, not opens,
-                "all review threads closed" if not opens
-                else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
+                "no blocking review threads open" if not opens
+                else f"{len(opens)} blocking: " + ", ".join(t["root_key"] for t in opens),
             ))
         elif name == "pr_recorded":
             if not bears_pr:
@@ -635,11 +643,11 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
         ))
 
     if target in ("accepted", "merge"):
-        opens = open_threads(conn, task["id"])
+        opens = blocking_threads(conn, task["id"])
         checks.append(Check(
             "review_threads_closed", not opens,
-            "all review threads closed" if not opens
-            else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
+            "no blocking review threads open" if not opens
+            else f"{len(opens)} blocking: " + ", ".join(t["root_key"] for t in opens),
         ))
         if bears_pr:
             if waived and not has_pr:

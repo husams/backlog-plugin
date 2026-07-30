@@ -160,7 +160,8 @@ $BL item add S-004 --kind checklist --content "wire the route"
 $BL pr set S-004 --url https://github.com/acme/repo/pull/91
 $BL move S-004 in_review     --actor developer
 
-$BL review open S-004 --author husam --body "Lock is taken twice" --file src/cache.cpp --line 88
+$BL review open S-004 --author husam --severity blocker \
+    --body "Lock is taken twice" --file src/cache.cpp --line 88
 $BL review inbox --actor claude
 $BL review reply C-003 --author claude --action fix --body "Fixed in a1b2c3d"
 $BL review reply C-004 --author husam --action accept --body "Confirmed"

@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backlog_cli import hooks
+from backlog_cli.schema import ReviewSeverity
 
 
 class ActionHookIntegrationTest(unittest.TestCase):
@@ -112,6 +113,15 @@ def post_transition(
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         return json.loads(result.stdout) if json_output else result.stdout
 
+    def run_cli_raw(self, *args):
+        return subprocess.run(
+            [sys.executable, "-m", "backlog_cli.cli", *args],
+            cwd=self.root,
+            env=self.env,
+            text=True,
+            capture_output=True,
+        )
+
     def status(self, key):
         return self.run_cli("show", key, json_output=True)["status"]
 
@@ -192,6 +202,56 @@ transitions:
                 hooks.project_backlog_dir(central_store),
                 (self.root / ".backlog").resolve(),
             )
+
+    def test_review_severity_is_fixed_enum_and_only_blockers_gate(self):
+        self.assertEqual(
+            [level.value for level in ReviewSeverity],
+            ["blocker", "nice_to_have", "info"],
+        )
+        self.run_cli("feature", "add", "--title", "Severity")
+        self.run_cli("move", "F-001", "ready")
+        self.run_cli("move", "F-001", "in_progress")
+        self.run_cli("move", "F-001", "in_review")
+
+        blocker = self.run_cli(
+            "review", "open", "F-001",
+            "--author", "reviewer",
+            "--role", "reviewer",
+            "--severity", "blocker",
+            "--body", "Requirements are incomplete.",
+            json_output=True,
+        )
+        advisory = self.run_cli(
+            "review", "open", "F-001",
+            "--author", "reviewer",
+            "--role", "reviewer",
+            "--severity", "nice_to_have",
+            "--body", "Consider adding another example.",
+            json_output=True,
+        )
+        self.assertEqual(blocker["severity"], "blocker")
+        self.assertEqual(advisory["severity"], "nice_to_have")
+
+        blocked = self.run_cli_raw("gate", "F-001", "--for", "accepted")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("1 blocking: C-001", blocked.stdout)
+
+        changed = self.run_cli(
+            "review", "severity", "C-001",
+            "--severity", "info",
+            "--author", "reviewer",
+            json_output=True,
+        )
+        self.assertEqual(changed["severity"], "info")
+        allowed = self.run_cli_raw("gate", "F-001", "--for", "accepted")
+        self.assertEqual(allowed.returncode, 0, allowed.stderr or allowed.stdout)
+
+        filtered = self.run_cli(
+            "review", "list", "F-001",
+            "--severity", "nice_to_have",
+            json_output=True,
+        )
+        self.assertEqual([thread["root"] for thread in filtered], ["C-002"])
 
 
 if __name__ == "__main__":

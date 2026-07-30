@@ -9,7 +9,8 @@ The plugin manages:
 - features, stories, and subtasks;
 - acceptance criteria, checklists, notes, priorities, and assignments;
 - dependencies and blocked work;
-- review threads, pull request state, and attached artifacts;
+- review threads with fixed blocker, nice-to-have, or informational severity,
+  pull request state, and attached artifacts;
 - custom statuses, transitions, gates, and reusable workflow templates;
 - audit history for changes made by humans and agents.
 
@@ -17,6 +18,10 @@ Workflow rules are enforced by the tool rather than left to the agent. Every
 status change is checked against the selected project and task type. Illegal
 transitions and failed gates are refused, so a custom flow remains consistent
 regardless of which agent is operating it.
+
+Only unresolved review threads with `ReviewSeverity.BLOCKER` stop acceptance
+or merge gates. Advisory and informational threads remain visible without
+blocking delivery.
 
 The skill is self-contained under `skills/backlog/`. It includes its launchers,
 Python API, predefined scripts, documentation, and database tooling.

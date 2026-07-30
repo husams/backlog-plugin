@@ -139,12 +139,13 @@ $BL pr sync KEY      # pull state from the `gh` CLI
 ## Review
 
 ```bash
-$BL review open KEY --author A --body B [--role reviewer|developer] [--title T] [--file PATH] [--line N]
+$BL review open KEY --author A --body B [--role reviewer|developer] [--severity blocker|nice_to_have|info] [--title T] [--file PATH] [--line N]
 $BL review reply COMMENT_KEY --author A --action comment|fix|reject|accept --body B
 $BL review reopen ROOT_KEY --author A --body B
-$BL review inbox [--actor X] [--role R] [--item KEY]
+$BL review severity ROOT_KEY --severity blocker|nice_to_have|info --author A
+$BL review inbox [--actor X] [--role R] [--item KEY] [--severity blocker|nice_to_have|info]
 $BL review thread ROOT_KEY [--full]
-$BL review list KEY [--state open|closed|all]
+$BL review list KEY [--state open|closed|all] [--severity blocker|nice_to_have|info]
 ```
 
 See [review.md](review.md).

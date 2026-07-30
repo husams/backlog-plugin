@@ -51,12 +51,13 @@ for writes made through the session.
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
 | `bl.can(key, target="merge", **waivers)` | `Gate` — evaluates, never moves |
-| `bl.inbox(actor=None, role=None)` | `list[Thread]` waiting on someone, oldest first |
-| `bl.threads(key, state="open")` | `list[Thread]` on one task |
+| `bl.inbox(actor=None, role=None, severity=None)` | `list[Thread]` waiting on someone, optionally filtered by `ReviewSeverity` |
+| `bl.threads(key, state="open", severity=None)` | `list[Thread]` on one task, optionally filtered by `ReviewSeverity` |
 | `bl.trigger(key, action, actor=None, operation="api.trigger", parameters=None, **waivers)` | submit an `Action`; the workflow selects and enforces the destination |
 | `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
-| `bl.review_open(key, author=, body=, role=, title=, file=, line=)` | open feedback and emit `feedback.posted` |
+| `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | open typed feedback and emit `feedback.posted` |
 | `bl.review_reply(comment, author=, action=, body=, role=)` | reply and emit the matching `feedback.*` action |
+| `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.move(key, status, actor=None, reason="", **waivers)` | transition; refuses exactly as the CLI does |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
@@ -93,6 +94,23 @@ Both hooks receive the active public `Backlog` session as their fifth
 argument. They may call documented methods such as `task`, `tasks`, `can`,
 `threads`, `trigger`, `set_pr`, `review_open`, and `review_reply`. They must not
 use private attributes or access database tables.
+
+Review severity is also a public enum, not a free-form string:
+
+```python
+from backlog_cli.api import ReviewSeverity
+
+bl.review_open(
+    "F-001",
+    author="senior-developer",
+    body="The failure behavior is unspecified.",
+    severity=ReviewSeverity.BLOCKER,
+)
+```
+
+Its fixed members are `BLOCKER`, `NICE_TO_HAVE`, and `INFO`. Passing a string
+to the Python API is a type error. CLI values use the enum's lowercase
+serialized value.
 
 `move` remains available for human-requested destination changes and also runs
 the hooks using the standard action inferred from the transition.

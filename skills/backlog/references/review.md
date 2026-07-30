@@ -4,12 +4,22 @@ Review feedback lives in **threads**. A thread is one top-level comment plus its
 chain of replies. Exactly one party holds the ball at any moment, so you never
 have to scan the whole history to know whether it is your turn.
 
-Opening a review on a newly created feature also moves the feature into the
-workflow's directly reachable review-category status. In the shipped
-`software-delivery` feature flow, that is `In Review`. After all review threads
-close, the feature can move to `Ready`. Reviews on stories and subtasks do not
-change status automatically because their review transition may require PR
-gates.
+Every thread has one fixed severity from the `ReviewSeverity` enum:
+
+| Severity | Meaning | Blocks workflow gates |
+| --- | --- | --- |
+| `blocker` | Must be resolved before the work can be accepted | yes |
+| `nice_to_have` | Actionable improvement that is not required | no |
+| `info` | Context or an observation with no required action | no |
+
+Severity belongs to the root thread and applies to every reply. Existing
+threads and new threads without an explicit severity default to `blocker`.
+Only open `blocker` threads are evaluated by `review_threads_closed`.
+
+Opening feedback records a review event but does not choose a task status.
+When a blocker means a feature is not ready for implementation, submit the
+project's refinement-incomplete action separately. This keeps review storage
+distinct from the project's customizable transition policy.
 
 ## The five actions
 
@@ -47,7 +57,9 @@ Other reads:
 $BL review inbox --actor senior-developer       # threads awaiting that actor
 $BL review inbox --role reviewer                # any thread awaiting a reviewer
 $BL review inbox --item S-004                   # scoped to one item
+$BL review inbox --severity blocker             # only workflow blockers
 $BL review list S-004 --state open|closed|all   # all threads on an item
+$BL review list S-004 --severity nice_to_have   # advisory threads only
 $BL review thread C-003                         # one thread, summary form
 ```
 
@@ -56,6 +68,7 @@ $BL review thread C-003                         # one thread, summary form
 ```bash
 # Reviewer opens a finding, optionally anchored to a location
 $BL review open S-004 --author senior-developer \
+    --severity blocker \
     --body "The mutex is taken twice on the error path." \
     --file src/cache.cpp --line 88
 
@@ -69,6 +82,12 @@ $BL review reply C-004 --author senior-developer --action accept --body "Confirm
 
 Always reply to the key in `reply_to` (the latest comment), not to the root —
 that is what keeps the parent chain meaningful.
+
+To correct a thread's severity, use the audited operation:
+
+```bash
+$BL review severity C-003 --severity nice_to_have --author senior-developer
+```
 
 ## Roles
 
@@ -109,9 +128,10 @@ $BL review reopen C-003 --author senior-developer --body "This regressed in the 
 
 ## Why an item is stuck
 
-Open threads block `Accepted`. To see what is left:
+Open blocker threads block `Accepted`; `nice_to_have` and `info` threads remain
+visible without stopping delivery. To see what is left:
 
 ```bash
-$BL review list S-004 --state open
+$BL review list S-004 --state open --severity blocker
 $BL gate S-004 --for accepted
 ```

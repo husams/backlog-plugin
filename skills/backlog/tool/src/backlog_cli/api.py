@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 from . import core, deps, hooks, review, workflow
 from .hooks import Action
+from .schema import ReviewSeverity
 from .db import (
     BacklogError,
     Conn,
@@ -35,7 +36,8 @@ from .db import (
 )
 
 __all__ = [
-    "open", "Backlog", "Task", "Gate", "Thread", "Store", "Action", "BacklogError"
+    "open", "Backlog", "Task", "Gate", "Thread", "Store", "Action",
+    "ReviewSeverity", "BacklogError"
 ]
 
 
@@ -156,6 +158,7 @@ class Thread:
     task_key: str
     task_title: str
     opened_by: str
+    severity: ReviewSeverity
     state: str
     awaiting_role: str | None
     awaiting_actor: str | None
@@ -194,6 +197,7 @@ def _thread(t: dict) -> Thread:
         task_key=t["target"],
         task_title=t.get("target_title", ""),
         opened_by=t.get("opened_by") or root.get("author", ""),
+        severity=ReviewSeverity(t.get("severity", ReviewSeverity.BLOCKER.value)),
         state=t.get("state", ""),
         awaiting_role=t.get("awaiting_role"),
         awaiting_actor=t.get("awaiting_actor"),
@@ -328,14 +332,24 @@ class Backlog:
 
     # -- review ----------------------------------------------------------- #
 
-    def inbox(self, actor: str | None = None, role: str | None = None) -> list[Thread]:
+    def inbox(self, actor: str | None = None, role: str | None = None,
+              severity: ReviewSeverity | None = None) -> list[Thread]:
         """Review threads waiting on `actor`, oldest first."""
-        out = [_thread(t) for t in review.inbox(self._conn, self.pid, actor=actor, role=role)]
+        if severity is not None and not isinstance(severity, ReviewSeverity):
+            raise TypeError("severity must be a ReviewSeverity")
+        out = [_thread(t) for t in review.inbox(
+            self._conn, self.pid, actor=actor, role=role, severity=severity
+        )]
         return sorted(out, key=lambda t: -t.age_days)
 
-    def threads(self, key: str, state: str = "open") -> list[Thread]:
+    def threads(self, key: str, state: str = "open",
+                severity: ReviewSeverity | None = None) -> list[Thread]:
         """Review threads on one task."""
-        return [_thread(t) for t in review.list_threads(self._conn, self.pid, key, state)]
+        if severity is not None and not isinstance(severity, ReviewSeverity):
+            raise TypeError("severity must be a ReviewSeverity")
+        return [_thread(t) for t in review.list_threads(
+            self._conn, self.pid, key, state, severity=severity
+        )]
 
     # -- writing ---------------------------------------------------------- #
 
@@ -382,8 +396,11 @@ class Backlog:
 
     def review_open(self, key: str, *, author: str, body: str,
                     role: str = "auto", title: str = "",
-                    file: str | None = None, line: int | None = None) -> Thread:
+                    file: str | None = None, line: int | None = None,
+                    severity: ReviewSeverity = ReviewSeverity.BLOCKER) -> Thread:
         """Open review feedback and emit `feedback.posted`."""
+        if not isinstance(severity, ReviewSeverity):
+            raise TypeError("severity must be a ReviewSeverity")
         return _thread(review.open_thread(
             self._conn,
             self.pid,
@@ -394,6 +411,16 @@ class Backlog:
             title=title,
             file_path=file,
             line=line,
+            severity=severity,
+        ))
+
+    def review_set_severity(self, root: str, *,
+                            severity: ReviewSeverity, author: str) -> Thread:
+        """Change a review thread's severity and record the actor."""
+        if not isinstance(severity, ReviewSeverity):
+            raise TypeError("severity must be a ReviewSeverity")
+        return _thread(review.set_severity(
+            self._conn, self.pid, root, severity, author
         ))
 
     def review_reply(self, comment: str, *, author: str, action: str,
