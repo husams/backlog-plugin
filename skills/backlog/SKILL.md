@@ -102,24 +102,35 @@ the waiver afterwards, so an override stays visible.
 7. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
 8. **Do not start blocked work.** If `action ... work.started` fails on
    `dependencies_clear`, pick something else.
-9. **Never re-read context in the same session.** On the first review read, keep
+9. **Link implementation work to Git before and during delivery.** Before
+   submitting `work.started` for a story, create or reuse its dedicated Git
+   worktree/branch and record that branch with `$BL set <KEY> --branch
+   <branch>`. The branch field is the portable worktree association; never
+   store a machine-local worktree path in a shared backlog. As soon as a pull
+   request exists, record it with `$BL pr set <KEY> --url <URL> --state
+   draft|open --review-state pending`, and keep its review and merge state
+   current. Never leave an active implementation story without its branch, or
+   an opened PR unrecorded. If the project is not Git-backed or genuinely ships
+   without a PR, record the reason as a task note and use the documented
+   `--no-pr` waiver only when the workflow requires it.
+10. **Never re-read context in the same session.** On the first review read, keep
    each thread's `reply_to` key in context. Later call
    `bl.review_updates(ROOT, after=LAST_SEEN)` and read only newly added
    comments. MUST NOT re-read task descriptions, inbox summaries, full threads,
    or other large text already present in context. A full read is allowed only
    when context was lost or a new comment is genuinely ambiguous, and the agent
    must state that reason.
-10. **Review feedback is not an artifact.** Requests to post, add, leave,
+11. **Review feedback is not an artifact.** Requests to post, add, leave,
    answer, accept, reject, or reply to a review or feedback must use
    `review open`, `review reply`, or another documented review command.
    Use `artifact add` only when the user explicitly asks to attach or record a
    file, document, report, patch, log, design, or other durable artifact.
-11. **Every review thread requires a response and decision.** This includes
+12. **Every review thread requires a response and decision.** This includes
     `nice_to_have` and `info` threads. A developer MUST reply with `fix`,
     `comment`, or `reject`; the fixed thread reviewer MUST then reply with
     `accept` or `reject` and a non-empty body. Reviewers cannot silently skip
     feedback or use a neutral comment instead of a decision.
-12. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
+13. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
     thread may accept or reject a developer response. The API reuses that
     reviewer automatically and treats any other responding author as the
     developer/assignee for that reply. Callers MUST NOT repeat or alter role,
@@ -127,7 +138,7 @@ the waiver afterwards, so an override stays visible.
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
-13. **Reopen through the thread API.** To reactivate an accepted finding, use
+14. **Reopen through the thread API.** To reactivate an accepted finding, use
     `review reopen ROOT --author REVIEWER --body REASON` or
     `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
     on a Ready task emits a managed event that the shipped workflow resolves to
@@ -185,10 +196,12 @@ $BL assign S-004 --to claude --reviewer husam     # agent vs human is recorded
 $BL actions S-004
 $BL action S-004 refinement.accepted --actor product-manager
 $BL dep check S-004                               # exit 0 => safe to start
+$BL set S-004 --branch codex/S-004-cache-symbols # dedicated worktree branch
 $BL actions S-004
 $BL action S-004 work.started --actor developer
 $BL item add S-004 --kind checklist --content "wire the route"
-$BL pr set S-004 --url https://github.com/acme/repo/pull/91 --state open
+$BL pr set S-004 --url https://github.com/acme/repo/pull/91 \
+    --state open --review-state pending
 
 $BL review open S-004 --author husam --severity blocker \
     --body "Lock is taken twice" --file src/cache.cpp --line 88
