@@ -17,9 +17,10 @@ direct parent of the latest comment, and the latest comment.
 
 from __future__ import annotations
 
-from .core import get_task, get_task_by_id, normalize_key
+from .core import get_task, get_task_by_id, move, normalize_key
 from .db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
 from .schema import REVIEW_ACTIONS, REVIEW_ROLES
+from . import workflow
 
 
 def resolve_role(task: Row, author: str, role: str | None) -> str:
@@ -68,6 +69,22 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
     )
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
+    if task["task_type"] == "feature":
+        wf = workflow.get(conn, project_id, "feature")
+        if wf.category(task["status"]) != "review":
+            review_targets = [
+                status for status in wf.next_from(task["status"])
+                if wf.category(status) == "review"
+            ]
+            if len(review_targets) == 1:
+                move(
+                    conn,
+                    project_id,
+                    task["key"],
+                    review_targets[0],
+                    actor=author,
+                    reason=f"review opened: {ckey}",
+                )
     conn.commit()
     return thread_summary(conn, ckey)
 

@@ -15,7 +15,7 @@ key.
 
 from __future__ import annotations
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -87,12 +87,11 @@ TRANSITIONS: dict[str, set[str]] = {
 }
 
 FEATURE_TRANSITIONS: dict[str, set[str]] = {
-    "created": {"ready", "incomplete"},
-    "incomplete": {"ready", "accepted"},
+    "created": {"ready", "incomplete", "in_review"},
+    "incomplete": {"ready", "accepted", "in_review"},
     "ready": {"in_progress"},
     "in_progress": {"accepted", "incomplete"},
-    # tolerated so a feature that somehow reached In Review can still be moved
-    "in_review": {"accepted", "needs_work"},
+    "in_review": {"ready", "incomplete"},
     "needs_work": {"in_progress"},
     "accepted": {"done"},
     "done": set(),
@@ -189,13 +188,18 @@ DEFAULT_TRANSITIONS = {
         ("needs_work", "in_review", "pr_recorded"),
         ("accepted", "done", "pr_merged"),
     ],
-    # A feature is a container: no pull request of its own, so no review stage
-    # and no PR gates. It is finished when its stories are.
+    # Feature review is scope/grooming review: opening the first review moves a
+    # new feature into In Review, and closing its threads allows it to become
+    # Ready. A feature carries no pull request of its own.
     "feature": [
         ("created", "ready", ""),
         ("created", "incomplete", ""),
+        ("created", "in_review", ""),
         ("incomplete", "ready", ""),
         ("incomplete", "accepted", ""),
+        ("incomplete", "in_review", ""),
+        ("in_review", "ready", "review_threads_closed"),
+        ("in_review", "incomplete", ""),
         ("ready", "in_progress", "dependencies_clear"),
         ("in_progress", "accepted", "review_threads_closed,children_complete"),
         ("in_progress", "incomplete", ""),

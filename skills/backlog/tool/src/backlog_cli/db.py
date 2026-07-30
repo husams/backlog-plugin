@@ -539,6 +539,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
             notes.append("installed templates: " + ", ".join(added))
         notes += _adopt_default_template(conn)
         notes += _seed_missing_workflows(conn)
+        notes += _upgrade_feature_review_flow(conn)
         resync_sequences(conn)
         return notes or ["schema brought up to date"]
 
@@ -604,6 +605,44 @@ def _seed_missing_workflows(conn: Conn) -> list[str]:
         if after > before:
             notes.append(f"seeded {after - before} workflow(s) for project '{proj['slug']}'")
     return notes
+
+
+def _upgrade_feature_review_flow(conn: Conn) -> list[str]:
+    """Add the missing scope-review path to shipped software-delivery flows."""
+    transitions = [
+        ("created", "in_review", ""),
+        ("incomplete", "in_review", ""),
+        ("in_review", "ready", "review_threads_closed"),
+        ("in_review", "incomplete", ""),
+    ]
+    template_rows = conn.execute(
+        "SELECT w.id FROM template_workflow w "
+        "JOIN template t ON t.id = w.template_id "
+        "WHERE t.slug = 'software-delivery' AND w.task_type = 'feature'"
+    ).fetchall()
+    project_rows = conn.execute(
+        "SELECT w.id FROM workflow w "
+        "JOIN project p ON p.id = w.project_id "
+        "JOIN template t ON t.id = p.template_id "
+        "WHERE t.slug = 'software-delivery' AND w.task_type = 'feature'"
+    ).fetchall()
+    for row in template_rows:
+        conn.executemany(
+            "INSERT INTO template_transition(template_workflow_id, from_status, "
+            "to_status, gates) VALUES(?,?,?,?) "
+            "ON CONFLICT(template_workflow_id, from_status, to_status) DO NOTHING",
+            [(row["id"], source, target, gates) for source, target, gates in transitions],
+        )
+    for row in project_rows:
+        conn.executemany(
+            "INSERT INTO workflow_transition(workflow_id, from_status, to_status, gates) "
+            "VALUES(?,?,?,?) "
+            "ON CONFLICT(workflow_id, from_status, to_status) DO NOTHING",
+            [(row["id"], source, target, gates) for source, target, gates in transitions],
+        )
+    conn.commit()
+    count = len(template_rows) + len(project_rows)
+    return [f"enabled feature scope review in {count} workflow(s)"] if count else []
 
 
 def _read_v2(conn: Conn) -> dict[str, list[dict]]:

@@ -16,7 +16,7 @@ $BL templates
 
 | Template | Flow |
 | --- | --- |
-| `software-delivery` *(default)* | Created → Ready → In Progress → In Review → Accepted → Done, with the PR gates. Features are containers and carry no PR. |
+| `software-delivery` *(default)* | Stories and subtasks follow Created → Ready → In Progress → In Review → Accepted → Done with PR gates. A newly reviewed feature follows Created → In Review → Ready, then progresses without PR gates. |
 | `lightweight` | Created → Ready → In Progress → Done (+ Dropped). No review stage, no PR gates. |
 | `research` | Proposed → Investigating → Drafted → Reviewed → Published (+ Parked). |
 

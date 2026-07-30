@@ -4,6 +4,13 @@ Review feedback lives in **threads**. A thread is one top-level comment plus its
 chain of replies. Exactly one party holds the ball at any moment, so you never
 have to scan the whole history to know whether it is your turn.
 
+Opening a review on a newly created feature also moves the feature into the
+workflow's directly reachable review-category status. In the shipped
+`software-delivery` feature flow, that is `In Review`. After all review threads
+close, the feature can move to `Ready`. Reviews on stories and subtasks do not
+change status automatically because their review transition may require PR
+gates.
+
 ## The five actions
 
 | Action | Who typically | Effect |

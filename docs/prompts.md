@@ -60,11 +60,12 @@ Save the returned key, such as `F-001`, for later prompts.
 
 ## 4. Review a new feature
 
-> @backlog-plugin Review feature `F-001` as a product reviewer. Check whether
+> @backlog-plugin Review feature `F-001` as `<product-reviewer>`. Check whether
 > its goal, scope, priority, and acceptance criteria are clear and testable.
-> Check the project’s actual feature workflow before recommending a status
-> change. Do not change anything yet. List specific gaps and finish with either
-> `ready for approval` or `needs revision`.
+> Post each specific gap as a review thread, not as an artifact. Opening the
+> review should move the feature through the configured transition to its
+> review-category status. Finish with either `ready for approval` or
+> `needs revision`, and show the feature's resulting status.
 
 ## 5. Approve the feature and move it to Ready
 
@@ -120,6 +121,10 @@ with the task.
 > The finding is: “The error response reveals whether the email exists.”
 > Anchor it to `<path/to/file>` line `<line-number>`. Return the new review
 > comment key and identify who must reply next.
+
+When the target is a newly created feature, opening the review also moves it
+from `Created` to `In Review` when that transition exists in the configured
+feature workflow. Story and subtask reviews do not move status automatically.
 
 ## 9. Post feedback
 
