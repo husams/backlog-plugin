@@ -36,6 +36,10 @@ from .transitions import pre_transition
             """
 import os
 from pathlib import Path
+from typing import Any
+
+from backlog_cli.api import Backlog
+from backlog_cli.hooks import Action
 
 
 def _record(action, current_state, new_state):
@@ -46,7 +50,14 @@ def _record(action, current_state, new_state):
         )
 
 
-def pre_transition(action, trigger, current_state, new_state):
+def pre_transition(
+    action: Action,
+    trigger: dict[str, Any],
+    current_state: str,
+    new_state: str,
+    backlog: Backlog,
+) -> str:
+    assert backlog.task(trigger["task_key"]).status == current_state
     _record(action, current_state, new_state)
     if trigger["parameters"].get("block") == "yes":
         return current_state
@@ -58,9 +69,20 @@ def pre_transition(action, trigger, current_state, new_state):
             """
 import os
 from pathlib import Path
+from typing import Any
+
+from backlog_cli.api import Backlog
+from backlog_cli.hooks import Action
 
 
-def post_transition(action, trigger, previous_state, current_state):
+def post_transition(
+    action: Action,
+    trigger: dict[str, Any],
+    previous_state: str,
+    current_state: str,
+    backlog: Backlog,
+) -> None:
+    assert backlog.task(trigger["task_key"]).status == current_state
     path = Path(os.environ["BACKLOG_HOOK_LOG"])
     with path.open("a", encoding="utf-8") as stream:
         stream.write(

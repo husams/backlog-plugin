@@ -193,20 +193,28 @@ standard action, destination state, and optional existing gates.
 The project may define either or both functions:
 
 ```python
+from typing import Any
+
+from backlog_cli.api import Backlog
+from backlog_cli.hooks import Action
+
+
 def pre_transition(
     action: Action,
-    trigger: dict,
+    trigger: dict[str, Any],
     current_state: str,
     new_state: str,
+    backlog: Backlog,
 ) -> str:
     return new_state
 
 
 def post_transition(
     action: Action,
-    trigger: dict,
+    trigger: dict[str, Any],
     previous_state: str,
     current_state: str,
+    backlog: Backlog,
 ) -> None:
     pass
 ```
@@ -218,6 +226,7 @@ The arguments are:
   operation parameters;
 - `current_state`: the state before the transition;
 - `new_state`: the state selected by the workflow.
+- `backlog`: the public `Backlog` API session for the active project.
 
 For `post_transition`, `previous_state` is the state before the committed
 transition and `current_state` is the state after it.
@@ -228,6 +237,7 @@ transition and `current_state` is the state after it.
 {
     "operation": "review_feedback",
     "actor": "reviewer@example.com",
+    "task_key": "S-001",
     "parameters": {
         "comments": "The error case needs an acceptance criterion."
     },
@@ -242,7 +252,7 @@ destination but before Backlog changes the task status.
 It returns the state Backlog should use:
 
 ```python
-def pre_transition(action, trigger, current_state, new_state):
+def pre_transition(action, trigger, current_state, new_state, backlog):
     return new_state
 ```
 
@@ -252,7 +262,7 @@ A project can override the destination by returning another state:
 from backlog_cli.hooks import Action
 
 
-def pre_transition(action, trigger, current_state, new_state):
+def pre_transition(action, trigger, current_state, new_state, backlog):
     if action == Action.REVIEW_APPROVED and not project_checks_passed():
         return "needs_work"
     return new_state
@@ -274,7 +284,7 @@ other project logic:
 from backlog_cli.hooks import Action
 
 
-def post_transition(action, trigger, previous_state, current_state):
+def post_transition(action, trigger, previous_state, current_state, backlog):
     if action == Action.WORK_COMPLETED:
         notify_release_system(trigger["actor"], current_state)
 ```
@@ -308,11 +318,21 @@ check passes, then publishes an event after completion.
 `.backlog/hooks/transitions.py`:
 
 ```python
+from typing import Any
+
+from backlog_cli.api import Backlog
 from backlog_cli.hooks import Action
 from project_tools import release_check_passed
 
 
-def pre_transition(action, trigger, current_state, new_state):
+def pre_transition(
+    action: Action,
+    trigger: dict[str, Any],
+    current_state: str,
+    new_state: str,
+    backlog: Backlog,
+) -> str:
+    task = backlog.task(trigger["task_key"])
     if action == Action.DELIVERY_ACCEPTED and not release_check_passed():
         return current_state
     return new_state
@@ -321,17 +341,30 @@ def pre_transition(action, trigger, current_state, new_state):
 `.backlog/hooks/notifications.py`:
 
 ```python
+from typing import Any
+
+from backlog_cli.api import Backlog
 from backlog_cli.hooks import Action
 from project_tools import publish_event
 
 
-def post_transition(action, trigger, previous_state, current_state):
+def post_transition(
+    action: Action,
+    trigger: dict[str, Any],
+    previous_state: str,
+    current_state: str,
+    backlog: Backlog,
+) -> None:
+    task = backlog.task(trigger["task_key"])
     if action == Action.DELIVERY_RELEASED and current_state == "done":
         publish_event(
             "backlog.completed",
+            task=task.key,
             actor=trigger.get("actor"),
         )
 ```
 
 The hook is normal trusted Python code in the project. It can import project
-modules and use any logic the project owner needs.
+modules and use any logic the project owner needs. The supplied `backlog`
+object exposes the documented public Python API; hooks must not access
+`backlog._conn` or database tables.

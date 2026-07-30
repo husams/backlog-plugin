@@ -8,12 +8,17 @@ import sys
 from enum import Enum
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from .db import BacklogError, Conn, utcnow
 from .schema import GATE_CHECKS, STATUS_CATEGORIES, TASK_TYPES
+
+if TYPE_CHECKING:
+    from .api import Backlog
+
+Trigger = dict[str, Any]
 
 
 class Action(str, Enum):
@@ -319,9 +324,10 @@ def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:
 def pre_transition(
     backlog_dir: Path,
     action: Action,
-    trigger: dict[str, Any],
+    trigger: Trigger,
     current_state: str,
     new_state: str,
+    backlog: "Backlog",
 ) -> str:
     module = _load_project_hooks(backlog_dir)
     callback = getattr(module, "pre_transition", None) if module else None
@@ -332,7 +338,7 @@ def pre_transition(
             f"{backlog_dir / 'hooks' / '__init__.py'}: pre_transition is not callable"
         )
     try:
-        result = callback(action, trigger, current_state, new_state)
+        result = callback(action, trigger, current_state, new_state, backlog)
     except Exception as exc:
         raise BacklogError(f"pre_transition blocked the transition: {exc}") from None
     if not isinstance(result, str) or not result.strip():
@@ -343,9 +349,10 @@ def pre_transition(
 def post_transition(
     backlog_dir: Path,
     action: Action,
-    trigger: dict[str, Any],
+    trigger: Trigger,
     previous_state: str,
     current_state: str,
+    backlog: "Backlog",
 ) -> None:
     module = _load_project_hooks(backlog_dir)
     callback = getattr(module, "post_transition", None) if module else None
@@ -356,7 +363,7 @@ def post_transition(
             f"{backlog_dir / 'hooks' / '__init__.py'}: post_transition is not callable"
         )
     try:
-        callback(action, trigger, previous_state, current_state)
+        callback(action, trigger, previous_state, current_state, backlog)
     except Exception as exc:
         raise BacklogError(
             f"transition committed, but post_transition failed: {exc}"

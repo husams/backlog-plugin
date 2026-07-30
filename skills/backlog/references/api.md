@@ -89,6 +89,11 @@ action)` to a destination, imports `pre_transition` and `post_transition` from
 `.backlog/hooks/__init__.py`, enforces the normal transition and gates,
 commits, then runs the post hook.
 
+Both hooks receive the active public `Backlog` session as their fifth
+argument. They may call documented methods such as `task`, `tasks`, `can`,
+`threads`, `trigger`, `set_pr`, `review_open`, and `review_reply`. They must not
+use private attributes or access database tables.
+
 `move` remains available for human-requested destination changes and also runs
 the hooks using the standard action inferred from the transition.
 

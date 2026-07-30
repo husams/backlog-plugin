@@ -708,18 +708,25 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
     backlog_dir = None
     if run_hooks:
         from . import hooks
+        from .api import Backlog
 
         hook_action = hooks.normalize_action(action) if action is not None \
             else hooks.infer_action(current, target)
         hook_trigger = dict(trigger or {})
         hook_trigger.setdefault("operation", "move")
         hook_trigger.setdefault("actor", actor)
+        hook_trigger.setdefault("task_key", task["key"])
         hook_trigger.setdefault("parameters", {})
         hook_trigger["parameters"].setdefault("requested_state", target)
         hook_trigger["parameters"].setdefault("reason", reason)
         backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
+        project = conn.execute(
+            "SELECT * FROM project WHERE id = ?", (project_id,)
+        ).fetchone()
+        assert project is not None and conn.spec is not None
+        hook_backlog = Backlog(conn, project, conn.spec, actor=actor)
         proposed = hooks.pre_transition(
-            backlog_dir, hook_action, hook_trigger, current, target
+            backlog_dir, hook_action, hook_trigger, current, target, hook_backlog
         )
         target = wf.resolve(proposed)
 
@@ -771,7 +778,7 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
 
         assert backlog_dir is not None and hook_action is not None and hook_trigger is not None
         hooks.post_transition(
-            backlog_dir, hook_action, hook_trigger, current, updated["status"]
+            backlog_dir, hook_action, hook_trigger, current, updated["status"], hook_backlog
         )
     return updated, checks
 
@@ -797,6 +804,7 @@ def trigger_action(
     trigger = {
         "operation": operation,
         "actor": actor,
+        "task_key": task["key"],
         "parameters": dict(parameters or {}),
     }
     backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
