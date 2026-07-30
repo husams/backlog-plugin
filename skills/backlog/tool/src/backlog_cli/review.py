@@ -18,7 +18,7 @@ direct parent of the latest comment, and the latest comment.
 from __future__ import annotations
 
 from .core import get_task, get_task_by_id, normalize_key
-from .db import BacklogError, Conn, Row, actor_kind, log_event, next_key, utcnow
+from .db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
 from .schema import REVIEW_ACTIONS, REVIEW_ROLES
 
 
@@ -48,7 +48,7 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
                 line: int | None = None) -> dict:
     task = get_task(conn, project_id, key)
     role = resolve_role(task, author, role)
-    ckey = next_key(conn, project_id, "C")
+    ckey = next_comment_key(conn)
     ts = utcnow()
     if not title:
         lines = [ln for ln in body.strip().splitlines() if ln.strip()]
@@ -96,7 +96,7 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
         )
 
     role = resolve_role(task, author, role)
-    ckey = next_key(conn, project_id, "C")
+    ckey = next_comment_key(conn)
     ts = utcnow()
     seq = int(thread["comment_count"]) + 1
     conn.execute(

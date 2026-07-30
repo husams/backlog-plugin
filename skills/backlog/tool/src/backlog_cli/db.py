@@ -920,6 +920,30 @@ def next_key(conn: Conn, project_id: int, prefix: str) -> str:
     return f"{prefix}-{n:03d}"
 
 
+def next_comment_key(conn: Conn) -> str:
+    """Allocate a review-comment key that is unique across the whole store.
+
+    Task keys are scoped to a project, but review comments are addressed
+    without a project qualifier and their schema-level key is global. The
+    counter therefore lives in ``meta``. The initial insert also serializes
+    concurrent allocators: PostgreSQL locks the conflicting row, while SQLite
+    takes its write lock.
+    """
+    counter = "review_comment_next_value"
+    conn.execute(
+        "INSERT INTO meta(key, value) VALUES(?, '1') ON CONFLICT(key) DO NOTHING",
+        (counter,),
+    )
+    row = conn.execute("SELECT value FROM meta WHERE key = ?", (counter,)).fetchone()
+    highest = conn.execute(
+        "SELECT MAX(CAST(SUBSTR(key, 3) AS INTEGER)) AS n "
+        "FROM review_comment WHERE key LIKE 'C-%'"
+    ).fetchone()
+    n = max(int(row["value"]), int(highest["n"] or 0) + 1)
+    conn.execute("UPDATE meta SET value = ? WHERE key = ?", (str(n + 1), counter))
+    return f"C-{n:03d}"
+
+
 def log_event(
     conn: Conn,
     kind: str,
