@@ -72,7 +72,7 @@ class ShellSpec:
     output_limit_bytes: int | None = None
     stdout: TextMatcher | None = None
     stderr: TextMatcher | None = None
-    environment: Mapping[str, str] = field(default_factory=dict)
+    environment: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.command, str) or not self.command.strip():
@@ -81,10 +81,14 @@ class ShellSpec:
         if self.output_limit_bytes is not None:
             _positive_limit(self.output_limit_bytes, "output_limit_bytes")
         _relative_project_path(self.working_directory)
-        _json_value(dict(self.environment), "shell environment")
-        for key, value in self.environment.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise BacklogError("shell environment names and values must be strings")
+        if (
+            not isinstance(self.environment, tuple)
+            or not all(isinstance(name, str) and name for name in self.environment)
+            or len(set(self.environment)) != len(self.environment)
+        ):
+            raise BacklogError(
+                "shell environment must contain unique non-empty variable names"
+            )
 
 
 @dataclass(frozen=True)
@@ -749,7 +753,16 @@ def _invoke_shell(backlog, task_key: str, item_id: int, spec: ExecutionSpec,
             backlog, task_key, item_id, spec, "working_directory_unavailable",
             root, actor,
         )
-    env = {"PATH": os.defpath, **dict(shell.environment)}
+    missing = sorted(name for name in shell.environment if name not in os.environ)
+    if missing:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec,
+            "environment_variable_unavailable:" + ",".join(missing), root, actor,
+        )
+    requested_environment = {
+        name: os.environ[name] for name in shell.environment
+    }
+    env = {"PATH": os.defpath, **requested_environment}
     executable_path = shutil.which(argv[0], path=env["PATH"])
     if executable_path is None:
         return _pre_invocation_error(
@@ -788,8 +801,8 @@ def _invoke_shell(backlog, task_key: str, item_id: int, spec: ExecutionSpec,
         mismatches = _mismatches(shell, process.returncode, stdout, stderr)
         status = "fail" if mismatches else "pass"
         diagnostic = ";".join(mismatches)
-    stdout = _redact(stdout, shell.environment.values())
-    stderr = _redact(stderr, shell.environment.values())
+    stdout = _redact(stdout, requested_environment.values())
+    stderr = _redact(stderr, requested_environment.values())
     if truncated:
         diagnostic = ";".join(filter(None, (diagnostic, "output_truncated")))
     result = _record_shell_result(
@@ -1019,6 +1032,12 @@ def _parse_shell(value: Any) -> ShellSpec:
     if not isinstance(value, Mapping):
         raise BacklogError("shell specification must be an object")
     data = dict(value)
+    environment = data.get("environment", [])
+    if not isinstance(environment, (list, tuple)):
+        raise BacklogError(
+            "shell environment must be a list of trusted-local variable names"
+        )
+    data["environment"] = tuple(environment)
     stdout = _matcher(data.pop("stdout", None))
     stderr = _matcher(data.pop("stderr", None))
     try:

@@ -36,7 +36,7 @@ class ShellExecutionTest(unittest.TestCase):
         self.temp.cleanup()
 
     def add_shell(self, command: str, *, timeout: int = 5, exit_code: int = 0,
-                  stdout=None, stderr=None):
+                  stdout=None, stderr=None, environment=None):
         item = core.add_item(
             self.conn, self.project["id"], self.task["key"],
             "acceptance_criteria", f"execute {command}",
@@ -54,6 +54,8 @@ class ShellExecutionTest(unittest.TestCase):
             spec["shell"]["stdout"] = stdout
         if stderr is not None:
             spec["shell"]["stderr"] = stderr
+        if environment is not None:
+            spec["shell"]["environment"] = environment
         execution.set_executable(self.conn, item["id"], spec)
         return item
 
@@ -102,6 +104,49 @@ class ShellExecutionTest(unittest.TestCase):
         ).fetchone()
         self.assertEqual(stored["actual_exit_code"], 0)
         self.assertGreaterEqual(stored["duration_ms"], 0)
+
+    def test_runtime_environment_secret_never_enters_shared_or_api_surfaces(self):
+        secret = "super-secret-runtime-value"
+        item = self.add_shell(
+            self.python("import os; print(os.environ['VALIDATION_TOKEN'])"),
+            environment=["VALIDATION_TOKEN"],
+        )
+        policy = self.policy(
+            allowed_environment_variables=("VALIDATION_TOKEN",)
+        )
+        with patch.dict(os.environ, {"VALIDATION_TOKEN": secret}):
+            result = self.bl.run_item(
+                item["id"], self.root, policy=policy
+            )
+        self.assertEqual(result.status, "pass")
+        self.assertEqual(result.stdout, "[REDACTED]\n")
+        executable = execution.executable_item(self.conn, item["id"])
+        self.assertEqual(
+            executable["execution_spec"]["shell"]["environment"],
+            ["VALIDATION_TOKEN"],
+        )
+        result_row = self.conn.execute(
+            "SELECT * FROM execution_result WHERE item_id=?", (item["id"],)
+        ).fetchone()
+        events = self.conn.execute(
+            "SELECT * FROM event WHERE task_id=? ORDER BY id", (self.task["id"],)
+        ).fetchall()
+        surfaces = [
+            json.dumps(executable, default=str),
+            json.dumps(result.as_dict(), default=str),
+            json.dumps({key: result_row[key] for key in result_row.keys()}, default=str),
+            json.dumps([
+                {key: row[key] for key in row.keys()} for row in events
+            ], default=str),
+        ]
+        self.assertTrue(all(secret not in surface for surface in surfaces))
+
+        unsafe = executable["execution_spec"]
+        unsafe["shell"]["environment"] = {"VALIDATION_TOKEN": secret}
+        with self.assertRaisesRegex(
+            db.BacklogError, "list of trusted-local variable names"
+        ):
+            execution.parse_spec(unsafe)
 
     def test_expectation_mismatch_is_fail_and_timeout_is_error(self):
         mismatch = self.add_shell(

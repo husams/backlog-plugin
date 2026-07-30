@@ -127,6 +127,17 @@ the explicit project root. Output capture is bounded across stdout and stderr;
 requested environment values are redacted before results are returned or
 audited.
 
+Shell declarations store environment requests as names only:
+
+```yaml
+environment: ["CI", "VALIDATION_TOKEN"]
+```
+
+Values are resolved from the executing process environment only after trusted
+local policy permits every requested name. A missing local value is a stable
+pre-invocation error. Name-to-value mappings are rejected, so shared execution
+specs, result rows, API results, and audit actions never receive the value.
+
 The returned `ExecutionResult` has `status`, `executor`, `expected`,
 `actual_exit_code`, bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`,
 and `output_truncated`. Exit or matcher differences are `fail`. Startup and

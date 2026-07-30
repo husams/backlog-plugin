@@ -43,7 +43,7 @@ class ExecutionContractTest(unittest.TestCase):
                 "working_directory": ".",
                 "expected_exit_code": 0,
                 "stdout": {"contains": "OK"},
-                "environment": {"CI": "1"},
+                "environment": ["CI"],
             },
         }
 
