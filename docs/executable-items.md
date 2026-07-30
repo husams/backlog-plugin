@@ -22,7 +22,7 @@ requirement does.
 ## Trusted local policy
 
 Execution policy is loaded only from
-`.backlog/execution-policy.yaml` in the checkout where validation runs. It is
+`.backlog/execution.yaml` in the checkout where validation runs. It is
 not stored in the shared backlog database. With no local file, shell execution
 is disabled and no hooks are allowed.
 
@@ -60,3 +60,55 @@ untracked files. Ignored paths are excluded. A non-Git checkout remains
 gate-eligible and persists `source_revision_unavailable`. `backlog doctor`
 reports items whose latest fresh attempt still has that limitation; a later
 source-identified attempt supersedes and clears the diagnostic.
+
+## Named validation hooks
+
+Trusted project hooks live in the existing `.backlog/hooks` package. Its
+`__init__.py` exports an exact-name mapping:
+
+```python
+from backlog_cli.api import ValidationHookResult, validation_hook
+
+@validation_hook(version="billing-contract-v1")
+def billing_contract(backlog, context, args):
+    account = backlog.task(context.task_key)
+    return ValidationHookResult(
+        value={"valid": account.status != "incomplete"},
+        detail=f"validated item {context.item_id}",
+    )
+
+validation_hooks = {"contracts.billing": billing_contract}
+```
+
+The same name must be listed in trusted local `.backlog/execution.yaml`:
+
+```yaml
+allowed_hooks: ["contracts.billing"]
+max_timeout_seconds: 60
+```
+
+Run an item through `Backlog.run_hook_validation(item_id, actor=...,
+project_root=...)`. The hook receives the typed backlog session, an immutable
+`ValidationContext`, and the JSON-like arguments stored on the item. It must
+return `ValidationHookResult`; its `value` is compared to `expected_result`
+using typed JSON equality and normalized to the common `pass`/`fail`/`error`
+contract.
+
+Every run records the registered name and a canonical implementation identity.
+Inspectable functions use `source_sha256:<digest>` after decorator unwrapping
+and newline/trailing-whitespace normalization. `version:<value>` is used only
+when source inspection is unavailable and the callable was registered with a
+non-empty explicit version.
+
+Policy denial produces `skipped/policy_denied` and no check action. Resolution
+and identity failures produce a stable error and `check.failed` without
+`check.started`. Once invocation begins, the runner emits `check.started`, then
+`check.passed` or `check.failed`; a timeout emits `check.timed_out`. Timeouts
+and exceptions are stable errors and never satisfy required validation gates.
+
+Hook timeouts are enforced in-process with `SIGALRM`, so invocation is
+supported only where `SIGALRM`, `ITIMER_REAL`, and `setitimer` are available
+and the runner is on the process main thread. If either constraint is absent,
+the callable is not invoked: the runner records
+`error/hook_timeout_unavailable` with stable detail `sigalrm_unavailable` or
+`main_thread_required`, and emits `check.failed` without `check.started`.

@@ -39,6 +39,8 @@ __all__ = [
     "open", "Backlog", "Task", "Gate", "Thread", "ReviewComment", "Store", "Action",
     "ReviewSeverity", "BacklogError", "ExecutionSpec", "ExecutionPolicy",
     "Executor", "Requirement", "TerminalStatus", "SourceIdentity",
+    "ValidationContext", "ValidationHookResult", "ValidationExecutionResult",
+    "validation_hook",
 ]
 
 ExecutionSpec = execution.ExecutionSpec
@@ -47,6 +49,10 @@ Executor = execution.Executor
 Requirement = execution.Requirement
 TerminalStatus = execution.TerminalStatus
 SourceIdentity = execution.SourceIdentity
+ValidationContext = execution.ValidationContext
+ValidationHookResult = execution.ValidationHookResult
+ValidationExecutionResult = execution.ValidationExecutionResult
+validation_hook = execution.validation_hook
 
 
 def _age_days(stamp: str | None) -> float:
@@ -557,6 +563,16 @@ class Backlog:
         """Return optional clean/dirty VCS identity for a validation run."""
         from pathlib import Path
         return execution.source_identity(Path(project_root))
+
+    def run_hook_validation(
+        self, item_id: int, *, actor: str | None = None, project_root=".",
+    ) -> ValidationExecutionResult:
+        """Resolve and run one trusted, allowlisted local validation hook."""
+        from pathlib import Path
+        return execution.run_hook_validation(
+            self, item_id, actor=actor or self.actor or "unknown",
+            project_root=Path(project_root),
+        )
 
     def commit(self) -> None:
         self._conn.commit()

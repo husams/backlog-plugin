@@ -530,6 +530,10 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
             "TEXT NOT NULL DEFAULT 'blocker' "
             "CHECK (severity IN ('blocker','nice_to_have','info'))",
         )
+        _add_column(conn, "execution_result", "expected_result", "TEXT")
+        _add_column(conn, "execution_result", "actual_result", "TEXT")
+        _add_column(conn, "execution_result", "hook_name", "TEXT")
+        _add_column(conn, "execution_result", "implementation_identity", "TEXT")
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
         conn.executescript(SCHEMA_SQL)
