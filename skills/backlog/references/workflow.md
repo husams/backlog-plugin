@@ -112,7 +112,23 @@ hidden unless you pass `--all`. Whether a task stops blocking its dependents is
 a per-status flag (*counts as finished*), not a hardcoded list — so a project
 that adds its own terminal status is understood without a code change.
 
-## Keeping PR state current
+## Keeping implementation Git state current
+
+Before submitting `work.started` for a story, the implementer must create or
+reuse a dedicated Git worktree/branch and immediately record its branch:
+
+```bash
+$BL set S-004 --branch codex/S-004-cache-symbols
+$BL action S-004 work.started --actor developer
+```
+
+The story's `branch` field is the portable association with the worktree.
+Worktree filesystem paths are machine-local and must not be stored in a shared
+backlog. Never leave an active implementation story with an empty branch.
+
+Create the pull request when the implementation is ready for remote review and
+record it on the story immediately—do not wait for the `pr_recorded` gate to
+fail:
 
 ```bash
 $BL pr set <KEY> --url <URL> --state open --review-state pending
@@ -126,6 +142,10 @@ $BL pr sync <KEY>                # or pull it all from `gh`
 
 A feature rejects `pr set` outright: a pull request belongs to a story or a
 subtask.
+
+If a project is not Git-backed or a story genuinely ships without a PR, record
+the reason as a task note. Use `--no-pr` only at the transition that requires
+the explicit waiver; never treat it as the default implementation path.
 
 ## Closing the loop
 
