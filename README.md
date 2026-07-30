@@ -13,6 +13,8 @@ The plugin manages:
   pull request state, and attached artifacts;
 - custom statuses, transitions, gates, and reusable workflow templates;
 - audit history for changes made by humans and agents.
+- optional typed shell/hook validation declarations governed by trusted local
+  project policy.
 
 Workflow rules are enforced by the tool rather than left to the agent. Every
 status change is checked against the selected project and task type. Illegal
@@ -42,6 +44,7 @@ Python API, predefined scripts, documentation, and database tooling.
 - [Example agent prompts](docs/prompts.md)
 - [GitHub Actions integration example](docs/github-actions.md)
 - [Python transition hooks and action workflow](docs/python-extensions.md)
+- [Executable item schema and local policy](docs/executable-items.md)
 
 ## Requirements
 

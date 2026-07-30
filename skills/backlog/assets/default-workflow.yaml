@@ -152,19 +152,19 @@ transitions:
     from: in_review
     action: review.approved
     to: accepted
-    gates: [review_threads_closed, children_complete]
+    gates: [review_threads_closed, children_complete, required_validations_pass]
 
   - task_types: [feature, story, subtask]
     from: in_review
     action: delivery.accepted
     to: accepted
-    gates: [review_threads_closed, children_complete]
+    gates: [review_threads_closed, children_complete, required_validations_pass]
 
   - task_types: [story, subtask]
     from: in_review
     action: pr.approved
     to: accepted
-    gates: [review_threads_closed, children_complete]
+    gates: [review_threads_closed, children_complete, required_validations_pass]
 
   # Delivery completed
   - task_types: [feature]

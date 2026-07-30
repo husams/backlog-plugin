@@ -547,6 +547,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += _adopt_default_template(conn)
         notes += _seed_missing_workflows(conn)
         notes += _upgrade_feature_review_flow(conn)
+        notes += _upgrade_required_validation_gates(conn)
         resync_sequences(conn)
         return notes or ["schema brought up to date"]
 
@@ -795,6 +796,28 @@ def _load_v2_into_v3(conn: Conn, project_id: int, old: dict[str, list[dict]]) ->
     return notes
 
 
+def _upgrade_required_validation_gates(conn: Conn) -> list[str]:
+    """Make executable requirements part of every acceptance transition."""
+    changed = 0
+    for table in ("template_transition", "workflow_transition"):
+        rows = conn.execute(
+            f"SELECT id, gates FROM {table} WHERE to_status = 'accepted'"
+        ).fetchall()
+        for row in rows:
+            gates = [g.strip() for g in (row["gates"] or "").split(",") if g.strip()]
+            if "required_validations_pass" in gates:
+                continue
+            gates.append("required_validations_pass")
+            conn.execute(
+                f"UPDATE {table} SET gates = ? WHERE id = ?",
+                (",".join(gates), row["id"]),
+            )
+            changed += 1
+    conn.commit()
+    return [f"added required validation gate to {changed} acceptance transition(s)"] \
+        if changed else []
+
+
 def load_v2_export(conn: Conn, project_id: int, tables: dict[str, list[dict]]) -> list[str]:
     """Public entry point for importing a v2 JSON dump into a v3 store."""
     old = {name: tables.get(name, []) for name in _V2_TABLES}
@@ -908,7 +931,7 @@ def list_projects(conn: Conn) -> list[Row]:
     ).fetchall()
 
 
-_SERIAL_TABLES = ["project", "task", "task_item", "dependency", "artifact",
+_SERIAL_TABLES = ["project", "task", "task_item", "execution_result", "dependency", "artifact",
                   "review_thread", "review_comment", "event"]
 
 
