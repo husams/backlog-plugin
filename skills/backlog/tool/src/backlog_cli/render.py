@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from .db import Conn, Row
 from .schema import (
     ITEM_KIND_DISPLAY,
@@ -132,7 +130,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
         spec = it.get("execution_spec")
         if spec and spec.get("shell"):
             shell = spec["shell"]
-            out.append(f"{indent}        command: {shell['command']}")
+            out.append(f"{indent}        command: hidden")
             out.append(
                 f"{indent}        expected: exit {shell.get('expected_exit_code', 0)}"
             )
@@ -149,16 +147,14 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
         elif spec and spec.get("hook"):
             hook = spec["hook"]
             out.append(f"{indent}        hook: {hook['name']}")
-            out.append(
-                f"{indent}        expected: "
-                + json.dumps(hook.get("expected_result"), sort_keys=True)
-            )
+            out.append(f"{indent}        arguments: hidden")
+            out.append(f"{indent}        expected: hidden")
     return out
 
 
 def _matcher_text(value: dict) -> str:
-    name, expected = next(iter(value.items()))
-    return f"{name} {expected!r}"
+    name = next(iter(value))
+    return f"{name} (value hidden)"
 
 
 def render_task(conn: Conn, row: Row) -> str:

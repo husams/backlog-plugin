@@ -364,7 +364,8 @@ def _execution_spec(args) -> dict | None:
     if shell is not None and hook is not None:
         raise BacklogError("--shell and --hook are mutually exclusive")
     requirement = getattr(args, "requirement", None) or "required"
-    timeout = getattr(args, "timeout", None) or 60
+    timeout_value = getattr(args, "timeout", None)
+    timeout = 60 if timeout_value is None else timeout_value
     if shell is not None:
         environment = {}
         for pair in getattr(args, "environment", None) or []:

@@ -142,8 +142,8 @@ Any column is an attribute: `key`, `title`, `status`, `task_type`, `priority`,
 | `t.children` | `list[Task]` |
 | `t.blockers` | unfinished blockers as `{other_key, other_status}` |
 | `t.items(kind=None)` | criteria / checklist / notes as strings |
-| `t.item_details(kind=None)` | safe plain/executable views with requirement and state |
-| `t.executable_items()` | safe executable-only views; environment values redacted |
+| `t.item_details(kind=None)` | value-opaque plain/executable views with requirement and state |
+| `t.executable_items()` | value-opaque executable-only views; secret-bearing fields hidden |
 | `t.open_threads` | root keys of open review threads |
 
 `str(task)` is `KEY  status  title`.

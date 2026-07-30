@@ -276,31 +276,23 @@ def public_executable(conn: Conn, item_id: int) -> dict[str, Any]:
 def _public_spec(spec: dict[str, Any]) -> dict[str, Any]:
     spec = dict(spec)
     shell = spec.get("shell")
-    if shell and shell.get("environment"):
+    if shell:
         shell = dict(shell)
-        shell["environment"] = sorted(shell["environment"])
+        shell["command"] = "<hidden>"
+        if shell.get("environment"):
+            shell["environment"] = sorted(shell["environment"])
+        for stream in ("stdout", "stderr"):
+            matcher = shell.get(stream)
+            if matcher:
+                shell[stream] = {next(iter(matcher)): "<hidden>"}
         spec = {**spec, "shell": shell}
     hook = spec.get("hook")
-    if hook and hook.get("arguments"):
+    if hook:
         hook = dict(hook)
-        hook["arguments"] = _redact_sensitive(hook["arguments"])
+        hook["arguments"] = "<hidden>"
+        hook["expected_result"] = "<hidden>"
         spec = {**spec, "hook": hook}
     return spec
-
-
-def _redact_sensitive(value: Any) -> Any:
-    if isinstance(value, dict):
-        result = {}
-        for key, child in value.items():
-            sensitive = any(
-                marker in str(key).lower()
-                for marker in ("secret", "token", "password", "credential", "api_key")
-            )
-            result[key] = "<redacted>" if sensitive else _redact_sensitive(child)
-        return result
-    if isinstance(value, list):
-        return [_redact_sensitive(child) for child in value]
-    return value
 
 
 def record_result(

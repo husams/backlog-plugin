@@ -12,6 +12,8 @@ from unittest.mock import patch
 from backlog_cli import api
 from backlog_cli.db import BacklogError
 
+SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
+
 
 class ItemAuthoringCliTest(unittest.TestCase):
     def setUp(self):
@@ -21,7 +23,7 @@ class ItemAuthoringCliTest(unittest.TestCase):
             **os.environ,
             "BACKLOG_DB": "sqlite",
             "BACK_LOG_URL": "",
-            "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
+            "PYTHONPATH": str(SOURCE_ROOT),
         }
         self.run_cli("init", ".")
 
@@ -71,7 +73,15 @@ class ItemAuthoringCliTest(unittest.TestCase):
             self.assertNotIn("top-secret", output)
         self.assertIn("[shell, advisory, pending]", listed_text)
         self.assertIn("API_TOKEN (values hidden)", shown_text)
+        self.assertIn("command: hidden", shown_text)
         self.assertEqual(listed_json[0]["state"], "pending")
+        self.assertEqual(
+            listed_json[0]["execution_spec"]["shell"]["command"], "<hidden>"
+        )
+        self.assertEqual(
+            listed_json[0]["execution_spec"]["shell"]["stdout"],
+            {"contains": "<hidden>"},
+        )
         self.assertEqual(
             listed_json[0]["execution_spec"]["shell"]["environment"], ["API_TOKEN"]
         )
@@ -86,8 +96,9 @@ class ItemAuthoringCliTest(unittest.TestCase):
         initial = self.run_cli("item", "list", story["key"], json_output=True)
         self.assertEqual(initial[0]["executor"], "hook")
         self.assertEqual(initial[0]["state"], "pending")
+        self.assertEqual(initial[0]["execution_spec"]["hook"]["arguments"], "<hidden>")
         self.assertEqual(
-            initial[0]["execution_spec"]["hook"]["expected_result"], {"passed": True}
+            initial[0]["execution_spec"]["hook"]["expected_result"], "<hidden>"
         )
 
         replaced = self.run_cli(
@@ -119,6 +130,49 @@ class ItemAuthoringCliTest(unittest.TestCase):
             self.run_cli("item", "list", story["key"], json_output=True), []
         )
 
+    def test_public_views_hide_adversarial_secret_values(self):
+        secret_values = (
+            "command-secret", "argument-secret", "nested-list-secret",
+            "expected-secret", "matcher-secret",
+        )
+        shell = self.run_cli(
+            "story", "add", "--title", "Secret shell", "--ac", "safe view",
+            "--shell", "run --token command-secret",
+            "--stdout-equals", "matcher-secret", json_output=True,
+        )
+        hook = self.run_cli(
+            "story", "add", "--title", "Secret hook", "--ac", "safe hook",
+            "--hook", "checks.secret",
+            "--arguments", '{"unusual":[{"value":"argument-secret"},["nested-list-secret"]]}',
+            "--expected-result", '{"opaque":"expected-secret"}',
+            json_output=True,
+        )
+        outputs = []
+        for key in (shell["key"], hook["key"]):
+            outputs.extend(
+                [
+                    self.run_cli("item", "list", key),
+                    self.run_cli("show", key),
+                    json.dumps(self.run_cli("item", "list", key, json_output=True)),
+                    json.dumps(self.run_cli("show", key, json_output=True)),
+                ]
+            )
+        for output in outputs:
+            for secret in secret_values:
+                self.assertNotIn(secret, output)
+
+    def test_explicit_zero_timeout_is_rejected(self):
+        story = self.run_cli("story", "add", "--title", "Timeout", json_output=True)
+        result = self.raw(
+            "item", "add", story["key"], "--content", "must reject",
+            "--shell", "true", "--timeout", "0",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("timeout_seconds must be a positive integer", result.stderr)
+        self.assertEqual(
+            self.run_cli("item", "list", story["key"], json_output=True), []
+        )
+
 
 class ItemAuthoringApiTest(unittest.TestCase):
     def setUp(self):
@@ -126,7 +180,12 @@ class ItemAuthoringApiTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.env = patch.dict(
             os.environ,
-            {"BACKLOG_DB": "sqlite", "BACK_LOG_URL": "", "BACKLOG_DIR": ""},
+            {
+                "BACKLOG_DB": "sqlite",
+                "BACK_LOG_URL": "",
+                "BACKLOG_DIR": "",
+                "PYTHONPATH": str(SOURCE_ROOT),
+            },
         )
         self.env.start()
         self.old_cwd = Path.cwd()
@@ -176,12 +235,28 @@ class ItemAuthoringApiTest(unittest.TestCase):
                     "requirement": "advisory",
                     "hook": {
                         "name": "checks.api",
-                        "arguments": {"fast": True},
-                        "expected_result": True,
+                        "arguments": {
+                            "unrecognized": [
+                                {"value": "api-argument-secret"},
+                                ["api-list-secret"],
+                            ]
+                        },
+                        "expected_result": {"opaque": "api-expected-secret"},
                     },
                 },
             )
             self.assertEqual(checklist["executor"], "hook")
+            public_views = [
+                checklist,
+                *backlog.task(feature.key).item_details(),
+                *backlog.task(feature.key).executable_items(),
+            ]
+            for view in public_views:
+                encoded = json.dumps(view)
+                for secret in (
+                    "api-argument-secret", "api-list-secret", "api-expected-secret"
+                ):
+                    self.assertNotIn(secret, encoded)
             updated = backlog.set_item_execution(
                 checklist["id"], {
                     "executor": "shell",
@@ -190,6 +265,7 @@ class ItemAuthoringApiTest(unittest.TestCase):
             )
             self.assertEqual(updated["execution_spec"]["shell"]["environment"], ["PASSWORD"])
             self.assertNotIn("secret", json.dumps(updated))
+            self.assertEqual(updated["execution_spec"]["shell"]["command"], "<hidden>")
             self.assertIn("item_id", updated)
 
             replaced = backlog.set_items(

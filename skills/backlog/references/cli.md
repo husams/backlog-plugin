@@ -109,7 +109,9 @@ Shell options are `--working-directory`, `--expected-exit-code`,
 one non-empty line; existing multi-line plain syntax is unchanged.
 
 `item list` and `show` display plain/shell/hook, required/advisory, and
-`pending` before the first run. Environment values are hidden in text and JSON.
+`pending` before the first run. Commands, matcher values, hook arguments,
+expected hook values, and environment values are hidden in text and JSON;
+environment variable names remain visible.
 
 ## Status and gates
 

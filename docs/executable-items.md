@@ -43,8 +43,10 @@ options to retain the established multi-line plain-text behavior.
 
 `item list` and `show` label each executable item as shell or hook, display
 required/advisory and its current state, and show `pending` before its first
-attempt. Environment variable names are shown, but values are always hidden in
-both human-readable and JSON CLI output.
+attempt. Public views are value-opaque by default: commands, output matcher
+values, hook arguments, and hook expected values are hidden. Environment
+variable names are shown, but values are hidden. This applies equally to human
+and JSON CLI output and to Python API inspection.
 
 The Python API provides `create_feature`, `create_story`, `add_item`, and
 `set_items`. Item inputs are either plain strings or mappings:
@@ -66,7 +68,7 @@ with api.open(actor="planner") as backlog:
 
 `Task.items()` remains the backward-compatible text-only view.
 `Task.item_details()` and `Task.executable_items()` return safe inspection
-views; requested environment values are redacted to names.
+views; secret-bearing values are replaced with explicit hidden markers.
 
 ## Trusted local policy
 
