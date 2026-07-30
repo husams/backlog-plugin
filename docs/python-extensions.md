@@ -51,7 +51,7 @@ to define action classes.
 The project may define either or both functions:
 
 ```python
-def before_transition(
+def pre_transition(
     action: Action,
     trigger: dict,
     current_state: str,
@@ -60,7 +60,7 @@ def before_transition(
     return new_state
 
 
-def after_transition(
+def post_transition(
     action: Action,
     trigger: dict,
     previous_state: str,
@@ -77,7 +77,7 @@ The arguments are:
 - `current_state`: the state before the transition;
 - `new_state`: the state selected by the workflow.
 
-For `after_transition`, `previous_state` is the state before the committed
+For `post_transition`, `previous_state` is the state before the committed
 transition and `current_state` is the state after it.
 
 `trigger` uses ordinary Python data rather than a custom class. For example:
@@ -92,15 +92,15 @@ transition and `current_state` is the state after it.
 }
 ```
 
-## Before transition
+## Pre-transition hook
 
-`before_transition` runs after the workflow has selected the normal
+`pre_transition` runs after the workflow has selected the normal
 destination but before Backlog changes the task status.
 
 It returns the state Backlog should use:
 
 ```python
-def before_transition(action, trigger, current_state, new_state):
+def pre_transition(action, trigger, current_state, new_state):
     return new_state
 ```
 
@@ -110,7 +110,7 @@ A project can override the destination by returning another state:
 from backlog_cli.hooks import Action
 
 
-def before_transition(action, trigger, current_state, new_state):
+def pre_transition(action, trigger, current_state, new_state):
     if action == Action.ACCEPT and not project_checks_passed():
         return "needs_work"
     return new_state
@@ -122,9 +122,9 @@ state before updating the task.
 If the hook raises an exception or returns an invalid state, Backlog rejects
 the transition and leaves the task unchanged.
 
-## After transition
+## Post-transition hook
 
-`after_transition` runs after Backlog has committed the state change. It can
+`post_transition` runs after Backlog has committed the state change. It can
 notify another system, record project-specific information, or trigger any
 other project logic:
 
@@ -132,7 +132,7 @@ other project logic:
 from backlog_cli.hooks import Action
 
 
-def after_transition(action, trigger, previous_state, current_state):
+def post_transition(action, trigger, previous_state, current_state):
     if action == Action.COMPLETE:
         notify_release_system(trigger["actor"], current_state)
 ```
@@ -149,10 +149,10 @@ For every API operation that causes a state transition, Backlog:
 
 1. Converts the API operation to a standard `Action`.
 2. Uses the active workflow to find the normal destination state.
-3. Calls `before_transition`.
+3. Calls `pre_transition`.
 4. Validates the state returned by the hook.
 5. Commits the transition.
-6. Calls `after_transition`.
+6. Calls `post_transition`.
 
 All command-line operations use the same Python APIs, so hooks apply equally
 to API and command-line transitions. Direct status updates must not bypass
@@ -168,13 +168,13 @@ from backlog_cli.hooks import Action
 from project_tools import publish_event, release_check_passed
 
 
-def before_transition(action, trigger, current_state, new_state):
+def pre_transition(action, trigger, current_state, new_state):
     if action == Action.COMPLETE and not release_check_passed():
         return current_state
     return new_state
 
 
-def after_transition(action, trigger, previous_state, current_state):
+def post_transition(action, trigger, previous_state, current_state):
     if action == Action.COMPLETE and current_state == "done":
         publish_event(
             "backlog.completed",
