@@ -85,8 +85,9 @@ with api.open(actor="github-actions") as bl:
 
 Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
 `assets/default-workflow.yaml`. It resolves `(task type, current state,
-action)` to a destination, runs `.backlog/hooks.py::pre_transition`, enforces
-the normal transition and gates, commits, then runs `post_transition`.
+action)` to a destination, imports `pre_transition` and `post_transition` from
+`.backlog/hooks/__init__.py`, enforces the normal transition and gates,
+commits, then runs the post hook.
 
 `move` remains available for human-requested destination changes and also runs
 the hooks using the standard action inferred from the transition.

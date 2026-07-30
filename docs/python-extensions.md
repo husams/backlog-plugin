@@ -3,13 +3,27 @@
 The hook loader, action dispatcher, bundled workflow fallback, and public
 Python and command interfaces described here are implemented in Backlog 1.4.
 
-A project may add one optional Python file at:
+A project may add one optional Python package at:
 
 ```text
-<project>/.backlog/hooks.py
+<project>/.backlog/hooks/
+├── __init__.py
+├── transitions.py
+└── notifications.py
 ```
 
-If the file does not exist, Backlog continues normally without hooks.
+Only `__init__.py` has a fixed meaning: it exports `pre_transition` and/or
+`post_transition`. The other module names are project conventions and can be
+split further as the project grows:
+
+```python
+from .notifications import post_transition
+from .transitions import pre_transition
+
+__all__ = ["pre_transition", "post_transition"]
+```
+
+If the package does not exist, Backlog continues normally without hooks.
 
 Hooks receive simple transition information. Project developers decide what
 policy to enforce with that information. There are no policy classes,
@@ -288,18 +302,27 @@ this sequence.
 
 ## Example
 
-This complete `.backlog/hooks.py` keeps accepted work out of `done` until the
-project's own release check passes, then publishes an event after completion:
+This package keeps accepted work out of `done` until the project's own release
+check passes, then publishes an event after completion.
+
+`.backlog/hooks/transitions.py`:
 
 ```python
 from backlog_cli.hooks import Action
-from project_tools import publish_event, release_check_passed
+from project_tools import release_check_passed
 
 
 def pre_transition(action, trigger, current_state, new_state):
     if action == Action.DELIVERY_ACCEPTED and not release_check_passed():
         return current_state
     return new_state
+```
+
+`.backlog/hooks/notifications.py`:
+
+```python
+from backlog_cli.hooks import Action
+from project_tools import publish_event
 
 
 def post_transition(action, trigger, previous_state, current_state):

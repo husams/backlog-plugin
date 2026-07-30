@@ -7,7 +7,8 @@ dist/
 build/
 .backlog/*
 !.backlog/README.md
-!.backlog/hooks.py
+!.backlog/hooks/
+!.backlog/hooks/**
 !.backlog/workflow.yaml
 *.sqlite
 *.sqlite3

@@ -1,6 +1,6 @@
 {
   "name": "backlog-plugin",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Track project backlogs, dependencies, workflows, reviews, and pull request gates.",
   "author": {
     "name": "Husam Senussi",

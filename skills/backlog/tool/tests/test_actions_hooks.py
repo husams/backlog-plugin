@@ -23,30 +23,49 @@ class ActionHookIntegrationTest(unittest.TestCase):
             "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
         }
         self.run_cli("init", ".")
-        hooks = self.root / ".backlog" / "hooks.py"
-        hooks.write_text(
+        hooks = self.root / ".backlog" / "hooks"
+        hooks.mkdir()
+        (hooks / "__init__.py").write_text(
+            """
+from .notifications import post_transition
+from .transitions import pre_transition
+""".lstrip(),
+            encoding="utf-8",
+        )
+        (hooks / "transitions.py").write_text(
             """
 import os
 from pathlib import Path
 
 
-def _record(stage, action, current_state, new_state):
+def _record(action, current_state, new_state):
     path = Path(os.environ["BACKLOG_HOOK_LOG"])
     with path.open("a", encoding="utf-8") as stream:
         stream.write(
-            f"{stage}:{action.value}:{current_state}:{new_state}\\n"
+            f"pre:{action.value}:{current_state}:{new_state}\\n"
         )
 
 
 def pre_transition(action, trigger, current_state, new_state):
-    _record("pre", action, current_state, new_state)
+    _record(action, current_state, new_state)
     if trigger["parameters"].get("block") == "yes":
         return current_state
     return new_state
+""".lstrip(),
+            encoding="utf-8",
+        )
+        (hooks / "notifications.py").write_text(
+            """
+import os
+from pathlib import Path
 
 
 def post_transition(action, trigger, previous_state, current_state):
-    _record("post", action, previous_state, current_state)
+    path = Path(os.environ["BACKLOG_HOOK_LOG"])
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(
+            f"post:{action.value}:{previous_state}:{current_state}\\n"
+        )
 """.lstrip(),
             encoding="utf-8",
         )
