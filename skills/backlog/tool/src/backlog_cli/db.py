@@ -538,6 +538,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         _add_column(conn, "execution_result", "stdout", "TEXT NOT NULL DEFAULT ''")
         _add_column(conn, "execution_result", "stderr", "TEXT NOT NULL DEFAULT ''")
         _add_column(conn, "execution_result", "duration_ms", "INTEGER NOT NULL DEFAULT 0")
+        _add_column(conn, "execution_result", "actor", "TEXT NOT NULL DEFAULT 'unknown'")
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
         conn.executescript(SCHEMA_SQL)
@@ -939,7 +940,8 @@ def list_projects(conn: Conn) -> list[Row]:
     ).fetchall()
 
 
-_SERIAL_TABLES = ["project", "task", "task_item", "execution_result", "dependency", "artifact",
+_SERIAL_TABLES = ["project", "task", "task_item", "execution_result", "validation_waiver",
+                  "dependency", "artifact",
                   "review_thread", "review_comment", "event"]
 
 

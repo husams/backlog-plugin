@@ -65,18 +65,20 @@ for writes made through the session.
 | `bl.create_feature(title, **fields)` / `bl.create_story(title, feature=, **fields)` | create with optional plain/executable `acceptance_criteria` |
 | `bl.add_item(key, kind, content, execution_spec=None)` | author one plain/shell/hook item |
 | `bl.set_items(key, kind, items)` | replace items from strings or `{content, execution}` mappings |
-| `bl.run_item(item_id, project_root, policy=None, actor=None)` | execute one shell item under trusted local policy |
-| `bl.run_task(key, project_root, fail_fast=False, policy=None, actor=None)` | execute all shell items in declaration order |
+| `bl.run_item(item_id, project_root, policy=None, actor=None)` | execute one shell or hook item under trusted local policy |
+| `bl.run_task(key, project_root, fail_fast=False, policy=None, actor=None)` | execute all executable items in declaration order |
+| `bl.execution_history(item_id, limit=20, project_root=None)` | bounded newest-first result history with stale metadata |
+| `bl.waive_validation(item_id, reason=, actor=None)` | record an audited waiver for the current execution spec |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
 
 Waivers match the CLI flags: `allow_blocked`, `no_pr`, `allow_open_children`.
 
-`run_item` returns `ExecutionResult`; `run_task` returns a list of them.
-Each result exposes `status`, `executor`, `expected`, `actual_exit_code`,
-bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`, and
-`output_truncated`. Local policy is read from the explicit project checkout.
-The default batch behavior runs everything; `fail_fast=True` stops after the
-first fail, error, or item timeout.
+Shell runs return `ExecutionResult`; hook runs return
+`ValidationExecutionResult`; `run_task` may contain both. Local policy is read
+from the explicit project checkout. The default batch behavior runs
+everything; `fail_fast=True` stops after the first fail, error, or item
+timeout. Required-item aggregate success means current pass (waivers satisfy
+the acceptance gate but are not reported as execution passes).
 
 ## Actions and transition hooks
 

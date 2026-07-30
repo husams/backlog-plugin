@@ -93,7 +93,7 @@ changes only when a semantic action resolves through the configured workflow.
 $BL item add KEY [--kind acceptance_criteria|checklist|note] --content "one per line"
 $BL item set KEY --kind checklist --content "..."     # replace every entry of that kind
 $BL item list KEY [--kind K]
-$BL item check ID [--undo]                            # checklist entries only
+$BL item check ID [--undo] [--waive-validation --reason TEXT]
 $BL item rm ID
 ```
 
@@ -136,13 +136,16 @@ pass, `2` blocked, `1` command error. Both read this project's flow — see
 ```bash
 $BL validation run ITEM_ID [--project-root DIR]
 $BL validation run-all KEY [--project-root DIR] [--fail-fast]
+$BL validation history ITEM_ID [--limit 20] [--project-root DIR]
+$BL validation waive ITEM_ID --reason TEXT --actor NAME
 ```
 
 Shell execution is disabled unless the trusted checkout contains
-`.backlog/execution-policy.yaml` with `shell_enabled: true`. One-item and batch
-commands return exit `0` only when every returned result passes, `2` for a
-fail, error, timeout, policy denial, or batch-budget skip, and `1` for command
-errors. Batch execution runs every shell item in declaration order unless
+`.backlog/execution.yaml` with `shell_enabled: true`. One-item and batch
+commands return exit `0` only when the item, or every required item, has a
+current pass; they return `2` for pending, stale, fail, error, timeout, policy
+denial, or batch-budget skip, and `1` for command errors. Batch execution runs
+every shell or hook item in declaration order unless
 `--fail-fast` is explicit. See
 [the executable-item guide](../../../docs/executable-items.md).
 

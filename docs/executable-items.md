@@ -93,9 +93,9 @@ Runners must check `ExecutionPolicy.denial_reason()` before starting. A denial
 is recorded as `skipped` with reason `policy_denied`; it is never `fail` or
 `error`.
 
-## Running shell validation
+## Running validation
 
-Run one declared shell item, or every shell item on a task:
+Run one declared shell or hook item, or every executable item on a task:
 
 ```bash
 backlog validation run 1457 --project-root .
@@ -140,10 +140,10 @@ pre-invocation error. Name-to-value mappings are rejected, so shared execution
 specs, result rows, API results, and audit actions never receive the value.
 
 Schema v10 combines shell result fields with the v9 named-hook result fields.
-Opening an S-009-era v9 store additively installs the shell fields without
-altering its hook results.
+Schema v11 additively adds durable result actors and validation waivers.
+Opening a v9 or v10 store migrates forward without altering existing results.
 
-The returned `ExecutionResult` has `status`, `executor`, `expected`,
+Shell results expose `status`, `executor`, `expected`,
 `actual_exit_code`, bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`,
 and `output_truncated`. Exit or matcher differences are `fail`. Startup and
 runtime infrastructure problems are `error`. Timeout is `error/timed_out`.
@@ -153,6 +153,11 @@ An invocation emits `check.started` only after the process starts, followed by
 exactly one terminal check action. Resolution and startup errors emit only
 `check.failed`. Skipped attempts emit no check action and cannot alter task
 status.
+
+`validation run-all` returns zero only when every required executable item has
+a current `pass`. Required items that are pending, failed, errored, skipped, or
+stale make the aggregate exit code `2`; advisory results remain visible but do
+not affect the aggregate verdict.
 
 ## Results, pending, and source identity
 
@@ -164,10 +169,30 @@ There is no result row before the first attempt; the single displayed state is
 - `error`: execution started but could not produce a comparable result;
 - `skipped`: trusted local policy prevented execution from starting.
 
-Only a result whose `spec_fingerprint` equals the current item fingerprint is
-fresh. Every required item needs a fresh `pass` for
-`required_validations_pass`; advisory outcomes and advisory pending items stay
-visible but do not block acceptance.
+Only a result whose `spec_fingerprint` and available source identity match the
+current item and checkout is current. Every required item needs a current
+`pass` or an explicit audited waiver for `required_validations_pass`; advisory
+outcomes and advisory pending items stay visible but do not block acceptance.
+
+Inspect newest-first bounded history or waive a current requirement:
+
+```bash
+backlog validation history 1457 --limit 20 --project-root .
+backlog validation waive 1457 --actor release-manager \
+  --reason "External certification reviewed in change record CR-42"
+```
+
+History includes actor, timestamp, expected result, actual result, diagnostic,
+and stale state. Limits must be between 1 and 100. A passing required
+executable checklist item is checked automatically. Executable acceptance
+criteria remain non-tickable. Manual completion of a failed, stale, or pending
+executable checklist item is refused unless the caller uses
+`item check ID --waive-validation --reason TEXT --actor NAME`; actor and a
+non-empty reason are mandatory.
+
+`backlog doctor` reports current skipped attempts and active waivers with task,
+item, executor, actor, reason, prior result, and timestamp. A later current,
+unwaived pass supersedes both diagnostics.
 
 Source identity is optional. A clean Git checkout records `HEAD`. A dirty
 checkout also records a deterministic hash over tracked and non-ignored
@@ -203,7 +228,8 @@ max_timeout_seconds: 60
 ```
 
 Run an item through `Backlog.run_hook_validation(item_id, actor=...,
-project_root=...)`. The hook receives the typed backlog session, an immutable
+project_root=...)`, or use the executor-neutral `Backlog.run_item(...)`. The
+hook receives the typed backlog session, an immutable
 `ValidationContext`, and the JSON-like arguments stored on the item. It must
 return `ValidationHookResult`; its `value` is compared to `expected_result`
 using typed JSON equality and normalized to the common `pass`/`fail`/`error`

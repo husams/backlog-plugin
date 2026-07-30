@@ -47,6 +47,9 @@ $BL item set S-001 --kind acceptance_criteria --content "..."   # replace them a
 
 Only checklist entries are tickable. Acceptance criteria are proven by review,
 not by a tick — that is what the `review_threads_closed` gate is for.
+Passing a required executable checklist checks it automatically. A failed,
+stale, or pending executable checklist cannot be checked manually without
+`--waive-validation --reason TEXT --actor NAME`; the waiver is audited.
 
 One criterion or checklist entry may declare a shell or hook executor:
 

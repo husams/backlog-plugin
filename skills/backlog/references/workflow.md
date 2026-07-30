@@ -59,6 +59,7 @@ failure **exits 1** listing which check failed and why.
 | `pr_recorded` | a pull request is referenced |
 | `pr_approved` | `pr_review_state` is `approved` |
 | `pr_merged` | `pr_state` is `merged` |
+| `required_validations_pass` | every required executable item has a current pass or audited waiver |
 
 `$BL workflow gates` prints this list live.
 

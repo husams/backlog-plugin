@@ -655,6 +655,23 @@ class Backlog:
             self._conn, item_id, spec_fingerprint, status, **kwargs
         )
 
+    def execution_history(self, item_id: int, *, limit: int = 20,
+                          project_root=None) -> list[dict]:
+        """Newest-first bounded validation history with freshness metadata."""
+        from pathlib import Path
+        root = Path(project_root) if project_root is not None else None
+        return execution.execution_history(
+            self._conn, item_id, limit=limit, project_root=root
+        )
+
+    def waive_validation(self, item_id: int, *, reason: str,
+                         actor: str | None = None) -> dict:
+        """Audit an explicit waiver for the item's current execution spec."""
+        return execution.waive_validation(
+            self._conn, self.pid, item_id,
+            actor=actor or self.actor or "", reason=reason,
+        )
+
     def execution_policy(self, project_root) -> ExecutionPolicy:
         """Load trusted local policy from the executing project checkout."""
         from pathlib import Path
@@ -678,9 +695,9 @@ class Backlog:
     def run_item(self, item_id: int, project_root, *,
                  policy: ExecutionPolicy | None = None,
                  actor: str | None = None) -> ExecutionResult:
-        """Run one shell executable item under trusted local policy."""
+        """Run one shell or hook executable item under trusted local policy."""
         from pathlib import Path
-        return execution.run_shell(
+        return execution.run_validation(
             self, item_id, Path(project_root), policy=policy,
             actor=actor or self.actor,
         )
@@ -688,9 +705,9 @@ class Backlog:
     def run_task(self, key: str, project_root, *, fail_fast: bool = False,
                  policy: ExecutionPolicy | None = None,
                  actor: str | None = None) -> list[ExecutionResult]:
-        """Run all shell executable items in declaration order."""
+        """Run all executable items in declaration order."""
         from pathlib import Path
-        return execution.run_task_shells(
+        return execution.run_task_validations(
             self, key, Path(project_root), fail_fast=fail_fast, policy=policy,
             actor=actor or self.actor,
         )

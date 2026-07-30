@@ -394,7 +394,7 @@ def record_result(
     duration_ms: int = 0,
     started_at: str | None = None, finished_at: str | None = None,
     expected: Any = None, actual: Any = None, hook_name: str | None = None,
-    implementation_identity: str | None = None,
+    implementation_identity: str | None = None, actor: str | None = None,
 ) -> dict[str, Any]:
     try:
         terminal = TerminalStatus(status)
@@ -420,14 +420,14 @@ def record_result(
         "expected_result,actual_result,hook_name,implementation_identity,"
         "actual_exit_code,stdout,stderr,duration_ms,"
         "source_revision,source_dirty_fingerprint,source_revision_unavailable,"
-        "started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "actor,started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (item_id, spec_fingerprint, terminal.value, reason, detail,
          json.dumps(expected, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
          json.dumps(actual, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
          hook_name, implementation_identity, actual_exit_code, stdout, stderr,
          duration_ms, source.revision,
          source.dirty_fingerprint, 1 if source.unavailable else 0,
-         started_at or now, finished_at or now),
+         (actor or "unknown").strip() or "unknown", started_at or now, finished_at or now),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM execution_result WHERE id = ?", (rid,)).fetchone()
@@ -608,7 +608,10 @@ def _hook_terminal(
         reason=reason, detail=detail, source=source or source_identity(root),
         expected=hook_spec.expected_result, actual=actual, hook_name=hook_spec.name,
         implementation_identity=identity,
+        actor=actor,
     )
+    if status == TerminalStatus.PASS:
+        _after_pass(backlog, item_id, actor)
     return ValidationExecutionResult(
         status, reason, detail, hook_spec.expected_result, actual,
         hook_spec.name, identity, record,
@@ -682,6 +685,7 @@ def run_shell(
             backlog, task["key"], item_id, spec, "skipped",
             reason="policy_denied", diagnostic=f"policy_denied:{denied}",
             source=SourceIdentity(unavailable=True),
+            actor=actor,
         )
         return result
     return _invoke_shell(backlog, task["key"], item_id, spec, root, policy, actor)
@@ -721,6 +725,78 @@ def run_task_shells(
         )
         results.append(result)
         if fail_fast and result.status in {"fail", "error"}:
+            break
+    return results
+
+
+def run_validation(
+    backlog, item_id: int, project_root: Path, *,
+    policy: ExecutionPolicy | None = None, actor: str | None = None,
+) -> ExecutionResult | ValidationExecutionResult:
+    """Run either executor through one stable public operation."""
+    executable = executable_item(backlog._conn, item_id)
+    executor = Executor(executable["executor"])
+    effective_actor = actor or backlog.actor or "unknown"
+    if executor == Executor.HOOK:
+        return run_hook_validation(
+            backlog, item_id, actor=effective_actor, project_root=project_root
+        )
+    return run_shell(
+        backlog, item_id, project_root, policy=policy, actor=effective_actor
+    )
+
+
+def run_task_validations(
+    backlog, key: str, project_root: Path, *, fail_fast: bool = False,
+    policy: ExecutionPolicy | None = None, actor: str | None = None,
+) -> list[ExecutionResult | ValidationExecutionResult]:
+    """Run all executable items in item declaration order."""
+    task = backlog.task(key)
+    rows = backlog._conn.execute(
+        "SELECT e.* FROM executable_item e "
+        "JOIN task_item i ON i.id=e.item_id WHERE i.task_id=? "
+        "ORDER BY i.kind,i.position,i.id",
+        (task.id,),
+    ).fetchall()
+    root = Path(project_root).resolve()
+    policy = policy or load_policy(root)
+    started = time.monotonic()
+    results: list[ExecutionResult | ValidationExecutionResult] = []
+    budget_exhausted = False
+    for row in rows:
+        spec = parse_spec(json.loads(row["execution_spec"]))
+        timeout = (
+            spec.shell.timeout_seconds if spec.shell is not None
+            else spec.hook.timeout_seconds
+        )
+        remaining = policy.max_batch_seconds - (time.monotonic() - started)
+        if budget_exhausted or remaining < timeout:
+            budget_exhausted = True
+            if spec.shell is not None:
+                result = _record_shell_result(
+                    backlog, task.key, int(row["item_id"]), spec, "skipped",
+                    reason="batch_budget_exhausted",
+                    diagnostic="batch_budget_exhausted",
+                    source=SourceIdentity(unavailable=True),
+                    actor=actor or backlog.actor,
+                )
+            else:
+                assert spec.hook is not None
+                result = _hook_terminal(
+                    backlog, row, spec.hook, actor or backlog.actor or "unknown",
+                    root, TerminalStatus.SKIPPED, "batch_budget_exhausted",
+                    "batch_budget_exhausted", None, None, emit_failed=False,
+                )
+            results.append(result)
+            continue
+        result = run_validation(
+            backlog, int(row["item_id"]), root,
+            policy=policy, actor=actor,
+        )
+        results.append(result)
+        if fail_fast and result.status in {
+            TerminalStatus.FAIL, TerminalStatus.ERROR, "fail", "error"
+        }:
             break
     return results
 
@@ -810,6 +886,7 @@ def _invoke_shell(backlog, task_key: str, item_id: int, spec: ExecutionSpec,
         diagnostic=diagnostic, actual_exit_code=process.returncode,
         stdout=stdout, stderr=stderr, duration_ms=duration_ms,
         source=source_identity(root), started_at=started_wall,
+        actor=actor,
     )
     terminal = "check.timed_out" if timed_out else (
         "check.passed" if status == "pass" else "check.failed"
@@ -826,7 +903,7 @@ def _pre_invocation_error(backlog, task_key: str, item_id: int,
                           root: Path, actor: str | None) -> ExecutionResult:
     result = _record_shell_result(
         backlog, task_key, item_id, spec, "error", diagnostic=diagnostic,
-        source=source_identity(root),
+        source=source_identity(root), actor=actor,
     )
     backlog.trigger(
         task_key, _action("check.failed"), actor=actor,
@@ -843,20 +920,30 @@ def _record_shell_result(backlog, task_key: str, item_id: int,
                          stdout: str = "", stderr: str = "",
                          duration_ms: int = 0,
                          source: SourceIdentity | None = None,
-                         started_at: str | None = None) -> ExecutionResult:
+                         started_at: str | None = None,
+                         actor: str | None = None) -> ExecutionResult:
     executable = executable_item(backlog._conn, item_id)
-    record_result(
-        backlog._conn, item_id, executable["spec_fingerprint"], status,
-        reason=reason, detail=diagnostic, source=source,
-        actual_exit_code=actual_exit_code, stdout=stdout, stderr=stderr,
-        duration_ms=duration_ms, started_at=started_at,
-    )
     assert spec.shell is not None
     expected = {
         "exit_code": spec.shell.expected_exit_code,
         "stdout": asdict(spec.shell.stdout) if spec.shell.stdout else None,
         "stderr": asdict(spec.shell.stderr) if spec.shell.stderr else None,
     }
+    actual = {
+        "exit_code": actual_exit_code,
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+    record_result(
+        backlog._conn, item_id, executable["spec_fingerprint"], status,
+        reason=reason, detail=diagnostic, source=source,
+        actual_exit_code=actual_exit_code, stdout=stdout, stderr=stderr,
+        duration_ms=duration_ms, started_at=started_at,
+        actor=actor or backlog.actor,
+        expected=expected, actual=actual,
+    )
+    if status == TerminalStatus.PASS.value:
+        _after_pass(backlog, item_id, actor or backlog.actor or "unknown")
     return ExecutionResult(
         item_id, status, spec.executor.value, expected, actual_exit_code,
         stdout, stderr, duration_ms, diagnostic,
@@ -963,17 +1050,23 @@ def _utc_timestamp() -> str:
     return utcnow()
 
 
-def item_state(conn: Conn, item_id: int) -> str:
+def item_state(conn: Conn, item_id: int, project_root: Path | None = None) -> str:
     """Return pending or the latest fresh terminal status."""
     executable = executable_item(conn, item_id)
     row = conn.execute(
-        "SELECT status FROM execution_result WHERE item_id = ? AND spec_fingerprint = ? "
+        "SELECT * FROM execution_result WHERE item_id = ? AND spec_fingerprint = ? "
         "ORDER BY id DESC LIMIT 1", (item_id, executable["spec_fingerprint"]),
     ).fetchone()
-    return row["status"] if row else "pending"
+    if row is None:
+        return "pending"
+    if project_root is not None and not _source_matches(row, source_identity(project_root)):
+        return "pending"
+    return row["status"]
 
 
-def required_validations_pass(conn: Conn, task_id: int) -> tuple[bool, list[int]]:
+def required_validations_pass(
+    conn: Conn, task_id: int, project_root: Path | None = None,
+) -> tuple[bool, list[int]]:
     rows = conn.execute(
         "SELECT e.item_id, e.spec_fingerprint FROM executable_item e "
         "JOIN task_item i ON i.id=e.item_id "
@@ -982,12 +1075,235 @@ def required_validations_pass(conn: Conn, task_id: int) -> tuple[bool, list[int]
     failed: list[int] = []
     for row in rows:
         latest = conn.execute(
-            "SELECT status FROM execution_result WHERE item_id=? AND spec_fingerprint=? "
+            "SELECT * FROM execution_result WHERE item_id=? AND spec_fingerprint=? "
             "ORDER BY id DESC LIMIT 1", (row["item_id"], row["spec_fingerprint"]),
         ).fetchone()
-        if latest is None or latest["status"] != TerminalStatus.PASS.value:
+        passed = (
+            latest is not None
+            and latest["status"] == TerminalStatus.PASS.value
+            and (
+                project_root is None
+                or _source_matches(latest, source_identity(project_root))
+            )
+        )
+        if not passed and current_waiver(conn, int(row["item_id"])) is None:
             failed.append(int(row["item_id"]))
     return not failed, failed
+
+
+def required_results_pass(
+    conn: Conn, task_id: int, project_root: Path | None = None,
+) -> tuple[bool, list[int]]:
+    """Aggregate execution verdict; unlike workflow gates, waivers are not passes."""
+    rows = conn.execute(
+        "SELECT e.item_id FROM executable_item e JOIN task_item i ON i.id=e.item_id "
+        "WHERE i.task_id=? AND e.requirement='required' ORDER BY e.item_id",
+        (task_id,),
+    ).fetchall()
+    failed = [
+        int(row["item_id"]) for row in rows
+        if item_state(conn, int(row["item_id"]), project_root) != "pass"
+    ]
+    return not failed, failed
+
+
+def execution_history(
+    conn: Conn, item_id: int, *, limit: int = 20,
+    project_root: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Return newest-first bounded, secret-safe result history."""
+    executable = executable_item(conn, item_id)
+    if isinstance(limit, bool) or limit < 1 or limit > 100:
+        raise BacklogError("history limit must be between 1 and 100")
+    current_source = source_identity(project_root) if project_root is not None else None
+    rows = conn.execute(
+        "SELECT * FROM execution_result WHERE item_id=? ORDER BY id DESC LIMIT ?",
+        (item_id, limit),
+    ).fetchall()
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        value = {key: row[key] for key in row.keys()}
+        expected = _decode_json(value.pop("expected_result"))
+        actual = _decode_json(value.pop("actual_result"))
+        if value["hook_name"]:
+            value["expected"] = "<hidden>"
+            value["actual"] = "<hidden>"
+            value["diagnostic"] = value["reason"] or value["status"]
+        else:
+            value["expected"] = _public_shell_expected(expected)
+            value["actual"] = _public_shell_actual(actual)
+            value["diagnostic"] = value["detail"]
+        value.pop("detail")
+        value["stdout"] = "<hidden>" if value["stdout"] else ""
+        value["stderr"] = "<hidden>" if value["stderr"] else ""
+        value["stale"] = (
+            value["spec_fingerprint"] != executable["spec_fingerprint"]
+            or (
+                current_source is not None
+                and not _source_matches(row, current_source)
+            )
+        )
+        history.append(value)
+    return history
+
+
+def waive_validation(
+    conn: Conn, project_id: int, item_id: int, *, actor: str, reason: str,
+) -> dict[str, Any]:
+    actor = (actor or "").strip()
+    reason = (reason or "").strip()
+    if not actor:
+        raise BacklogError("validation waiver requires a non-empty actor")
+    if not reason:
+        raise BacklogError("validation waiver requires a non-empty reason")
+    task = _task_for_item(conn, project_id, item_id)
+    executable = executable_item(conn, item_id)
+    now = utcnow()
+    waiver_id = conn.insert_returning_id(
+        "INSERT INTO validation_waiver(item_id,spec_fingerprint,actor,reason,created_at) "
+        "VALUES(?,?,?,?,?)",
+        (item_id, executable["spec_fingerprint"], actor, reason, now),
+    )
+    from .core import log_event
+    log_event(
+        conn, "validation.waived", project_id, task["id"], task["key"], actor,
+        to_value=str(item_id), detail=reason,
+    )
+    conn.commit()
+    row = conn.execute(
+        "SELECT * FROM validation_waiver WHERE id=?", (waiver_id,)
+    ).fetchone()
+    return {key: row[key] for key in row.keys()}
+
+
+def current_waiver(conn: Conn, item_id: int) -> dict[str, Any] | None:
+    executable = executable_item(conn, item_id)
+    row = conn.execute(
+        "SELECT * FROM validation_waiver WHERE item_id=? AND spec_fingerprint=? "
+        "AND superseded_at IS NULL ORDER BY id DESC LIMIT 1",
+        (item_id, executable["spec_fingerprint"]),
+    ).fetchone()
+    return {key: row[key] for key in row.keys()} if row else None
+
+
+def validation_diagnostics(conn: Conn) -> list[dict[str, Any]]:
+    """Skipped and active-waiver details for doctor."""
+    rows = conn.execute(
+        "SELECT e.item_id,e.executor,e.spec_fingerprint,i.content,t.key AS task_key "
+        "FROM executable_item e JOIN task_item i ON i.id=e.item_id "
+        "JOIN task t ON t.id=i.task_id ORDER BY t.key,e.item_id"
+    ).fetchall()
+    diagnostics: list[dict[str, Any]] = []
+    for row in rows:
+        latest = conn.execute(
+            "SELECT * FROM execution_result WHERE item_id=? AND spec_fingerprint=? "
+            "ORDER BY id DESC LIMIT 1",
+            (row["item_id"], row["spec_fingerprint"]),
+        ).fetchone()
+        skipped = conn.execute(
+            "SELECT s.* FROM execution_result s WHERE s.item_id=? "
+            "AND s.spec_fingerprint=? AND s.status='skipped' "
+            "AND NOT EXISTS (SELECT 1 FROM execution_result p "
+            "  WHERE p.item_id=s.item_id AND p.spec_fingerprint=s.spec_fingerprint "
+            "  AND p.status='pass' AND p.id>s.id) "
+            "ORDER BY s.id DESC LIMIT 1",
+            (row["item_id"], row["spec_fingerprint"]),
+        ).fetchone()
+        waiver = current_waiver(conn, int(row["item_id"]))
+        if skipped is not None:
+            prior = conn.execute(
+                "SELECT status FROM execution_result WHERE item_id=? "
+                "AND spec_fingerprint=? AND id<? ORDER BY id DESC LIMIT 1",
+                (row["item_id"], row["spec_fingerprint"], skipped["id"]),
+            ).fetchone()
+            diagnostics.append({
+                "kind": "skipped", "task": row["task_key"],
+                "item_id": int(row["item_id"]), "item": row["content"],
+                "executor": row["executor"], "actor": skipped["actor"],
+                "reason": skipped["reason"],
+                "prior_result": prior["status"] if prior else "pending",
+                "timestamp": skipped["finished_at"],
+            })
+        if waiver is not None:
+            diagnostics.append({
+                "kind": "waived", "task": row["task_key"],
+                "item_id": int(row["item_id"]), "item": row["content"],
+                "executor": row["executor"], "actor": waiver["actor"],
+                "reason": waiver["reason"],
+                "prior_result": latest["status"] if latest else "pending",
+                "timestamp": waiver["created_at"],
+            })
+    return diagnostics
+
+
+def _after_pass(backlog, item_id: int, actor: str) -> None:
+    now = utcnow()
+    backlog._conn.execute(
+        "UPDATE validation_waiver SET superseded_at=? "
+        "WHERE item_id=? AND superseded_at IS NULL",
+        (now, item_id),
+    )
+    row = backlog._conn.execute(
+        "SELECT i.kind,i.done,e.requirement FROM task_item i "
+        "JOIN executable_item e ON e.item_id=i.id WHERE i.id=?",
+        (item_id,),
+    ).fetchone()
+    if (
+        row is not None and row["kind"] == "checklist"
+        and row["requirement"] == Requirement.REQUIRED.value and not row["done"]
+    ):
+        task = _task_for_item(backlog._conn, backlog.pid, item_id)
+        backlog._conn.execute(
+            "UPDATE task_item SET done=1,updated_at=? WHERE id=?", (now, item_id)
+        )
+        from .core import log_event
+        log_event(
+            backlog._conn, "item", backlog.pid, task["id"], task["key"], actor,
+            to_value="done", detail=f"validation pass automatically checked item #{item_id}",
+        )
+    backlog._conn.commit()
+
+
+def _source_matches(result: Mapping[str, Any], current: SourceIdentity) -> bool:
+    if current.unavailable or result["source_revision_unavailable"]:
+        return True
+    return (
+        result["source_revision"] == current.revision
+        and result["source_dirty_fingerprint"] == current.dirty_fingerprint
+    )
+
+
+def _decode_json(value: str | None) -> Any:
+    return json.loads(value) if value is not None else None
+
+
+def _public_shell_expected(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return "<hidden>" if value is not None else None
+    return {
+        "exit_code": value.get("exit_code"),
+        "stdout": _public_matcher(value.get("stdout")),
+        "stderr": _public_matcher(value.get("stderr")),
+    }
+
+
+def _public_matcher(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return None if value is None else "<hidden>"
+    return {
+        str(name): "<hidden>" for name, matcher in value.items()
+        if matcher is not None
+    }
+
+
+def _public_shell_actual(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return "<hidden>" if value is not None else None
+    return {
+        "exit_code": value.get("exit_code"),
+        "stdout": "<hidden>" if value.get("stdout") else "",
+        "stderr": "<hidden>" if value.get("stderr") else "",
+    }
 
 
 def source_revision_unavailable_items(conn: Conn) -> list[int]:
