@@ -717,7 +717,7 @@ def move(conn: Conn, project_id: int, key: str, to_status: str,
         hook_trigger.setdefault("parameters", {})
         hook_trigger["parameters"].setdefault("requested_state", target)
         hook_trigger["parameters"].setdefault("reason", reason)
-        backlog_dir = require_backlog_dir()
+        backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
         proposed = hooks.pre_transition(
             backlog_dir, hook_action, hook_trigger, current, target
         )
@@ -799,7 +799,7 @@ def trigger_action(
         "actor": actor,
         "parameters": dict(parameters or {}),
     }
-    backlog_dir = require_backlog_dir()
+    backlog_dir = hooks.project_backlog_dir(require_backlog_dir())
     destination = hooks.resolve_transition(
         backlog_dir, task["task_type"], task["status"], action
     )

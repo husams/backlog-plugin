@@ -84,7 +84,8 @@ class Ctx:
         if self._project is None:
             slug = self.project_override or self.spec.project
             self._project = require_project(self.conn, slug)
-            hooks.apply_workflow(self.conn, int(self._project["id"]), self.dir)
+            config_dir = hooks.project_backlog_dir(self.dir)
+            hooks.apply_workflow(self.conn, int(self._project["id"]), config_dir)
         return self._project
 
     @property

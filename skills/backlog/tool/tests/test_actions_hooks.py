@@ -7,6 +7,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from backlog_cli import hooks
 
 
 class ActionHookIntegrationTest(unittest.TestCase):
@@ -140,6 +143,14 @@ transitions:
         )
         self.run_cli("action", "S-001", "refinement.accepted")
         self.assertEqual(self.status("S-001"), "incomplete")
+
+    def test_repository_hooks_override_shared_store_location(self):
+        central_store = self.root / "central-store"
+        with patch.object(hooks.Path, "cwd", return_value=self.root):
+            self.assertEqual(
+                hooks.project_backlog_dir(central_store),
+                (self.root / ".backlog").resolve(),
+            )
 
 
 if __name__ == "__main__":

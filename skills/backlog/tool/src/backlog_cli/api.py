@@ -434,7 +434,8 @@ def open(project: str | None = None, actor: str | None = None):
     conn = connect(spec=spec)
     try:
         project_row = require_project(conn, project or spec.project)
-        hooks.apply_workflow(conn, int(project_row["id"]), require_backlog_dir())
+        config_dir = hooks.project_backlog_dir(require_backlog_dir())
+        hooks.apply_workflow(conn, int(project_row["id"]), config_dir)
         bl = Backlog(conn, project_row, spec, actor=actor)
         yield bl
         conn.commit()

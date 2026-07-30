@@ -107,6 +107,16 @@ def bundled_workflow_path() -> Path:
     return Path(__file__).resolve().parents[3] / "assets" / "default-workflow.yaml"
 
 
+def project_backlog_dir(fallback: Path) -> Path:
+    """Find repository hook/config files independently of store location."""
+    current = Path.cwd().resolve()
+    for root in (current, *current.parents):
+        candidate = root / ".backlog"
+        if candidate.is_dir():
+            return candidate
+    return fallback
+
+
 def workflow_path(backlog_dir: Path) -> Path:
     custom = backlog_dir / "workflow.yaml"
     return custom if custom.is_file() else bundled_workflow_path()

@@ -5,7 +5,10 @@ venv/
 *.egg-info/
 dist/
 build/
-.backlog/
+.backlog/*
+!.backlog/README.md
+!.backlog/hooks.py
+!.backlog/workflow.yaml
 *.sqlite
 *.sqlite3
 *.db
