@@ -97,6 +97,22 @@ $BL item check ID [--undo]                            # checklist entries only
 $BL item rm ID
 ```
 
+Add `--shell COMMAND` or `--hook NAME` to `feature add`, `story add`, `set`,
+`item add`, or `item set` to attach an executor to one acceptance criterion or
+checklist entry. Both accept `--requirement required|advisory` and
+`--timeout SECONDS`.
+
+Shell options are `--working-directory`, `--expected-exit-code`,
+`--stdout-equals|--stdout-contains|--stdout-regex`, the corresponding
+`--stderr-*` options, and repeatable `--env NAME=VALUE`. Hook options are
+`--arguments JSON` and `--expected-result JSON`. Executable input must contain
+one non-empty line; existing multi-line plain syntax is unchanged.
+
+`item list` and `show` display plain/shell/hook, required/advisory, and
+`pending` before the first run. Commands, matcher values, hook arguments,
+expected hook values, and environment values are hidden in text and JSON;
+environment variable names remain visible.
+
 ## Status and gates
 
 ```bash

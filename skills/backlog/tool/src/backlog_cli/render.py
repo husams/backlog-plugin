@@ -106,20 +106,55 @@ def deps_block(conn: Conn, task_id: int, indent: str = "  ") -> list[str]:
     return out
 
 
-def items_block(items: list[Row], indent: str = "  ") -> list[str]:
+def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) -> list[str]:
     if not items:
         return []
     out: list[str] = []
     current = None
     for it in items:
+        if conn is not None:
+            from .execution import public_item
+            it = public_item(conn, it)
         if it["kind"] != current:
             current = it["kind"]
             out.append(f"{indent}{ITEM_KIND_DISPLAY[current]}:")
         box = ""
         if it["kind"] == "checklist":
             box = "[x] " if it["done"] else "[ ] "
-        out.append(f"{indent}  #{it['id']:<4} {box}{it['content']}")
+        suffix = ""
+        if it.get("executor") and it["executor"] != "plain":
+            suffix = (
+                f"  [{it['executor']}, {it['requirement']}, {it['state']}]"
+            )
+        out.append(f"{indent}  #{it['id']:<4} {box}{it['content']}{suffix}")
+        spec = it.get("execution_spec")
+        if spec and spec.get("shell"):
+            shell = spec["shell"]
+            out.append(f"{indent}        command: hidden")
+            out.append(
+                f"{indent}        expected: exit {shell.get('expected_exit_code', 0)}"
+            )
+            if shell.get("stdout"):
+                out.append(f"{indent}        stdout: {_matcher_text(shell['stdout'])}")
+            if shell.get("stderr"):
+                out.append(f"{indent}        stderr: {_matcher_text(shell['stderr'])}")
+            if shell.get("environment"):
+                out.append(
+                    f"{indent}        environment: "
+                    + ", ".join(shell["environment"])
+                    + " (values hidden)"
+                )
+        elif spec and spec.get("hook"):
+            hook = spec["hook"]
+            out.append(f"{indent}        hook: {hook['name']}")
+            out.append(f"{indent}        arguments: hidden")
+            out.append(f"{indent}        expected: hidden")
     return out
+
+
+def _matcher_text(value: dict) -> str:
+    name = next(iter(value))
+    return f"{name} (value hidden)"
 
 
 def render_task(conn: Conn, row: Row) -> str:
@@ -156,7 +191,7 @@ def render_task(conn: Conn, row: Row) -> str:
         out.append("  description:")
         out += [f"    {ln}" for ln in row["description"].splitlines()]
 
-    out += items_block(task_items(conn, row["id"]))
+    out += items_block(task_items(conn, row["id"]), conn=conn)
     out += deps_block(conn, row["id"])
 
     threads = open_threads(conn, row["id"])

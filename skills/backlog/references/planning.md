@@ -48,6 +48,19 @@ $BL item set S-001 --kind acceptance_criteria --content "..."   # replace them a
 Only checklist entries are tickable. Acceptance criteria are proven by review,
 not by a tick — that is what the `review_threads_closed` gate is for.
 
+One criterion or checklist entry may declare a shell or hook executor:
+
+```bash
+$BL item add S-001 --kind acceptance_criteria --content "unit tests pass" \
+  --shell "python -m unittest" --stdout-contains "OK"
+$BL item add S-001 --kind checklist --content "release policy passes" \
+  --hook checks.release --arguments '{"channel":"stable"}' \
+  --expected-result true --requirement advisory
+```
+
+The same execution flags work with feature/story creation and `item set`.
+Existing plain and multi-line forms remain unchanged.
+
 ## Grooming
 
 Everything starts in the initial status. Grooming decides which way it goes:

@@ -62,6 +62,9 @@ for writes made through the session.
 | `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
+| `bl.create_feature(title, **fields)` / `bl.create_story(title, feature=, **fields)` | create with optional plain/executable `acceptance_criteria` |
+| `bl.add_item(key, kind, content, execution_spec=None)` | author one plain/shell/hook item |
+| `bl.set_items(key, kind, items)` | replace items from strings or `{content, execution}` mappings |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
 
 Waivers match the CLI flags: `allow_blocked`, `no_pr`, `allow_open_children`.
@@ -139,6 +142,8 @@ Any column is an attribute: `key`, `title`, `status`, `task_type`, `priority`,
 | `t.children` | `list[Task]` |
 | `t.blockers` | unfinished blockers as `{other_key, other_status}` |
 | `t.items(kind=None)` | criteria / checklist / notes as strings |
+| `t.item_details(kind=None)` | value-opaque plain/executable views with requirement and state |
+| `t.executable_items()` | value-opaque executable-only views; secret-bearing fields hidden |
 | `t.open_threads` | root keys of open review threads |
 
 `str(task)` is `KEY  status  title`.

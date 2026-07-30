@@ -8,7 +8,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__, core, deps, hooks, review, templates, workflow
+from . import __version__, core, deps, execution, hooks, review, templates, workflow
 from .db import (
     BacklogError,
     Conn,
@@ -325,16 +325,108 @@ def cmd_doctor(ctx: Ctx, args) -> int:
 # tasks
 # --------------------------------------------------------------------------- #
 
+def _json_argument(value: str | None, label: str, default):
+    if value is None:
+        return default
+    try:
+        return json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise BacklogError(f"{label} must be valid JSON: {exc.msg}") from exc
+
+
+def _matcher_argument(args, stream: str) -> dict | None:
+    values = [
+        (name, getattr(args, f"{stream}_{name}", None))
+        for name in ("equals", "contains", "regex")
+    ]
+    selected = [(name, value) for name, value in values if value is not None]
+    if len(selected) > 1:
+        raise BacklogError(
+            f"--{stream}-equals, --{stream}-contains, and --{stream}-regex "
+            "are mutually exclusive"
+        )
+    return dict(selected) if selected else None
+
+
+def _execution_spec(args) -> dict | None:
+    shell = getattr(args, "shell", None)
+    hook = getattr(args, "hook", None)
+    if shell is None and hook is None:
+        extras = [
+            "requirement", "timeout", "working_directory", "expected_exit_code",
+            "stdout_equals", "stdout_contains", "stdout_regex",
+            "stderr_equals", "stderr_contains", "stderr_regex",
+            "environment", "arguments", "expected_result",
+        ]
+        if any(getattr(args, name, None) is not None for name in extras):
+            raise BacklogError("execution options require exactly one of --shell or --hook")
+        return None
+    if shell is not None and hook is not None:
+        raise BacklogError("--shell and --hook are mutually exclusive")
+    requirement = getattr(args, "requirement", None) or "required"
+    timeout_value = getattr(args, "timeout", None)
+    timeout = 60 if timeout_value is None else timeout_value
+    if shell is not None:
+        environment = {}
+        for pair in getattr(args, "environment", None) or []:
+            if "=" not in pair:
+                raise BacklogError(f"--env must be NAME=VALUE, got {pair!r}")
+            name, value = pair.split("=", 1)
+            if not name:
+                raise BacklogError("--env variable name cannot be empty")
+            environment[name] = value
+        shell_spec = {
+            "command": shell,
+            "timeout_seconds": timeout,
+            "working_directory": getattr(args, "working_directory", None) or ".",
+            "expected_exit_code": (
+                getattr(args, "expected_exit_code", None)
+                if getattr(args, "expected_exit_code", None) is not None else 0
+            ),
+            "environment": environment,
+        }
+        for stream in ("stdout", "stderr"):
+            matcher = _matcher_argument(args, stream)
+            if matcher:
+                shell_spec[stream] = matcher
+        spec = {"executor": "shell", "requirement": requirement, "shell": shell_spec}
+    else:
+        spec = {
+            "executor": "hook",
+            "requirement": requirement,
+            "hook": {
+                "name": hook,
+                "arguments": _json_argument(
+                    getattr(args, "arguments", None), "--arguments", {}
+                ),
+                "timeout_seconds": timeout,
+                "expected_result": _json_argument(
+                    getattr(args, "expected_result", None), "--expected-result", None
+                ),
+            },
+        }
+    return execution.parse_spec(spec).canonical()
+
+
 def _add_task(ctx: Ctx, args, task_type: str, parent: str | None) -> int:
+    item_spec = _execution_spec(args)
+    criteria = [line for line in (args.ac or "").splitlines() if line.strip()]
+    if item_spec and len(criteria) != 1:
+        raise BacklogError(
+            "executable --ac requires exactly one non-empty acceptance criterion"
+        )
     row = core.add_task(
         ctx.conn, ctx.pid, task_type, args.title, parent=parent,
         description=args.description or "", priority=args.priority, owner=args.owner,
         assignee=args.assignee, reviewer=args.reviewer, branch=getattr(args, "branch", None),
         actor=args.actor,
     )
-    if getattr(args, "ac", None):
-        core.set_items(ctx.conn, ctx.pid, row["key"], "acceptance_criteria",
-                       args.ac.splitlines(), actor=args.actor)
+    if criteria:
+        items = core.set_items(
+            ctx.conn, ctx.pid, row["key"], "acceptance_criteria", criteria, actor=args.actor
+        )
+        if item_spec:
+            execution.set_executable(ctx.conn, items[0]["id"], item_spec)
     wf = workflow.get(ctx.conn, ctx.pid, row["task_type"])
     ctx.emit(row_to_dict(row),
              f"{row['key']}  {row['title']}  [{wf.display(row['status'])}]"
@@ -402,13 +494,24 @@ def cmd_subtask_list(ctx: Ctx, args) -> int:
 
 
 def cmd_set(ctx: Ctx, args) -> int:
+    item_spec = _execution_spec(args)
+    criteria = None
+    if args.ac is not None:
+        criteria = [line for line in args.ac.splitlines() if line.strip()]
+        if item_spec and len(criteria) != 1:
+            raise BacklogError(
+                "executable --ac requires exactly one non-empty acceptance criterion"
+            )
     row = core.update_task(ctx.conn, ctx.pid, args.key, actor=args.actor,
                            title=args.title, description=args.description,
                            priority=args.priority, branch=args.branch,
                            owner=args.owner, parent=args.parent)
-    if args.ac is not None:
-        core.set_items(ctx.conn, ctx.pid, row["key"], "acceptance_criteria",
-                       args.ac.splitlines(), actor=args.actor)
+    if criteria is not None:
+        items = core.set_items(
+            ctx.conn, ctx.pid, row["key"], "acceptance_criteria", criteria, actor=args.actor
+        )
+        if item_spec:
+            execution.set_executable(ctx.conn, items[0]["id"], item_spec)
     ctx.emit(row_to_dict(row), render_task(ctx.conn, row))
     return 0
 
@@ -425,7 +528,10 @@ def cmd_assign(ctx: Ctx, args) -> int:
 def cmd_show(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     payload = row_to_dict(task)
-    payload["items"] = [row_to_dict(i) for i in core.task_items(ctx.conn, task["id"])]
+    payload["items"] = [
+        execution.public_item(ctx.conn, i)
+        for i in core.task_items(ctx.conn, task["id"])
+    ]
     payload["dependencies"] = deps.edges_for(ctx.conn, task["id"])
     payload["blocked_by"] = [b["other_key"] for b in deps.blockers(ctx.conn, task["id"])]
     payload["open_threads"] = [review.thread_summary(ctx.conn, t["root_key"])
@@ -678,24 +784,52 @@ def cmd_workflow_copy(ctx: Ctx, args) -> int:
 # --------------------------------------------------------------------------- #
 
 def cmd_item_add(ctx: Ctx, args) -> int:
-    rows = [core.add_item(ctx.conn, ctx.pid, args.key, args.kind, line, actor=args.actor)
-            for line in args.content.splitlines() if line.strip()]
-    ctx.emit([row_to_dict(r) for r in rows],
-             "\n".join(items_block(rows)) or "(nothing added)")
+    spec = _execution_spec(args)
+    if spec and core.normalize_item_kind(args.kind) not in (
+        "acceptance_criteria", "checklist"
+    ):
+        raise BacklogError(
+            "only acceptance criteria and checklist items may declare execution"
+        )
+    lines = [line for line in args.content.splitlines() if line.strip()]
+    if spec and len(lines) != 1:
+        raise BacklogError("an executable item requires exactly one non-empty content line")
+    rows = [
+        core.add_item(ctx.conn, ctx.pid, args.key, args.kind, line, actor=args.actor)
+        for line in lines
+    ]
+    if spec:
+        execution.set_executable(ctx.conn, rows[0]["id"], spec)
+    public = [execution.public_item(ctx.conn, row) for row in rows]
+    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(nothing added)")
     return 0
 
 
 def cmd_item_set(ctx: Ctx, args) -> int:
+    spec = _execution_spec(args)
+    if spec and core.normalize_item_kind(args.kind) not in (
+        "acceptance_criteria", "checklist"
+    ):
+        raise BacklogError(
+            "only acceptance criteria and checklist items may declare execution"
+        )
+    lines = [line for line in args.content.splitlines() if line.strip()]
+    if spec and len(lines) != 1:
+        raise BacklogError("an executable item requires exactly one non-empty content line")
     rows = core.set_items(ctx.conn, ctx.pid, args.key, args.kind,
-                          args.content.splitlines(), actor=args.actor)
-    ctx.emit([row_to_dict(r) for r in rows], "\n".join(items_block(rows)) or "(cleared)")
+                          lines, actor=args.actor)
+    if spec:
+        execution.set_executable(ctx.conn, rows[0]["id"], spec)
+    public = [execution.public_item(ctx.conn, row) for row in rows]
+    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(cleared)")
     return 0
 
 
 def cmd_item_list(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     rows = core.task_items(ctx.conn, task["id"], args.kind)
-    ctx.emit([row_to_dict(r) for r in rows], "\n".join(items_block(rows)) or "(none)")
+    public = [execution.public_item(ctx.conn, row) for row in rows]
+    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(none)")
     return 0
 
 
@@ -1309,6 +1443,23 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("--reviewer")
         if with_branch:
             sp.add_argument("--branch")
+        add_execution_flags(sp)
+
+    def add_execution_flags(sp):
+        executor = sp.add_mutually_exclusive_group()
+        executor.add_argument("--shell", metavar="COMMAND")
+        executor.add_argument("--hook", metavar="NAME")
+        sp.add_argument("--requirement", choices=["required", "advisory"])
+        sp.add_argument("--timeout", type=int, metavar="SECONDS")
+        sp.add_argument("--working-directory", metavar="PATH")
+        sp.add_argument("--expected-exit-code", type=int)
+        for stream in ("stdout", "stderr"):
+            sp.add_argument(f"--{stream}-equals")
+            sp.add_argument(f"--{stream}-contains")
+            sp.add_argument(f"--{stream}-regex")
+        sp.add_argument("--env", dest="environment", action="append", metavar="NAME=VALUE")
+        sp.add_argument("--arguments", metavar="JSON")
+        sp.add_argument("--expected-result", metavar="JSON")
 
     tp = sub.group("task", help="tasks of any type")
     sp = tp.add_parser("add")
@@ -1365,6 +1516,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--owner")
     sp.add_argument("--branch")
     sp.add_argument("--parent")
+    add_execution_flags(sp)
     sp.set_defaults(func=cmd_set)
 
     sp = sub.add_parser("assign", help="set assignee and/or reviewer")
@@ -1408,11 +1560,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("key")
     sp.add_argument("--kind", default="acceptance_criteria", choices=ITEM_KINDS)
     sp.add_argument("--content", required=True, help="one entry per line")
+    add_execution_flags(sp)
     sp.set_defaults(func=cmd_item_add)
     sp = ip.add_parser("set", help="replace every entry of one kind")
     sp.add_argument("key")
     sp.add_argument("--kind", default="acceptance_criteria", choices=ITEM_KINDS)
     sp.add_argument("--content", required=True)
+    add_execution_flags(sp)
     sp.set_defaults(func=cmd_item_set)
     sp = ip.add_parser("list")
     sp.add_argument("key")

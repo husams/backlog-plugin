@@ -55,6 +55,33 @@ ValidationExecutionResult = execution.ValidationExecutionResult
 validation_hook = execution.validation_hook
 
 
+def _validated_spec(value: dict | None) -> dict | None:
+    if value is None:
+        return None
+    return execution.parse_spec(value).canonical()
+
+
+def _prepare_items(items: list[str | dict]) -> list[tuple[str, dict | None]]:
+    prepared: list[tuple[str, dict | None]] = []
+    for item in items:
+        if isinstance(item, str):
+            content, spec = item, None
+        elif isinstance(item, dict):
+            unknown = set(item) - {"content", "execution"}
+            if unknown:
+                raise BacklogError(
+                    "unknown item fields: " + ", ".join(sorted(unknown))
+                )
+            content = item.get("content")
+            spec = _validated_spec(item.get("execution"))
+        else:
+            raise TypeError("items must be strings or {content, execution} mappings")
+        if not isinstance(content, str) or not content.strip():
+            raise BacklogError("item content must be a non-empty string")
+        prepared.append((content.strip(), spec))
+    return prepared
+
+
 def _age_days(stamp: str | None) -> float:
     if not stamp:
         return 0.0
@@ -138,20 +165,22 @@ class Task:
         rows = core.task_items(self._bl._conn, self._row["id"], kind)
         return [r["content"] for r in rows]
 
+    def item_details(self, kind: str | None = None) -> list[dict]:
+        """Plain and executable items with safe display metadata and state."""
+        rows = core.task_items(self._bl._conn, self._row["id"], kind)
+        return [execution.public_item(self._bl._conn, row) for row in rows]
+
     def executable_items(self) -> list[dict]:
-        """Typed execution declarations attached to this task's items."""
+        """Executable item declarations, with environment values redacted."""
         rows = self._bl._conn.execute(
-            "SELECT e.* FROM executable_item e JOIN task_item i ON i.id=e.item_id "
+            "SELECT e.item_id FROM executable_item e "
+            "JOIN task_item i ON i.id=e.item_id "
             "WHERE i.task_id=? ORDER BY i.kind,i.position,i.id", (self._row["id"],),
         ).fetchall()
-        values = []
-        for row in rows:
-            value = {key: row[key] for key in row.keys()}
-            import json
-            value["execution_spec"] = json.loads(value["execution_spec"])
-            value["state"] = execution.item_state(self._bl._conn, row["item_id"])
-            values.append(value)
-        return values
+        return [
+            execution.public_executable(self._bl._conn, int(row["item_id"]))
+            for row in rows
+        ]
 
     @property
     def open_threads(self) -> list[str]:
@@ -307,6 +336,76 @@ class Backlog:
 
     def projects(self) -> list[str]:
         return [r["slug"] for r in list_projects(self._conn)]
+
+    # -- creation and item authoring ------------------------------------- #
+
+    def create_task(
+        self, task_type: str, title: str, *, parent: str | None = None,
+        description: str = "", priority: str = "P2", owner: str | None = None,
+        assignee: str | None = None, reviewer: str | None = None,
+        branch: str | None = None, acceptance_criteria: list[str | dict] | None = None,
+    ) -> Task:
+        """Create a task; criteria may be strings or ``{content, execution}`` mappings."""
+        prepared = _prepare_items(acceptance_criteria or [])
+        row = core.add_task(
+            self._conn, self.pid, task_type, title, parent=parent,
+            description=description, priority=priority, owner=owner,
+            assignee=assignee, reviewer=reviewer, branch=branch, actor=self.actor,
+        )
+        for content, spec in prepared:
+            item = core.add_item(
+                self._conn, self.pid, row["key"], "acceptance_criteria",
+                content, actor=self.actor,
+            )
+            if spec is not None:
+                execution.set_executable(self._conn, item["id"], spec)
+        return Task(core.get_task(self._conn, self.pid, row["key"]), self)
+
+    def create_feature(self, title: str, **kwargs) -> Task:
+        """Create a feature with optional plain or executable criteria."""
+        kwargs.pop("branch", None)
+        return self.create_task("feature", title, **kwargs)
+
+    def create_story(self, title: str, *, feature: str | None = None, **kwargs) -> Task:
+        """Create a story with optional plain or executable criteria."""
+        return self.create_task("story", title, parent=feature, **kwargs)
+
+    def add_item(
+        self, key: str, kind: str, content: str, *, execution_spec: dict | None = None
+    ) -> dict:
+        """Add one plain, shell, or hook item and return its safe public view."""
+        spec = _validated_spec(execution_spec)
+        normalized_kind = core.normalize_item_kind(kind)
+        if spec is not None and normalized_kind not in ("acceptance_criteria", "checklist"):
+            raise BacklogError(
+                "only acceptance criteria and checklist items may declare execution"
+            )
+        row = core.add_item(
+            self._conn, self.pid, key, normalized_kind, content, actor=self.actor
+        )
+        if spec is not None:
+            execution.set_executable(self._conn, row["id"], spec)
+        return execution.public_item(self._conn, row)
+
+    def set_items(self, key: str, kind: str, items: list[str | dict]) -> list[dict]:
+        """Replace one item kind using strings or ``{content, execution}`` mappings."""
+        prepared = _prepare_items(items)
+        normalized_kind = core.normalize_item_kind(kind)
+        if (
+            any(spec is not None for _, spec in prepared)
+            and normalized_kind not in ("acceptance_criteria", "checklist")
+        ):
+            raise BacklogError(
+                "only acceptance criteria and checklist items may declare execution"
+            )
+        rows = core.set_items(
+            self._conn, self.pid, key, normalized_kind,
+            [content for content, _ in prepared], actor=self.actor,
+        )
+        for row, (_, spec) in zip(rows, prepared):
+            if spec is not None:
+                execution.set_executable(self._conn, row["id"], spec)
+        return [execution.public_item(self._conn, row) for row in rows]
 
     # -- reading ---------------------------------------------------------- #
 
@@ -543,7 +642,8 @@ class Backlog:
 
     def set_item_execution(self, item_id: int, spec: dict) -> dict:
         """Attach or replace the typed execution declaration for one item."""
-        return execution.set_executable(self._conn, item_id, spec)
+        execution.set_executable(self._conn, item_id, spec)
+        return execution.public_executable(self._conn, item_id)
 
     def record_execution_result(
         self, item_id: int, spec_fingerprint: str,

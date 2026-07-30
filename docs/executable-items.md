@@ -1,8 +1,8 @@
 # Executable item contract
 
 Task items remain plain text by default. Acceptance criteria and checklist
-items become executable only when an `executable_item` row is attached through
-the Python API; notes cannot declare execution. Existing stores are migrated
+items become executable when shell or hook metadata is supplied through the
+CLI or Python API; notes cannot declare execution. Existing stores are migrated
 additively and existing criteria, checklist entries, and notes keep their
 current behavior.
 
@@ -18,6 +18,57 @@ An executable item declares `requirement: required|advisory` (default:
 declaration. Changing task titles, descriptions, assignment, or workflow state
 does not invalidate a result. Changing the executor, expectations, timeout, or
 requirement does.
+
+## Authoring and inspection
+
+Existing plain syntax remains unchanged. Add `--shell COMMAND` or `--hook NAME`
+to one acceptance criterion or checklist item to make it executable:
+
+```bash
+backlog story add --title "Validate package" \
+  --ac "The unit suite passes" \
+  --shell "python -m unittest" --stdout-contains "OK"
+
+backlog item add S-001 --kind checklist --content "Policy accepts the release" \
+  --hook checks.release --arguments '{"channel":"stable"}' \
+  --expected-result '{"accepted":true}' --requirement advisory
+```
+
+Shell options include `--timeout`, `--working-directory`,
+`--expected-exit-code`, one equals/contains/regex matcher per output stream,
+and repeatable `--env NAME=VALUE`. Hook arguments and expected results are
+JSON. `item set` and task `set --ac` accept the same execution options.
+An executable operation accepts exactly one content line; omit the execution
+options to retain the established multi-line plain-text behavior.
+
+`item list` and `show` label each executable item as shell or hook, display
+required/advisory and its current state, and show `pending` before its first
+attempt. Public views are value-opaque by default: commands, output matcher
+values, hook arguments, and hook expected values are hidden. Environment
+variable names are shown, but values are hidden. This applies equally to human
+and JSON CLI output and to Python API inspection.
+
+The Python API provides `create_feature`, `create_story`, `add_item`, and
+`set_items`. Item inputs are either plain strings or mappings:
+
+```python
+with api.open(actor="planner") as backlog:
+    story = backlog.create_story(
+        "Validate package",
+        acceptance_criteria=[{
+            "content": "The unit suite passes",
+            "execution": {
+                "executor": "shell",
+                "shell": {"command": "python -m unittest"},
+            },
+        }],
+    )
+    print(story.item_details())
+```
+
+`Task.items()` remains the backward-compatible text-only view.
+`Task.item_details()` and `Task.executable_items()` return safe inspection
+views; secret-bearing values are replaced with explicit hidden markers.
 
 ## Trusted local policy
 
