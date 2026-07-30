@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import textwrap
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -197,6 +198,40 @@ class ValidationHookTest(unittest.TestCase):
                     self.actions()[before:], ["check.started", terminal_action]
                 )
                 self.assertNotIn("secret", result.detail)
+
+    def test_missing_sigalrm_refuses_before_invocation(self):
+        self.declare()
+        self.policy("contracts.sample")
+        self.hooks(
+            """
+            from backlog_cli.api import ValidationHookResult
+            def validate(backlog, context, args):
+                raise AssertionError("must not be invoked")
+            validation_hooks = {"contracts.sample": validate}
+            """
+        )
+        with patch.object(
+            execution, "_timeout_constraint", return_value="sigalrm_unavailable"
+        ):
+            result = self.bl.run_hook_validation(
+                self.item["id"], project_root=self.root
+            )
+        self.assertEqual(
+            (result.status.value, result.reason, result.detail),
+            ("error", "hook_timeout_unavailable", "sigalrm_unavailable"),
+        )
+        self.assertEqual(self.actions(), ["check.failed"])
+
+    def test_non_main_thread_timeout_constraint_is_stable(self):
+        observed = []
+
+        def inspect_constraint():
+            observed.append(execution._timeout_constraint())
+
+        thread = threading.Thread(target=inspect_constraint)
+        thread.start()
+        thread.join()
+        self.assertEqual(observed, ["main_thread_required"])
 
 
 if __name__ == "__main__":

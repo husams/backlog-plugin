@@ -105,3 +105,10 @@ and identity failures produce a stable error and `check.failed` without
 `check.started`. Once invocation begins, the runner emits `check.started`, then
 `check.passed` or `check.failed`; a timeout emits `check.timed_out`. Timeouts
 and exceptions are stable errors and never satisfy required validation gates.
+
+Hook timeouts are enforced in-process with `SIGALRM`, so invocation is
+supported only where `SIGALRM`, `ITIMER_REAL`, and `setitimer` are available
+and the runner is on the process main thread. If either constraint is absent,
+the callable is not invoked: the runner records
+`error/hook_timeout_unavailable` with stable detail `sigalrm_unavailable` or
+`main_thread_required`, and emits `check.failed` without `check.started`.

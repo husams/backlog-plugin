@@ -14,6 +14,7 @@ import os
 import re
 import signal
 import subprocess
+import threading
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from enum import Enum
@@ -407,6 +408,12 @@ def run_hook_validation(
             "hook_identity_unavailable", "deterministic hook identity is unavailable",
             None, None,
         )
+    timeout_constraint = _timeout_constraint()
+    if timeout_constraint is not None:
+        return _hook_terminal(
+            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
+            "hook_timeout_unavailable", timeout_constraint, None, identity,
+        )
 
     source = source_identity(root)
     context = ValidationContext(
@@ -521,9 +528,9 @@ class _HookTimeout(Exception):
 
 @contextmanager
 def _deadline(seconds: int):
-    if not hasattr(signal, "SIGALRM"):
-        yield
-        return
+    constraint = _timeout_constraint()
+    if constraint is not None:
+        raise BacklogError(constraint)
     previous = signal.getsignal(signal.SIGALRM)
 
     def expired(_signum, _frame):
@@ -536,6 +543,15 @@ def _deadline(seconds: int):
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous)
+
+
+def _timeout_constraint() -> str | None:
+    """Return a stable pre-invocation reason when in-process timeout is unsafe."""
+    if not all(hasattr(signal, name) for name in ("SIGALRM", "ITIMER_REAL", "setitimer")):
+        return "sigalrm_unavailable"
+    if threading.current_thread() is not threading.main_thread():
+        return "main_thread_required"
+    return None
 
 
 def item_state(conn: Conn, item_id: int) -> str:
