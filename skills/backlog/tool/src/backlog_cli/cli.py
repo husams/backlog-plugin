@@ -216,7 +216,8 @@ def cmd_doctor(ctx: Ctx, args) -> int:
     )
     for tbl in ("template", "template_workflow", "template_status", "template_transition",
                 "project", "workflow", "workflow_status", "workflow_transition",
-                "task", "task_item", "dependency", "review_comment",
+                "task", "task_item", "executable_item", "execution_result",
+                "dependency", "review_comment",
                 "review_thread", "artifact", "event"):
         info["counts"][tbl] = conn.execute(f"SELECT COUNT(*) AS c FROM {tbl}").fetchone()["c"]
 

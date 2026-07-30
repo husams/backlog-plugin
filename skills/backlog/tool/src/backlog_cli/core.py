@@ -598,6 +598,16 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
             else:
                 checks.append(Check(name, task["pr_state"] == "merged",
                                     f"pr_state={task['pr_state']}"))
+        elif name == "required_validations_pass":
+            from .execution import required_validations_pass
+
+            ok, pending_or_failed = required_validations_pass(conn, task["id"])
+            checks.append(Check(
+                name, ok,
+                "all required executable items have a fresh pass" if ok
+                else "pending or non-passing required items: "
+                + ", ".join(f"#{item_id}" for item_id in pending_or_failed),
+            ))
         else:
             checks.append(Check(name, False, "unknown gate check"))
     return checks
@@ -644,6 +654,15 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
         ))
 
     if target in ("accepted", "merge"):
+        from .execution import required_validations_pass
+
+        validations_ok, pending_or_failed = required_validations_pass(conn, task["id"])
+        checks.append(Check(
+            "required_validations_pass", validations_ok,
+            "all required executable items have a fresh pass" if validations_ok
+            else "pending or non-passing required items: "
+            + ", ".join(f"#{item_id}" for item_id in pending_or_failed),
+        ))
         opens = blocking_threads(conn, task["id"])
         checks.append(Check(
             "review_threads_closed", not opens,

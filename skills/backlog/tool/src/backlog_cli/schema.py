@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -151,6 +151,7 @@ GATE_CHECKS = [
     "pr_recorded",            # a pull request is referenced
     "pr_approved",            # the pull request is approved
     "pr_merged",              # the pull request is merged
+    "required_validations_pass",  # required executable items have a fresh pass
 ]
 
 GATE_DESCRIPTIONS = {
@@ -160,6 +161,7 @@ GATE_DESCRIPTIONS = {
     "pr_recorded": "a pull request is referenced (waivable with --no-pr)",
     "pr_approved": "the pull request is approved (waivable with --no-pr)",
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
+    "required_validations_pass": "every required executable item has a fresh passing result",
 }
 
 # The workflow every new project starts with: today's behaviour, expressed as
@@ -184,7 +186,7 @@ DEFAULT_TRANSITIONS = {
         ("incomplete", "ready", ""),
         ("ready", "in_progress", "dependencies_clear"),
         ("in_progress", "in_review", "pr_recorded"),
-        ("in_review", "accepted", "review_threads_closed,pr_approved,children_complete"),
+        ("in_review", "accepted", "review_threads_closed,pr_approved,children_complete,required_validations_pass"),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
         ("accepted", "needs_work", ""),
@@ -199,7 +201,7 @@ DEFAULT_TRANSITIONS = {
         ("in_progress", "in_review", ""),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
-        ("in_review", "accepted", "review_threads_closed,children_complete"),
+        ("in_review", "accepted", "review_threads_closed,children_complete,required_validations_pass"),
         ("accepted", "needs_work", ""),
         ("accepted", "done", "children_complete"),
     ],
@@ -548,6 +550,35 @@ CREATE TABLE IF NOT EXISTS task_item (
 );
 
 CREATE INDEX IF NOT EXISTS idx_item_task ON task_item(task_id, kind, position);
+
+-- Execution is optional. NULL execution_spec preserves the exact historical
+-- meaning of plain criteria/checklist/note rows.
+CREATE TABLE IF NOT EXISTS executable_item (
+    item_id          INTEGER PRIMARY KEY REFERENCES task_item(id) ON DELETE CASCADE,
+    executor         TEXT NOT NULL CHECK (executor IN ('shell','hook')),
+    requirement      TEXT NOT NULL DEFAULT 'required'
+                     CHECK (requirement IN ('required','advisory')),
+    execution_spec   TEXT NOT NULL,
+    spec_fingerprint TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS execution_result (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id                  INTEGER NOT NULL REFERENCES task_item(id) ON DELETE CASCADE,
+    spec_fingerprint         TEXT NOT NULL,
+    status                   TEXT NOT NULL CHECK (status IN ('pass','fail','error','skipped')),
+    reason                   TEXT NOT NULL DEFAULT '',
+    detail                   TEXT NOT NULL DEFAULT '',
+    source_revision          TEXT,
+    source_dirty_fingerprint TEXT,
+    started_at               TEXT NOT NULL,
+    finished_at              TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_execution_result_item
+    ON execution_result(item_id, id);
 
 -- Dependency edges, now a plain foreign key on both ends.
 CREATE TABLE IF NOT EXISTS dependency (

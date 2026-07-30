@@ -22,7 +22,7 @@ import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from . import core, deps, hooks, review, workflow
+from . import core, deps, execution, hooks, review, workflow
 from .hooks import Action
 from .schema import ReviewSeverity
 from .db import (
@@ -37,8 +37,16 @@ from .db import (
 
 __all__ = [
     "open", "Backlog", "Task", "Gate", "Thread", "ReviewComment", "Store", "Action",
-    "ReviewSeverity", "BacklogError"
+    "ReviewSeverity", "BacklogError", "ExecutionSpec", "ExecutionPolicy",
+    "Executor", "Requirement", "TerminalStatus", "SourceIdentity",
 ]
+
+ExecutionSpec = execution.ExecutionSpec
+ExecutionPolicy = execution.ExecutionPolicy
+Executor = execution.Executor
+Requirement = execution.Requirement
+TerminalStatus = execution.TerminalStatus
+SourceIdentity = execution.SourceIdentity
 
 
 def _age_days(stamp: str | None) -> float:
@@ -123,6 +131,21 @@ class Task:
         """Acceptance criteria (`kind="criteria"`), checklist entries or notes."""
         rows = core.task_items(self._bl._conn, self._row["id"], kind)
         return [r["content"] for r in rows]
+
+    def executable_items(self) -> list[dict]:
+        """Typed execution declarations attached to this task's items."""
+        rows = self._bl._conn.execute(
+            "SELECT e.* FROM executable_item e JOIN task_item i ON i.id=e.item_id "
+            "WHERE i.task_id=? ORDER BY i.kind,i.position,i.id", (self._row["id"],),
+        ).fetchall()
+        values = []
+        for row in rows:
+            value = {key: row[key] for key in row.keys()}
+            import json
+            value["execution_spec"] = json.loads(value["execution_spec"])
+            value["state"] = execution.item_state(self._bl._conn, row["item_id"])
+            values.append(value)
+        return values
 
     @property
     def open_threads(self) -> list[str]:
@@ -511,6 +534,29 @@ class Backlog:
                           actor=actor or self.actor)
         self._conn.commit()
         return Task(row, self)
+
+    def set_item_execution(self, item_id: int, spec: dict) -> dict:
+        """Attach or replace the typed execution declaration for one item."""
+        return execution.set_executable(self._conn, item_id, spec)
+
+    def record_execution_result(
+        self, item_id: int, spec_fingerprint: str,
+        status: TerminalStatus | str, **kwargs,
+    ) -> dict:
+        """Record one terminal attempt; pending is represented by no row."""
+        return execution.record_result(
+            self._conn, item_id, spec_fingerprint, status, **kwargs
+        )
+
+    def execution_policy(self, project_root) -> ExecutionPolicy:
+        """Load trusted local policy from the executing project checkout."""
+        from pathlib import Path
+        return execution.load_policy(Path(project_root))
+
+    def source_identity(self, project_root) -> SourceIdentity:
+        """Return optional clean/dirty VCS identity for a validation run."""
+        from pathlib import Path
+        return execution.source_identity(Path(project_root))
 
     def commit(self) -> None:
         self._conn.commit()
