@@ -21,6 +21,11 @@ regardless of which agent is operating it.
 The skill is self-contained under `skills/backlog/`. It includes its launchers,
 Python API, predefined scripts, documentation, and database tooling.
 
+## Documentation
+
+- [Example agent prompts](docs/prompts.md)
+- [Python project extensions — proposed design and developer guide](docs/python-extensions.md)
+
 ## Requirements
 
 - Codex or Claude Code
@@ -272,6 +277,7 @@ or access internal connection attributes.
 | `.codex-plugin/plugin.json` | Codex plugin manifest |
 | `.claude-plugin/plugin.json` | Claude Code plugin manifest |
 | `.claude-plugin/marketplace.json` | Local Claude Code marketplace |
+| `docs/` | User prompts and proposed developer-extension documentation |
 | `skills/backlog/SKILL.md` | Core agent rules and documentation routing |
 | `skills/backlog/bin/install.sh` | Optional direct-install helper for Codex and Claude Code |
 | `skills/backlog/references/` | Task-specific documentation |
