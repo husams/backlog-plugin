@@ -1,667 +1,186 @@
-# Python project extensions
+# Python transition hooks
 
-> Design status: proposed. The extension loader and hook interfaces described
-> here are not implemented yet.
+> Design status: proposed. The hook loader and interfaces described here are
+> not implemented yet.
 
-Backlog project extensions will let a project enforce custom workflow policy
-with Python while keeping the backlog state machine authoritative. Extensions
-can inspect backlog data, run project-specific checks, add evidence, allow or
-deny transitions, and react after a transition.
-
-An extension must use the documented Backlog Python API. It must not query or
-update database tables directly.
-
-## Design principles
-
-1. APIs submit semantic actions, not destination states.
-2. The active workflow maps the current state and action to a destination.
-3. Standard guards run before project extension code.
-4. A Python before hook can allow or deny the proposed transition.
-5. Only the workflow engine writes task status.
-6. Every action, check, decision, and transition is audited.
-7. A project extension is trusted project code and requires explicit
-   enablement.
-
-The intended execution path is:
+A project may add one optional Python file at:
 
 ```text
-API call
-  → semantic action
-  → workflow transition lookup
-  → standard guards
-  → Python before hook
-  → transactional state update
-  → audit event
-  → Python after hook
+<project>/.backlog/hooks.py
 ```
 
-## Default flow
+If the file does not exist, Backlog continues normally without hooks.
 
-The proposed default state machine is:
+Hooks receive simple transition information. Project developers decide what
+policy to enforce with that information. There are no policy classes,
+extension schemas, or required base classes.
 
-```text
-Initial → Created
-Created → Incomplete
-Created → Ready
-Incomplete → Ready
+Hooks must use the public Backlog Python API when they need backlog data or
+operations. They must not access database tables directly.
 
-Ready → In Progress
-In Progress → In Review
-In Review → Need Work
-Need Work → In Progress
-In Review → Accepted
-Accepted → Done
-```
+## Standard actions
 
-`Initial` identifies the configured initial state; it does not need to be
-stored as a task status.
-
-Backlog refinement happens while a task is `Created` or `Incomplete`.
-Implementation review happens while a task is `In Review`. Review feedback
-provides evidence and an action; it does not update status directly.
-
-## Actions drive transitions
-
-An API operation emits a standard action:
+Backlog provides one enum containing the actions that can cause a transition:
 
 ```python
 from enum import Enum
 
 
-class ReviewAction(str, Enum):
-    ACCEPTED = "accepted"
-    REJECTED = "rejected"
-    COMMENTED = "commented"
+class Action(str, Enum):
+    CREATE = "create"
+    MARK_INCOMPLETE = "mark_incomplete"
+    MARK_READY = "mark_ready"
+    START = "start"
+    SUBMIT_REVIEW = "submit_review"
+    REQUEST_CHANGES = "request_changes"
+    ACCEPT = "accept"
+    COMPLETE = "complete"
 ```
 
-For example:
+The enum is owned by Backlog and imported by project hooks:
 
 ```python
-result = backlog.review_feedback(
-    task_key="S-001",
-    reviewer="husam",
-    comments="The failure path is not covered.",
-    action=ReviewAction.REJECTED,
-)
+from backlog_cli.hooks import Action
 ```
 
-The API emits `review.rejected`. The workflow determines the result from the
-current state:
+Backlog may add standard actions as its public APIs grow. Projects do not need
+to define action classes.
 
-```text
-Created   + review.rejected → Incomplete
-In Review + review.rejected → Need Work
-Created   + review.accepted → Ready
-In Review + review.accepted → Accepted
-```
+## Hook functions
 
-There must be at most one transition for each combination of task type,
-current state, and action.
-
-## Workflow configuration
-
-Projects will author workflows in `.backlog/workflow.yaml`. Backlog will
-validate and compile the file into a database snapshot for transactional
-runtime use.
-
-```yaml
-schema_version: 1
-
-extension:
-  enabled: true
-  path: .backlog/extension
-
-states:
-  - slug: created
-    display: Created
-    category: backlog
-    initial: true
-
-  - slug: incomplete
-    display: Incomplete
-    category: backlog
-
-  - slug: ready
-    display: Ready
-    category: ready
-
-  - slug: in_progress
-    display: In Progress
-    category: active
-
-  - slug: in_review
-    display: In Review
-    category: review
-
-  - slug: needs_work
-    display: Need Work
-    category: active
-
-  - slug: accepted
-    display: Accepted
-    category: done
-    satisfies_dependencies: true
-
-  - slug: done
-    display: Done
-    category: done
-    satisfies_dependencies: true
-    terminal: true
-
-transitions:
-  - task_type: feature
-    from: created
-    action: review.accepted
-    to: ready
-    allowed_roles: [product_manager]
-    guards:
-      - description_present
-      - acceptance_criteria_present
-
-  - task_type: story
-    from: in_review
-    action: review.rejected
-    to: needs_work
-    allowed_roles: [reviewer]
-
-  - task_type: story
-    from: in_review
-    action: review.accepted
-    to: accepted
-    allowed_roles: [reviewer]
-    guards:
-      - checklist_complete
-      - acceptance_criteria_verified
-      - pr_approved
-```
-
-Changing the YAML file must not silently change a running project. The intended
-activation workflow is:
-
-```text
-backlog workflow validate
-backlog workflow plan
-backlog workflow apply
-```
-
-`plan` should report changes to states, transitions, guards, roles, and tasks
-affected by the new definition. The compiled database snapshot should record
-the workflow version and source hash.
-
-## Extension layout
-
-The conventional project layout is:
-
-```text
-<repository>/
-└── .backlog/
-    ├── workflow.yaml
-    └── extension/
-        ├── __init__.py
-        ├── actions.py
-        ├── transitions.py
-        ├── reviews.py
-        ├── checks.py
-        └── settings.py
-```
-
-Only `extension/__init__.py` is required. It must export an object named
-`extension`:
+The project may define either or both functions:
 
 ```python
-from .transitions import ProjectPolicy
+def before_transition(
+    action: Action,
+    trigger: dict,
+    current_state: str,
+    new_state: str,
+) -> str:
+    return new_state
 
-extension = ProjectPolicy()
+
+def after_transition(
+    action: Action,
+    trigger: dict,
+    previous_state: str,
+    current_state: str,
+) -> None:
+    pass
 ```
 
-The other module names are conventions, not mandatory loader entry points.
-Project owners may organize their implementation differently.
+The arguments are:
 
-If the configured path does not exist or extensions are disabled, Backlog uses
-`NoOpExtension`.
+- `action`: why the transition was requested;
+- `trigger`: how it was triggered, including the API operation, actor, and
+  operation parameters;
+- `current_state`: the state before the transition;
+- `new_state`: the state selected by the workflow.
 
-## Extension contract
+For `after_transition`, `previous_state` is the state before the committed
+transition and `current_state` is the state after it.
 
-The extension object implements three lifecycle methods:
-
-```python
-from typing import Protocol
-
-
-class ProjectExtension(Protocol):
-    def on_action(
-        self,
-        context: "ExtensionContext",
-        action: "ActionEvent",
-    ) -> "ActionResponse":
-        ...
-
-    def before_transition(
-        self,
-        context: "ExtensionContext",
-        proposal: "TransitionProposal",
-    ) -> "HookDecision":
-        ...
-
-    def after_transition(
-        self,
-        context: "ExtensionContext",
-        result: "TransitionResult",
-    ) -> None:
-        ...
-```
-
-A project does not need to implement every method. The loader may adapt missing
-methods to no-op behavior.
-
-## Typed inputs
-
-Hooks receive immutable, named objects instead of loose positional parameters:
-
-```python
-from dataclasses import dataclass
-from typing import Any, Mapping
-
-
-@dataclass(frozen=True)
-class ActionEvent:
-    name: str
-    task_key: str
-    actor: str
-    parameters: Mapping[str, Any]
-    correlation_id: str
-
-
-@dataclass(frozen=True)
-class TransitionProposal:
-    task_key: str
-    task_type: str
-    action: str
-    actor: str
-    current_state: str
-    proposed_state: str
-    parameters: Mapping[str, Any]
-    configured_guards: tuple[str, ...]
-    correlation_id: str
-```
-
-For a review API, `parameters` may contain:
+`trigger` uses ordinary Python data rather than a custom class. For example:
 
 ```python
 {
-    "comments": "The error path is missing a test.",
-    "reviewer": "husam",
-    "review_kind": "implementation",
+    "operation": "review_feedback",
+    "actor": "reviewer@example.com",
+    "parameters": {
+        "comments": "The error case needs an acceptance criterion."
+    },
 }
 ```
 
-## Backlog API access
+## Before transition
 
-Hooks receive an extension context containing the public Backlog API:
+`before_transition` runs after the workflow has selected the normal
+destination but before Backlog changes the task status.
 
-```python
-@dataclass
-class ExtensionContext:
-    backlog: "BacklogAPI"
-    project: "ProjectView"
-    logger: "ExtensionLogger"
-    filesystem: "ProjectFilesystem"
-```
-
-Example:
+It returns the state Backlog should use:
 
 ```python
-class ProjectPolicy:
-    def before_transition(self, context, proposal):
-        task = context.backlog.tasks.get(proposal.task_key)
-        children = context.backlog.tasks.children(proposal.task_key)
-        open_reviews = context.backlog.reviews.list(
-            proposal.task_key,
-            state="open",
-        )
-
-        if open_reviews:
-            return HookDecision.deny(
-                reason=f"{len(open_reviews)} review threads remain open"
-            )
-
-        return HookDecision.allow()
+def before_transition(action, trigger, current_state, new_state):
+    return new_state
 ```
 
-Extensions receive full documented API access, but not the internal database
-connection. Mutations called by hooks must still pass workflow checks and
-produce audit events.
-
-## Before-transition hooks
-
-A before hook runs after the workflow resolves the proposed destination and
-after standard guards run, but before the transition commits.
-
-It returns a structured decision:
+A project can override the destination by returning another state:
 
 ```python
-class ProjectPolicy:
-    def before_transition(self, context, proposal):
-        if proposal.action != "review.accepted":
-            return HookDecision.allow()
+from backlog_cli.hooks import Action
 
-        result = run_unit_tests()
 
-        if not result.passed:
-            return HookDecision.deny(
-                reason="Unit tests failed",
-                evidence=[
-                    Evidence(
-                        kind="unit-test-result",
-                        value=result.summary,
-                    )
-                ],
-            )
-
-        return HookDecision.allow(
-            evidence=[
-                Evidence(
-                    kind="unit-test-result",
-                    value="All unit tests passed",
-                )
-            ]
-        )
+def before_transition(action, trigger, current_state, new_state):
+    if action == Action.ACCEPT and not project_checks_passed():
+        return "needs_work"
+    return new_state
 ```
 
-A before hook may:
+The returned state must exist in the active workflow. Backlog validates that
+state before updating the task.
 
-- inspect backlog entities;
-- call project code;
-- run tests or other Python checks;
-- add structured evidence;
-- allow or deny the proposal;
-- emit another semantic action.
+If the hook raises an exception or returns an invalid state, Backlog rejects
+the transition and leaves the task unchanged.
 
-It must not assign a task status directly.
+## After transition
 
-If a before hook raises an exception, Backlog fails closed: the transition is
-not committed, status remains unchanged, and the failure is audited.
-
-## After-transition hooks
-
-An after hook runs only after the transition and audit event commit:
+`after_transition` runs after Backlog has committed the state change. It can
+notify another system, record project-specific information, or trigger any
+other project logic:
 
 ```python
-class ProjectPolicy:
-    def after_transition(self, context, result):
-        if result.to_state == "accepted":
-            context.backlog.notes.add(
-                result.task_key,
-                "Implementation accepted by project policy.",
-            )
+from backlog_cli.hooks import Action
+
+
+def after_transition(action, trigger, previous_state, current_state):
+    if action == Action.COMPLETE:
+        notify_release_system(trigger["actor"], current_state)
 ```
 
-After hooks may create follow-up work, add notes, publish notifications, or
-call other documented APIs.
+The return value is ignored.
 
-An after-hook failure cannot roll back an already committed transition. The
-failure must be recorded and made available for retry. External network actions
-should use an outbox so they can be retried safely.
+If the hook raises an exception, Backlog reports the hook failure but does not
+undo the committed transition. This prevents external follow-up failures from
+corrupting backlog state.
 
-## Emitting actions instead of setting status
+## Execution order
 
-An extension may emit an action when complex project logic discovers another
-condition:
+For every API operation that causes a state transition, Backlog:
+
+1. Converts the API operation to a standard `Action`.
+2. Uses the active workflow to find the normal destination state.
+3. Calls `before_transition`.
+4. Validates the state returned by the hook.
+5. Commits the transition.
+6. Calls `after_transition`.
+
+All command-line operations use the same Python APIs, so hooks apply equally
+to API and command-line transitions. Direct status updates must not bypass
+this sequence.
+
+## Example
+
+This complete `.backlog/hooks.py` keeps accepted work out of `done` until the
+project's own release check passes, then publishes an event after completion:
 
 ```python
-return HookDecision.emit(
-    ActionEvent(
-        name="project.tests_failed",
-        task_key=proposal.task_key,
-        actor="project-extension",
-        parameters={"failed_suites": ["unit"]},
-        correlation_id=proposal.correlation_id,
-    )
-)
-```
-
-The workflow remains responsible for mapping that action:
-
-```yaml
-- task_type: story
-  from: in_review
-  action: project.tests_failed
-  to: needs_work
-```
-
-This preserves the state machine as the visible source of transition behavior.
-
-## Review feedback and blocked transitions
-
-Human feedback must not be lost because a separate transition guard fails.
-
-For example, a reviewer accepts the implementation but a project test fails:
-
-```text
-feedback saved: yes
-review decision: accepted
-transition: blocked
-status: In Review
-reason: unit tests failed
-```
-
-APIs should return both outcomes:
-
-```python
-@dataclass(frozen=True)
-class TransitionResult:
-    action: str
-    from_state: str
-    proposed_state: str | None
-    current_state: str
-    feedback_saved: bool
-    transitioned: bool
-    checks: tuple["CheckResult", ...]
-    hook_results: tuple["HookResult", ...]
-    event_id: str
-```
-
-## Re-entrancy
-
-Hooks with API access can accidentally create recursive action loops:
-
-```text
-review_feedback
-  → before_transition
-    → review_feedback
-      → before_transition
-```
-
-Every operation therefore carries:
-
-- `correlation_id`;
-- `caused_by`;
-- `hook_depth`.
-
-The runtime should enforce these rules:
-
-1. Reads are always allowed.
-2. Hook mutations still pass through the public API and workflow engine.
-3. The same action cannot be dispatched for the same task twice in one
-   correlation chain.
-4. Hook depth has a configurable maximum.
-5. Recursive refusal is audited with the complete causal chain.
-
-## Loading and dependencies
-
-The loader should use `importlib` with a unique internal package name. It should
-not permanently modify global `sys.path`, because multiple projects may define
-extensions with the same module names.
-
-Backlog runs in its own Python environment. Adding project source to the import
-path does not install the project's third-party dependencies.
-
-The initial extension contract should support Python's standard library, the
-Backlog public API, and project source that has no unavailable dependencies.
-A later version may support an isolated extension environment declared by:
-
-```text
-.backlog/extension/pyproject.toml
-```
-
-Project dependencies should never be installed into Backlog's own runtime
-environment.
-
-## Trust and security
-
-A Python extension is trusted project code. Loading it is equivalent to running
-code from the repository.
-
-The runtime should:
-
-- require `extension.enabled: true`;
-- display the extension path before first execution;
-- record a source hash;
-- require approval again when the source hash changes, unless project policy
-  explicitly trusts changes;
-- avoid passing secrets automatically;
-- apply configured timeouts to checks;
-- record hook inputs, decisions, evidence, duration, and failures;
-- redact configured sensitive fields from logs and audit output.
-
-## Developer walkthrough
-
-### 1. Declare the extension
-
-Create `.backlog/workflow.yaml`:
-
-```yaml
-schema_version: 1
-
-extension:
-  enabled: true
-  path: .backlog/extension
-```
-
-Add the project's states and action-driven transitions to the same file.
-
-### 2. Export the extension object
-
-Create `.backlog/extension/__init__.py`:
-
-```python
-from .transitions import ProjectPolicy
-
-extension = ProjectPolicy()
-```
-
-### 3. Implement policy
-
-Create `.backlog/extension/transitions.py`:
-
-```python
-from backlog_cli.extensions import Evidence, HookDecision
+from backlog_cli.hooks import Action
+from project_tools import publish_event, release_check_passed
 
 
-class ProjectPolicy:
-    def on_action(self, context, action):
-        context.logger.info(
-            "action received",
-            action=action.name,
-            task=action.task_key,
-        )
-        return None
+def before_transition(action, trigger, current_state, new_state):
+    if action == Action.COMPLETE and not release_check_passed():
+        return current_state
+    return new_state
 
-    def before_transition(self, context, proposal):
-        if proposal.action != "review.accepted":
-            return HookDecision.allow()
 
-        task = context.backlog.tasks.get(proposal.task_key)
-
-        if not task.acceptance_criteria:
-            return HookDecision.deny(
-                reason="Acceptance criteria are required before review acceptance."
-            )
-
-        return HookDecision.allow(
-            evidence=[
-                Evidence(
-                    kind="policy-check",
-                    value="Acceptance criteria are present.",
-                )
-            ]
-        )
-
-    def after_transition(self, context, result):
-        context.logger.info(
-            "transition committed",
-            task=result.task_key,
-            from_state=result.from_state,
-            to_state=result.to_state,
+def after_transition(action, trigger, previous_state, current_state):
+    if action == Action.COMPLETE and current_state == "done":
+        publish_event(
+            "backlog.completed",
+            actor=trigger.get("actor"),
         )
 ```
 
-### 4. Validate before activation
-
-The proposed developer workflow is:
-
-```bash
-backlog workflow validate
-backlog extension check
-backlog workflow plan
-```
-
-Validation should check:
-
-- Python package import;
-- exported `extension` object;
-- supported method signatures;
-- state and transition references;
-- unique `(task_type, from, action)` mappings;
-- registered standard and project actions;
-- known guards and roles.
-
-### 5. Apply explicitly
-
-After reviewing the plan:
-
-```bash
-backlog workflow apply
-```
-
-The command should store the workflow source hash and compiled snapshot. A
-changed extension hash may require a new trust approval before hooks execute.
-
-### 6. Test with an action
-
-```python
-from backlog_cli import api
-from backlog_cli.actions import ReviewAction
-
-
-with api.open() as backlog:
-    result = backlog.review_feedback(
-        task_key="S-001",
-        reviewer="husam",
-        comments="Implementation matches the acceptance criteria.",
-        action=ReviewAction.ACCEPTED,
-    )
-
-    print(result.current_state)
-    print(result.transitioned)
-    print(result.checks)
-    print(result.hook_results)
-```
-
-The action is successful only when the workflow mapping, standard guards, and
-Python before hook all allow the transition.
-
-## Open design decisions
-
-The following details must be resolved before implementation:
-
-- the initial standard-action catalog;
-- whether `review_feedback.action` is mandatory or defaults to `COMMENTED`;
-- the exact guard-composition format in YAML;
-- how extension trust approval is stored;
-- whether hook timeouts run in-process or through an isolated runner;
-- the dependency format for isolated extension environments;
-- retry and idempotency rules for after hooks;
-- whether custom actions require a `project.` namespace;
-- compatibility and migration behavior for existing database-defined flows.
-
+The hook is normal trusted Python code in the project. It can import project
+modules and use any logic the project owner needs.
