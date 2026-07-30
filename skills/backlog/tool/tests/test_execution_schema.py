@@ -137,6 +137,7 @@ class ExecutionContractTest(unittest.TestCase):
             cwd=self.root,
             env={
                 **os.environ,
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                 "BACKLOG_DB": "sqlite",
                 "BACK_LOG_URL": str(self.conn.spec.db_path),
                 "BACKLOG_PROJECT": "sample",
@@ -161,6 +162,7 @@ class ExecutionContractTest(unittest.TestCase):
             cwd=self.root,
             env={
                 **os.environ,
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                 "BACKLOG_DB": "sqlite",
                 "BACK_LOG_URL": str(self.conn.spec.db_path),
                 "BACKLOG_PROJECT": "sample",
