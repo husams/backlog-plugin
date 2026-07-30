@@ -71,6 +71,10 @@ class ExecutionReportingTest(unittest.TestCase):
 
     def test_history_is_bounded_and_includes_actor_expected_actual_diagnostic(self):
         item = self.shell_item(expected=3)
+        executable = execution.executable_item(self.conn, item["id"])
+        spec = executable["execution_spec"]
+        spec["shell"]["stdout"] = {"contains": "matcher-secret"}
+        execution.set_executable(self.conn, item["id"], spec)
         for _ in range(3):
             self.bl.run_item(item["id"], self.root, policy=self.policy)
         history = self.bl.execution_history(item["id"], limit=2)
@@ -78,15 +82,53 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(history[0]["actor"], "S-010")
         self.assertEqual(history[0]["expected"]["exit_code"], 3)
         self.assertEqual(history[0]["actual"]["exit_code"], 0)
+        self.assertEqual(
+            history[0]["expected"]["stdout"], {"contains": "<hidden>"}
+        )
+        self.assertEqual(history[0]["actual"]["stdout"], "<hidden>")
+        self.assertNotIn("matcher-secret", json.dumps(history))
         self.assertIn("exit_code_mismatch", history[0]["diagnostic"])
         result = self.cli(
             "validation", "history", str(item["id"]), "--limit", "1",
             "--project-root", str(self.root),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(len(json.loads(result.stdout)), 1)
+        payload = json.loads(result.stdout)
+        self.assertEqual(len(payload), 1)
+        self.assertNotIn("matcher-secret", result.stdout)
+        self.assertNotIn("actual\\n", result.stdout)
         with self.assertRaisesRegex(db.BacklogError, "between 1 and 100"):
             self.bl.execution_history(item["id"], limit=101)
+
+        hook = core.add_item(
+            self.conn, self.project["id"], self.task["key"],
+            "acceptance_criteria", "hook secret",
+        )
+        hook_row = execution.set_executable(self.conn, hook["id"], {
+            "executor": "hook",
+            "hook": {
+                "name": "secrets.hook",
+                "expected_result": {"nested": {"token": "expected-secret"}},
+            },
+        })
+        execution.record_result(
+            self.conn, hook["id"], hook_row["spec_fingerprint"], "fail",
+            actor="hook-actor", reason="result_mismatch",
+            detail="diagnostic-secret",
+            expected={"nested": {"token": "expected-secret"}},
+            actual={"nested": {"token": "actual-secret"}},
+            hook_name="secrets.hook",
+        )
+        hook_history = self.bl.execution_history(hook["id"])
+        encoded = json.dumps(hook_history)
+        self.assertEqual(hook_history[0]["expected"], "<hidden>")
+        self.assertEqual(hook_history[0]["actual"], "<hidden>")
+        self.assertEqual(hook_history[0]["diagnostic"], "result_mismatch")
+        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertNotIn(secret, encoded)
+        result = self.cli("validation", "history", str(hook["id"]))
+        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertNotIn(secret, result.stdout)
 
     def test_pass_auto_checks_required_checklist_but_criteria_remains_non_tickable(self):
         checklist = self.shell_item()
@@ -198,6 +240,25 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertIn("validation_skipped", joined)
         self.assertIn("validation_waived", joined)
         self.assertIn("Policy owner approved", joined)
+        self.assertIn("actor=S-010", joined)
+        self.assertIn("prior=pending", joined)
+        self.assertIn("(shell)", joined)
+
+        executable = execution.executable_item(self.conn, item["id"])
+        execution.record_result(
+            self.conn, item["id"], executable["spec_fingerprint"], "fail",
+            actor="failure-actor", detail="exit_code_mismatch",
+        )
+        report = self.cli("doctor")
+        joined = "\n".join(json.loads(report.stdout)["diagnostics"])
+        self.assertIn("validation_skipped", joined)
+        execution.record_result(
+            self.conn, item["id"], executable["spec_fingerprint"], "error",
+            actor="error-actor", detail="runtime_infrastructure_failure",
+        )
+        report = self.cli("doctor")
+        joined = "\n".join(json.loads(report.stdout)["diagnostics"])
+        self.assertIn("validation_skipped", joined)
 
         self.bl.run_item(item["id"], self.root, policy=self.policy)
         report = self.cli("doctor")
@@ -226,8 +287,17 @@ class ExecutionReportingTest(unittest.TestCase):
         )
         self.assertEqual(execution.item_state(self.conn, passed["id"]), "pass")
 
-    def test_existing_v10_store_receives_additive_reporting_shape(self):
+    def test_exact_v10_store_migrates_additively_to_v11(self):
+        item = self.shell_item()
+        executable = execution.executable_item(self.conn, item["id"])
+        execution.record_result(
+            self.conn, item["id"], executable["spec_fingerprint"], "fail",
+        )
         self.conn.execute("DROP TABLE validation_waiver")
+        self.conn.execute("ALTER TABLE execution_result DROP COLUMN actor")
+        self.conn.execute(
+            "UPDATE meta SET value='10' WHERE key='schema_version'"
+        )
         self.conn.commit()
         self.conn.close()
         self.conn = db.connect(spec=self.store)
@@ -238,6 +308,48 @@ class ExecutionReportingTest(unittest.TestCase):
             ).fetchall()
         }
         self.assertIn("actor", columns)
+        version = self.conn.execute(
+            "SELECT value FROM meta WHERE key='schema_version'"
+        ).fetchone()["value"]
+        self.assertEqual(version, "11")
+        actor = self.conn.execute(
+            "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
+        ).fetchone()["actor"]
+        self.assertEqual(actor, "unknown")
+
+    def test_v11_export_import_preserves_actor_history_and_waivers(self):
+        item = self.shell_item(expected=4)
+        self.bl.run_item(item["id"], self.root, policy=self.policy)
+        self.bl.waive_validation(item["id"], reason="Round-trip waiver")
+        export_path = self.root / "export.json"
+        exported = self.cli("export", "--out", str(export_path))
+        self.assertEqual(exported.returncode, 0, exported.stderr)
+        payload = json.loads(export_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["schema_version"], 11)
+        self.assertEqual(
+            payload["tables"]["execution_result"][0]["actor"], "S-010"
+        )
+        self.assertEqual(
+            payload["tables"]["validation_waiver"][0]["reason"],
+            "Round-trip waiver",
+        )
+
+        self.conn.close()
+        imported = self.cli("import", str(export_path), "--replace")
+        self.assertEqual(imported.returncode, 0, imported.stderr)
+        self.conn = db.connect(spec=self.store)
+        result = self.conn.execute(
+            "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
+        ).fetchone()
+        waiver = self.conn.execute(
+            "SELECT actor,reason FROM validation_waiver WHERE item_id=?",
+            (item["id"],),
+        ).fetchone()
+        self.assertEqual(result["actor"], "S-010")
+        self.assertEqual(
+            (waiver["actor"], waiver["reason"]),
+            ("S-010", "Round-trip waiver"),
+        )
 
 
 if __name__ == "__main__":

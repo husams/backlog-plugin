@@ -140,8 +140,8 @@ pre-invocation error. Name-to-value mappings are rejected, so shared execution
 specs, result rows, API results, and audit actions never receive the value.
 
 Schema v10 combines shell result fields with the v9 named-hook result fields.
-Opening an S-009-era v9 store additively installs the shell fields without
-altering its hook results.
+Schema v11 additively adds durable result actors and validation waivers.
+Opening a v9 or v10 store migrates forward without altering existing results.
 
 Shell results expose `status`, `executor`, `expected`,
 `actual_exit_code`, bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`,

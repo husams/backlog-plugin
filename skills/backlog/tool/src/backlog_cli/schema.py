@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 # --------------------------------------------------------------------------- #
 # tasks

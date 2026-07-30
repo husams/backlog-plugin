@@ -480,15 +480,6 @@ def _check_version(conn: Conn, spec: StoreSpec) -> None:
         )
     if found < SCHEMA_VERSION:
         migrate(conn, found, spec)
-    else:
-        _ensure_v10_shape(conn)
-
-
-def _ensure_v10_shape(conn: Conn) -> None:
-    """Apply additive S-010 tables/columns while preserving schema v10."""
-    _add_column(conn, "execution_result", "actor", "TEXT NOT NULL DEFAULT 'unknown'")
-    conn.executescript(SCHEMA_SQL)
-    conn.commit()
 
 
 def _bootstrap(conn: Conn) -> None:

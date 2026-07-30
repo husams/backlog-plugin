@@ -1123,9 +1123,19 @@ def execution_history(
     history: list[dict[str, Any]] = []
     for row in rows:
         value = {key: row[key] for key in row.keys()}
-        value["expected"] = _decode_json(value.pop("expected_result"))
-        value["actual"] = _decode_json(value.pop("actual_result"))
-        value["diagnostic"] = value.pop("detail")
+        expected = _decode_json(value.pop("expected_result"))
+        actual = _decode_json(value.pop("actual_result"))
+        if value["hook_name"]:
+            value["expected"] = "<hidden>"
+            value["actual"] = "<hidden>"
+            value["diagnostic"] = value["reason"] or value["status"]
+        else:
+            value["expected"] = _public_shell_expected(expected)
+            value["actual"] = _public_shell_actual(actual)
+            value["diagnostic"] = value["detail"]
+        value.pop("detail")
+        value["stdout"] = "<hidden>" if value["stdout"] else ""
+        value["stderr"] = "<hidden>" if value["stderr"] else ""
         value["stale"] = (
             value["spec_fingerprint"] != executable["spec_fingerprint"]
             or (
@@ -1190,20 +1200,29 @@ def validation_diagnostics(conn: Conn) -> list[dict[str, Any]]:
             "ORDER BY id DESC LIMIT 1",
             (row["item_id"], row["spec_fingerprint"]),
         ).fetchone()
+        skipped = conn.execute(
+            "SELECT s.* FROM execution_result s WHERE s.item_id=? "
+            "AND s.spec_fingerprint=? AND s.status='skipped' "
+            "AND NOT EXISTS (SELECT 1 FROM execution_result p "
+            "  WHERE p.item_id=s.item_id AND p.spec_fingerprint=s.spec_fingerprint "
+            "  AND p.status='pass' AND p.id>s.id) "
+            "ORDER BY s.id DESC LIMIT 1",
+            (row["item_id"], row["spec_fingerprint"]),
+        ).fetchone()
         waiver = current_waiver(conn, int(row["item_id"]))
-        if latest is not None and latest["status"] == "skipped":
+        if skipped is not None:
             prior = conn.execute(
                 "SELECT status FROM execution_result WHERE item_id=? "
                 "AND spec_fingerprint=? AND id<? ORDER BY id DESC LIMIT 1",
-                (row["item_id"], row["spec_fingerprint"], latest["id"]),
+                (row["item_id"], row["spec_fingerprint"], skipped["id"]),
             ).fetchone()
             diagnostics.append({
                 "kind": "skipped", "task": row["task_key"],
                 "item_id": int(row["item_id"]), "item": row["content"],
-                "executor": row["executor"], "actor": latest["actor"],
-                "reason": latest["reason"],
+                "executor": row["executor"], "actor": skipped["actor"],
+                "reason": skipped["reason"],
                 "prior_result": prior["status"] if prior else "pending",
-                "timestamp": latest["finished_at"],
+                "timestamp": skipped["finished_at"],
             })
         if waiver is not None:
             diagnostics.append({
@@ -1256,6 +1275,35 @@ def _source_matches(result: Mapping[str, Any], current: SourceIdentity) -> bool:
 
 def _decode_json(value: str | None) -> Any:
     return json.loads(value) if value is not None else None
+
+
+def _public_shell_expected(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return "<hidden>" if value is not None else None
+    return {
+        "exit_code": value.get("exit_code"),
+        "stdout": _public_matcher(value.get("stdout")),
+        "stderr": _public_matcher(value.get("stderr")),
+    }
+
+
+def _public_matcher(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return None if value is None else "<hidden>"
+    return {
+        str(name): "<hidden>" for name, matcher in value.items()
+        if matcher is not None
+    }
+
+
+def _public_shell_actual(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return "<hidden>" if value is not None else None
+    return {
+        "exit_code": value.get("exit_code"),
+        "stdout": "<hidden>" if value.get("stdout") else "",
+        "stderr": "<hidden>" if value.get("stderr") else "",
+    }
 
 
 def source_revision_unavailable_items(conn: Conn) -> list[int]:

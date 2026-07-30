@@ -1301,6 +1301,9 @@ _EXPORT_TABLES: list[tuple[str, str]] = [
     ("key_counter", "project_id"),
     ("task", "id"),
     ("task_item", "id"),
+    ("executable_item", "item_id"),
+    ("execution_result", "id"),
+    ("validation_waiver", "id"),
     ("dependency", "id"),
     ("artifact", "id"),
     ("review_thread", "id"),
@@ -1331,7 +1334,12 @@ def cmd_import(ctx: Ctx, args) -> int:
     version = int(data.get("schema_version", 0))
     conn = ctx.conn
 
-    if version < SCHEMA_VERSION:
+    if version > SCHEMA_VERSION:
+        raise BacklogError(
+            f"export schema v{version} is newer than this tool (v{SCHEMA_VERSION})"
+        )
+
+    if version < 3:
         # An older dump carries the feature/item shape; convert as we load it.
         from .db import load_v2_export
 
