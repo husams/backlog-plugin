@@ -241,6 +241,68 @@ def executable_item(conn: Conn, item_id: int) -> dict[str, Any]:
     return result
 
 
+def public_item(conn: Conn, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Return an item suitable for CLI/API inspection without secret values."""
+    result = {key: item[key] for key in item.keys()}
+    row = conn.execute(
+        "SELECT executor, requirement, execution_spec, spec_fingerprint "
+        "FROM executable_item WHERE item_id = ?",
+        (item["id"],),
+    ).fetchone()
+    if row is None:
+        result.update({"executor": "plain", "requirement": None, "state": None})
+        return result
+    spec = _public_spec(json.loads(row["execution_spec"]))
+    result.update(
+        {
+            "executor": row["executor"],
+            "requirement": row["requirement"],
+            "state": item_state(conn, int(item["id"])),
+            "execution_spec": spec,
+            "spec_fingerprint": row["spec_fingerprint"],
+        }
+    )
+    return result
+
+
+def public_executable(conn: Conn, item_id: int) -> dict[str, Any]:
+    """Backward-compatible executable row with secret-bearing values redacted."""
+    result = executable_item(conn, item_id)
+    result["execution_spec"] = _public_spec(result["execution_spec"])
+    result["state"] = item_state(conn, item_id)
+    return result
+
+
+def _public_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    spec = dict(spec)
+    shell = spec.get("shell")
+    if shell and shell.get("environment"):
+        shell = dict(shell)
+        shell["environment"] = sorted(shell["environment"])
+        spec = {**spec, "shell": shell}
+    hook = spec.get("hook")
+    if hook and hook.get("arguments"):
+        hook = dict(hook)
+        hook["arguments"] = _redact_sensitive(hook["arguments"])
+        spec = {**spec, "hook": hook}
+    return spec
+
+
+def _redact_sensitive(value: Any) -> Any:
+    if isinstance(value, dict):
+        result = {}
+        for key, child in value.items():
+            sensitive = any(
+                marker in str(key).lower()
+                for marker in ("secret", "token", "password", "credential", "api_key")
+            )
+            result[key] = "<redacted>" if sensitive else _redact_sensitive(child)
+        return result
+    if isinstance(value, list):
+        return [_redact_sensitive(child) for child in value]
+    return value
+
+
 def record_result(
     conn: Conn, item_id: int, spec_fingerprint: str, status: TerminalStatus | str,
     *, reason: str = "", detail: str = "", source: SourceIdentity | None = None,
