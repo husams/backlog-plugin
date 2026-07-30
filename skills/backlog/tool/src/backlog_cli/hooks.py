@@ -327,6 +327,11 @@ def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:
     return module
 
 
+def load_project_hooks(backlog_dir: Path) -> ModuleType | None:
+    """Load the trusted local hooks package for validation or transitions."""
+    return _load_project_hooks(backlog_dir)
+
+
 def pre_transition(
     backlog_dir: Path,
     action: Action,

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -571,6 +571,10 @@ CREATE TABLE IF NOT EXISTS execution_result (
     status                   TEXT NOT NULL CHECK (status IN ('pass','fail','error','skipped')),
     reason                   TEXT NOT NULL DEFAULT '',
     detail                   TEXT NOT NULL DEFAULT '',
+    expected_result          TEXT,
+    actual_result            TEXT,
+    hook_name                TEXT,
+    implementation_identity  TEXT,
     source_revision          TEXT,
     source_dirty_fingerprint TEXT,
     source_revision_unavailable INTEGER NOT NULL DEFAULT 0,

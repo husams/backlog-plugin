@@ -227,7 +227,7 @@ allowed_hooks: ["tests.run"]
         )
         self.assertEqual(
             self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], "8",
+            .fetchone()["value"], "9",
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
