@@ -16,6 +16,9 @@ import signal
 import subprocess
 import threading
 from contextlib import contextmanager
+import shlex
+import shutil
+import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -66,19 +69,26 @@ class ShellSpec:
     timeout_seconds: int = 60
     working_directory: str = "."
     expected_exit_code: int = 0
+    output_limit_bytes: int | None = None
     stdout: TextMatcher | None = None
     stderr: TextMatcher | None = None
-    environment: Mapping[str, str] = field(default_factory=dict)
+    environment: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.command, str) or not self.command.strip():
             raise BacklogError("shell command must be a non-empty string")
         _positive_timeout(self.timeout_seconds)
+        if self.output_limit_bytes is not None:
+            _positive_limit(self.output_limit_bytes, "output_limit_bytes")
         _relative_project_path(self.working_directory)
-        _json_value(dict(self.environment), "shell environment")
-        for key, value in self.environment.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise BacklogError("shell environment names and values must be strings")
+        if (
+            not isinstance(self.environment, tuple)
+            or not all(isinstance(name, str) and name for name in self.environment)
+            or len(set(self.environment)) != len(self.environment)
+        ):
+            raise BacklogError(
+                "shell environment must contain unique non-empty variable names"
+            )
 
 
 @dataclass(frozen=True)
@@ -130,12 +140,15 @@ class ExecutionPolicy:
     shell_enabled: bool = False
     allowed_working_directories: tuple[str, ...] = (".",)
     allowed_environment_variables: tuple[str, ...] = ()
+    allowed_commands: tuple[str, ...] = ()
     max_timeout_seconds: int = 300
     max_output_bytes: int = 1_000_000
+    max_batch_seconds: int = 900
     allowed_hooks: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _positive_timeout(self.max_timeout_seconds)
+        _positive_timeout(self.max_batch_seconds)
         if self.max_output_bytes <= 0:
             raise BacklogError("max_output_bytes must be positive")
         for path in self.allowed_working_directories:
@@ -147,6 +160,20 @@ class ExecutionPolicy:
                 return "shell_disabled"
             if spec.shell.timeout_seconds > self.max_timeout_seconds:
                 return "timeout_exceeds_policy"
+            if (
+                spec.shell.output_limit_bytes is not None
+                and spec.shell.output_limit_bytes > self.max_output_bytes
+            ):
+                return "output_limit_exceeds_policy"
+            if self.allowed_commands:
+                try:
+                    command = shlex.split(
+                        spec.shell.command, posix=os.name != "nt"
+                    )[0]
+                except (ValueError, IndexError):
+                    return "command_denied"
+                if command not in self.allowed_commands:
+                    return "command_denied"
             if not _path_allowed(spec.shell.working_directory, self.allowed_working_directories):
                 return "working_directory_denied"
             denied = sorted(set(spec.shell.environment) - set(self.allowed_environment_variables))
@@ -254,8 +281,9 @@ def load_policy(project_root: Path) -> ExecutionPolicy:
         raise BacklogError(f"{path} must contain a mapping")
     unknown = set(raw) - {
         "shell_enabled", "allowed_working_directories",
-        "allowed_environment_variables", "max_timeout_seconds",
+        "allowed_environment_variables", "allowed_commands", "max_timeout_seconds",
         "max_output_bytes", "allowed_hooks",
+        "max_batch_seconds",
     }
     if unknown:
         raise BacklogError("unknown execution policy fields: " + ", ".join(sorted(unknown)))
@@ -263,8 +291,10 @@ def load_policy(project_root: Path) -> ExecutionPolicy:
         shell_enabled=_bool(raw.get("shell_enabled", False), "shell_enabled"),
         allowed_working_directories=_strings(raw.get("allowed_working_directories", ["."])),
         allowed_environment_variables=_strings(raw.get("allowed_environment_variables", [])),
+        allowed_commands=_strings(raw.get("allowed_commands", [])),
         max_timeout_seconds=int(raw.get("max_timeout_seconds", 300)),
         max_output_bytes=int(raw.get("max_output_bytes", 1_000_000)),
+        max_batch_seconds=int(raw.get("max_batch_seconds", 900)),
         allowed_hooks=_strings(raw.get("allowed_hooks", [])),
     )
 
@@ -360,6 +390,8 @@ def _public_spec(spec: dict[str, Any]) -> dict[str, Any]:
 def record_result(
     conn: Conn, item_id: int, spec_fingerprint: str, status: TerminalStatus | str,
     *, reason: str = "", detail: str = "", source: SourceIdentity | None = None,
+    actual_exit_code: int | None = None, stdout: str = "", stderr: str = "",
+    duration_ms: int = 0,
     started_at: str | None = None, finished_at: str | None = None,
     expected: Any = None, actual: Any = None, hook_name: str | None = None,
     implementation_identity: str | None = None,
@@ -368,8 +400,13 @@ def record_result(
         terminal = TerminalStatus(status)
     except ValueError as exc:
         raise BacklogError("execution result must be pass, fail, error, or skipped") from exc
-    if terminal == TerminalStatus.SKIPPED and reason != "policy_denied":
-        raise BacklogError("skipped execution results require reason=policy_denied")
+    if terminal == TerminalStatus.SKIPPED and reason not in {
+        "policy_denied", "batch_budget_exhausted",
+    }:
+        raise BacklogError(
+            "skipped execution results require reason=policy_denied "
+            "or batch_budget_exhausted"
+        )
     source = source or SourceIdentity(unavailable=True)
     if hook_name is not None and not isinstance(hook_name, str):
         raise BacklogError("hook_name must be a string")
@@ -381,12 +418,14 @@ def record_result(
     rid = conn.insert_returning_id(
         "INSERT INTO execution_result(item_id,spec_fingerprint,status,reason,detail,"
         "expected_result,actual_result,hook_name,implementation_identity,"
+        "actual_exit_code,stdout,stderr,duration_ms,"
         "source_revision,source_dirty_fingerprint,source_revision_unavailable,"
-        "started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "started_at,finished_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (item_id, spec_fingerprint, terminal.value, reason, detail,
          json.dumps(expected, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
          json.dumps(actual, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
-         hook_name, implementation_identity, source.revision,
+         hook_name, implementation_identity, actual_exit_code, stdout, stderr,
+         duration_ms, source.revision,
          source.dirty_fingerprint, 1 if source.unavailable else 0,
          started_at or now, finished_at or now),
     )
@@ -608,6 +647,322 @@ def _timeout_constraint() -> str | None:
     return None
 
 
+@dataclass(frozen=True)
+class ExecutionResult:
+    item_id: int
+    status: str
+    executor: str
+    expected: dict[str, Any]
+    actual_exit_code: int | None
+    stdout: str
+    stderr: str
+    duration_ms: int
+    diagnostic: str
+    output_truncated: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def run_shell(
+    backlog, item_id: int, project_root: Path, *,
+    policy: ExecutionPolicy | None = None, actor: str | None = None,
+) -> ExecutionResult:
+    """Execute one shell item under trusted local policy and audit the attempt."""
+    executable = executable_item(backlog._conn, item_id)
+    spec = parse_spec(executable["execution_spec"])
+    if spec.executor != Executor.SHELL or spec.shell is None:
+        raise BacklogError(f"executable item {item_id} is not a shell executor")
+    task = _task_for_item(backlog._conn, backlog.pid, item_id)
+    root = Path(project_root).resolve()
+    policy = policy or load_policy(root)
+    denied = policy.denial_reason(spec)
+    if denied:
+        result = _record_shell_result(
+            backlog, task["key"], item_id, spec, "skipped",
+            reason="policy_denied", diagnostic=f"policy_denied:{denied}",
+            source=SourceIdentity(unavailable=True),
+        )
+        return result
+    return _invoke_shell(backlog, task["key"], item_id, spec, root, policy, actor)
+
+
+def run_task_shells(
+    backlog, key: str, project_root: Path, *, fail_fast: bool = False,
+    policy: ExecutionPolicy | None = None, actor: str | None = None,
+) -> list[ExecutionResult]:
+    """Run shell items in declaration order with a separate local batch budget."""
+    task = backlog.task(key)
+    root = Path(project_root).resolve()
+    policy = policy or load_policy(root)
+    rows = backlog._conn.execute(
+        "SELECT e.* FROM executable_item e JOIN task_item i ON i.id=e.item_id "
+        "WHERE i.task_id=? AND e.executor='shell' "
+        "ORDER BY i.kind,i.position,i.id", (task.id,),
+    ).fetchall()
+    started = time.monotonic()
+    results: list[ExecutionResult] = []
+    budget_exhausted = False
+    for row in rows:
+        spec = parse_spec(json.loads(row["execution_spec"]))
+        assert spec.shell is not None
+        remaining = policy.max_batch_seconds - (time.monotonic() - started)
+        if budget_exhausted or remaining < spec.shell.timeout_seconds:
+            budget_exhausted = True
+            results.append(_record_shell_result(
+                backlog, task.key, int(row["item_id"]), spec, "skipped",
+                reason="batch_budget_exhausted",
+                diagnostic="batch_budget_exhausted",
+                source=SourceIdentity(unavailable=True),
+            ))
+            continue
+        result = run_shell(
+            backlog, int(row["item_id"]), root, policy=policy, actor=actor
+        )
+        results.append(result)
+        if fail_fast and result.status in {"fail", "error"}:
+            break
+    return results
+
+
+def _invoke_shell(backlog, task_key: str, item_id: int, spec: ExecutionSpec,
+                  root: Path, policy: ExecutionPolicy,
+                  actor: str | None) -> ExecutionResult:
+    assert spec.shell is not None
+    shell = spec.shell
+    try:
+        argv = shlex.split(shell.command, posix=os.name != "nt")
+    except ValueError as exc:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec, f"invalid_command:{exc}", root, actor
+        )
+    if not argv:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec, "invalid_command:empty", root, actor
+        )
+    cwd = (root / shell.working_directory).resolve()
+    try:
+        cwd.relative_to(root)
+    except ValueError:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec, "working_directory_outside_project",
+            root, actor,
+        )
+    if not cwd.is_dir():
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec, "working_directory_unavailable",
+            root, actor,
+        )
+    missing = sorted(name for name in shell.environment if name not in os.environ)
+    if missing:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec,
+            "environment_variable_unavailable:" + ",".join(missing), root, actor,
+        )
+    requested_environment = {
+        name: os.environ[name] for name in shell.environment
+    }
+    env = {"PATH": os.defpath, **requested_environment}
+    executable_path = shutil.which(argv[0], path=env["PATH"])
+    if executable_path is None:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec,
+            f"command_unavailable:{argv[0]}", root, actor,
+        )
+    argv[0] = executable_path
+    started_wall = _utc_timestamp()
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(
+            argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            start_new_session=(os.name == "posix"),
+        )
+    except OSError as exc:
+        return _pre_invocation_error(
+            backlog, task_key, item_id, spec,
+            f"process_start_failed:{exc.__class__.__name__}", root, actor,
+        )
+    backlog.trigger(
+        task_key, _action("check.started"), actor=actor,
+        operation="validation.shell",
+        parameters={"item_id": item_id},
+    )
+    stdout, stderr, truncated, timed_out, read_error = _communicate_bounded(
+        process, shell.timeout_seconds,
+        shell.output_limit_bytes or policy.max_output_bytes,
+    )
+    duration_ms = max(0, int((time.monotonic() - started) * 1000))
+    if read_error:
+        status, diagnostic = "error", f"runtime_infrastructure_failure:{read_error}"
+    elif timed_out:
+        status, diagnostic = "error", "timed_out"
+    else:
+        mismatches = _mismatches(shell, process.returncode, stdout, stderr)
+        status = "fail" if mismatches else "pass"
+        diagnostic = ";".join(mismatches)
+    stdout = _redact(stdout, requested_environment.values())
+    stderr = _redact(stderr, requested_environment.values())
+    if truncated:
+        diagnostic = ";".join(filter(None, (diagnostic, "output_truncated")))
+    result = _record_shell_result(
+        backlog, task_key, item_id, spec, status,
+        diagnostic=diagnostic, actual_exit_code=process.returncode,
+        stdout=stdout, stderr=stderr, duration_ms=duration_ms,
+        source=source_identity(root), started_at=started_wall,
+    )
+    terminal = "check.timed_out" if timed_out else (
+        "check.passed" if status == "pass" else "check.failed"
+    )
+    backlog.trigger(
+        task_key, _action(terminal), actor=actor, operation="validation.shell",
+        parameters={"item_id": item_id, "diagnostic": diagnostic},
+    )
+    return result
+
+
+def _pre_invocation_error(backlog, task_key: str, item_id: int,
+                          spec: ExecutionSpec, diagnostic: str,
+                          root: Path, actor: str | None) -> ExecutionResult:
+    result = _record_shell_result(
+        backlog, task_key, item_id, spec, "error", diagnostic=diagnostic,
+        source=source_identity(root),
+    )
+    backlog.trigger(
+        task_key, _action("check.failed"), actor=actor,
+        operation="validation.shell",
+        parameters={"item_id": item_id, "diagnostic": diagnostic},
+    )
+    return result
+
+
+def _record_shell_result(backlog, task_key: str, item_id: int,
+                         spec: ExecutionSpec, status: str, *,
+                         reason: str = "", diagnostic: str = "",
+                         actual_exit_code: int | None = None,
+                         stdout: str = "", stderr: str = "",
+                         duration_ms: int = 0,
+                         source: SourceIdentity | None = None,
+                         started_at: str | None = None) -> ExecutionResult:
+    executable = executable_item(backlog._conn, item_id)
+    record_result(
+        backlog._conn, item_id, executable["spec_fingerprint"], status,
+        reason=reason, detail=diagnostic, source=source,
+        actual_exit_code=actual_exit_code, stdout=stdout, stderr=stderr,
+        duration_ms=duration_ms, started_at=started_at,
+    )
+    assert spec.shell is not None
+    expected = {
+        "exit_code": spec.shell.expected_exit_code,
+        "stdout": asdict(spec.shell.stdout) if spec.shell.stdout else None,
+        "stderr": asdict(spec.shell.stderr) if spec.shell.stderr else None,
+    }
+    return ExecutionResult(
+        item_id, status, spec.executor.value, expected, actual_exit_code,
+        stdout, stderr, duration_ms, diagnostic,
+        output_truncated=diagnostic.endswith("output_truncated"),
+    )
+
+
+def _communicate_bounded(process: subprocess.Popen, timeout: int,
+                         limit: int) -> tuple[str, str, bool, bool, str]:
+    captured = [bytearray(), bytearray()]
+    truncated = [False]
+    read_errors: list[str] = []
+    lock = threading.Lock()
+
+    def drain(stream, index: int) -> None:
+        try:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                with lock:
+                    remaining = max(0, limit - sum(len(value) for value in captured))
+                    captured[index].extend(chunk[:remaining])
+                    if len(chunk) > remaining:
+                        truncated[0] = True
+        except OSError as exc:
+            read_errors.append(exc.__class__.__name__)
+
+    threads = [
+        threading.Thread(target=drain, args=(process.stdout, 0), daemon=True),
+        threading.Thread(target=drain, args=(process.stderr, 1), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    timed_out = False
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+        process.wait()
+    for thread in threads:
+        thread.join()
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            stream.close()
+    stdout = captured[0].decode("utf-8", "replace")
+    stderr = captured[1].decode("utf-8", "replace")
+    diagnostic = ",".join(read_errors)
+    return stdout, stderr, truncated[0], timed_out, diagnostic
+
+
+def _mismatches(shell: ShellSpec, exit_code: int | None,
+                stdout: str, stderr: str) -> list[str]:
+    mismatches = []
+    if exit_code != shell.expected_exit_code:
+        mismatches.append(
+            f"exit_code_mismatch:expected={shell.expected_exit_code},actual={exit_code}"
+        )
+    for label, matcher, actual in (
+        ("stdout", shell.stdout, stdout), ("stderr", shell.stderr, stderr)
+    ):
+        if matcher and not _matches(matcher, actual):
+            mismatches.append(f"{label}_mismatch")
+    return mismatches
+
+
+def _matches(matcher: TextMatcher, actual: str) -> bool:
+    if matcher.equals is not None:
+        return actual == matcher.equals
+    if matcher.contains is not None:
+        return matcher.contains in actual
+    assert matcher.regex is not None
+    return re.search(matcher.regex, actual) is not None
+
+
+def _redact(value: str, secrets) -> str:
+    for secret in sorted(
+        {secret for secret in secrets if secret}, key=len, reverse=True
+    ):
+        value = value.replace(secret, "[REDACTED]")
+    return value
+
+
+def _task_for_item(conn: Conn, project_id: int, item_id: int):
+    row = conn.execute(
+        "SELECT t.* FROM task t JOIN task_item i ON i.task_id=t.id "
+        "WHERE t.project_id=? AND i.id=?", (project_id, item_id),
+    ).fetchone()
+    if row is None:
+        raise BacklogError(f"no task item with id {item_id} in this project")
+    return row
+
+
+def _action(value: str):
+    from .hooks import Action
+    return Action(value)
+
+
+def _utc_timestamp() -> str:
+    return utcnow()
+
+
 def item_state(conn: Conn, item_id: int) -> str:
     """Return pending or the latest fresh terminal status."""
     executable = executable_item(conn, item_id)
@@ -677,6 +1032,12 @@ def _parse_shell(value: Any) -> ShellSpec:
     if not isinstance(value, Mapping):
         raise BacklogError("shell specification must be an object")
     data = dict(value)
+    environment = data.get("environment", [])
+    if not isinstance(environment, (list, tuple)):
+        raise BacklogError(
+            "shell environment must be a list of trusted-local variable names"
+        )
+    data["environment"] = tuple(environment)
     stdout = _matcher(data.pop("stdout", None))
     stderr = _matcher(data.pop("stderr", None))
     try:
@@ -715,6 +1076,11 @@ def _json_value(value: Any, label: str) -> None:
 def _positive_timeout(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise BacklogError("timeout_seconds must be a positive integer")
+
+
+def _positive_limit(value: int, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise BacklogError(f"{label} must be a positive integer")
 
 
 def _relative_project_path(value: str) -> None:

@@ -104,7 +104,7 @@ checklist entry. Both accept `--requirement required|advisory` and
 
 Shell options are `--working-directory`, `--expected-exit-code`,
 `--stdout-equals|--stdout-contains|--stdout-regex`, the corresponding
-`--stderr-*` options, and repeatable `--env NAME=VALUE`. Hook options are
+`--stderr-*` options, and repeatable `--env NAME`. Hook options are
 `--arguments JSON` and `--expected-result JSON`. Executable input must contain
 one non-empty line; existing multi-line plain syntax is unchanged.
 
@@ -130,6 +130,21 @@ current state.
 `action` exits `1` on an illegal transition or a failed gate. `gate` exits `0`
 pass, `2` blocked, `1` command error. Both read this project's flow — see
 [workflow.md](workflow.md).
+
+## Executable validation
+
+```bash
+$BL validation run ITEM_ID [--project-root DIR]
+$BL validation run-all KEY [--project-root DIR] [--fail-fast]
+```
+
+Shell execution is disabled unless the trusted checkout contains
+`.backlog/execution-policy.yaml` with `shell_enabled: true`. One-item and batch
+commands return exit `0` only when every returned result passes, `2` for a
+fail, error, timeout, policy denial, or batch-budget skip, and `1` for command
+errors. Batch execution runs every shell item in declaration order unless
+`--fail-fast` is explicit. See
+[the executable-item guide](../../../docs/executable-items.md).
 
 ## Dependencies
 

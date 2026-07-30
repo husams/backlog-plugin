@@ -534,6 +534,10 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         _add_column(conn, "execution_result", "actual_result", "TEXT")
         _add_column(conn, "execution_result", "hook_name", "TEXT")
         _add_column(conn, "execution_result", "implementation_identity", "TEXT")
+        _add_column(conn, "execution_result", "actual_exit_code", "INTEGER")
+        _add_column(conn, "execution_result", "stdout", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "execution_result", "stderr", "TEXT NOT NULL DEFAULT ''")
+        _add_column(conn, "execution_result", "duration_ms", "INTEGER NOT NULL DEFAULT 0")
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
         conn.executescript(SCHEMA_SQL)
