@@ -40,7 +40,7 @@ __all__ = [
     "ReviewSeverity", "BacklogError", "ExecutionSpec", "ExecutionPolicy",
     "Executor", "Requirement", "TerminalStatus", "SourceIdentity",
     "ValidationContext", "ValidationHookResult", "ValidationExecutionResult",
-    "validation_hook",
+    "ExecutionResult", "validation_hook",
 ]
 
 ExecutionSpec = execution.ExecutionSpec
@@ -80,6 +80,7 @@ def _prepare_items(items: list[str | dict]) -> list[tuple[str, dict | None]]:
             raise BacklogError("item content must be a non-empty string")
         prepared.append((content.strip(), spec))
     return prepared
+ExecutionResult = execution.ExecutionResult
 
 
 def _age_days(stamp: str | None) -> float:
@@ -672,6 +673,26 @@ class Backlog:
         return execution.run_hook_validation(
             self, item_id, actor=actor or self.actor or "unknown",
             project_root=Path(project_root),
+        )
+
+    def run_item(self, item_id: int, project_root, *,
+                 policy: ExecutionPolicy | None = None,
+                 actor: str | None = None) -> ExecutionResult:
+        """Run one shell executable item under trusted local policy."""
+        from pathlib import Path
+        return execution.run_shell(
+            self, item_id, Path(project_root), policy=policy,
+            actor=actor or self.actor,
+        )
+
+    def run_task(self, key: str, project_root, *, fail_fast: bool = False,
+                 policy: ExecutionPolicy | None = None,
+                 actor: str | None = None) -> list[ExecutionResult]:
+        """Run all shell executable items in declaration order."""
+        from pathlib import Path
+        return execution.run_task_shells(
+            self, key, Path(project_root), fail_fast=fail_fast, policy=policy,
+            actor=actor or self.actor,
         )
 
     def commit(self) -> None:

@@ -585,6 +585,46 @@ def cmd_action(ctx: Ctx, args) -> int:
     return 0
 
 
+def _execution_text(results) -> str:
+    lines = []
+    for result in results:
+        line = (
+            f"#{result.item_id}  {result.status.upper():7} "
+            f"executor={result.executor} duration={result.duration_ms}ms"
+        )
+        if result.diagnostic:
+            line += f"  {result.diagnostic}"
+        lines.append(line)
+    return "\n".join(lines) if lines else "no shell executable items"
+
+
+def cmd_validation_run(ctx: Ctx, args) -> int:
+    from .api import Backlog
+    from . import execution
+
+    backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
+    result = execution.run_shell(
+        backlog, args.item_id, Path(args.project_root),
+        actor=args.actor,
+    )
+    ctx.emit(result.as_dict(), _execution_text([result]))
+    return 0 if result.status == "pass" else 2
+
+
+def cmd_validation_run_all(ctx: Ctx, args) -> int:
+    from .api import Backlog
+    from . import execution
+
+    backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
+    results = execution.run_task_shells(
+        backlog, args.key, Path(args.project_root),
+        fail_fast=args.fail_fast, actor=args.actor,
+    )
+    payload = [result.as_dict() for result in results]
+    ctx.emit(payload, _execution_text(results))
+    return 0 if all(result.status == "pass" for result in results) else 2
+
+
 def cmd_actions(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     config_dir = hooks.project_backlog_dir(ctx.dir)
@@ -1432,6 +1472,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("history", help="audit trail for a task")
     sp.add_argument("key")
     sp.set_defaults(func=cmd_history)
+
+    vp = sub.group("validation", help="execute declared item validations")
+    sp = vp.add_parser("run", help="run one shell executable item")
+    sp.add_argument("item_id", type=int)
+    sp.add_argument("--project-root", default=".",
+                    help="trusted local project checkout (default: current directory)")
+    sp.set_defaults(func=cmd_validation_run)
+    sp = vp.add_parser("run-all", help="run all shell executable items for a task")
+    sp.add_argument("key")
+    sp.add_argument("--project-root", default=".",
+                    help="trusted local project checkout (default: current directory)")
+    sp.add_argument("--fail-fast", action="store_true")
+    sp.set_defaults(func=cmd_validation_run_all)
 
     def add_create_flags(sp, with_branch=True):
         sp.add_argument("--title", required=True)

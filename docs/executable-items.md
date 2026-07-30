@@ -79,16 +79,64 @@ is disabled and no hooks are allowed.
 
 ```yaml
 shell_enabled: true
+allowed_commands: ["python3", "/usr/bin/make"]
 allowed_working_directories: ["."]
 allowed_environment_variables: ["CI"]
 max_timeout_seconds: 120
 max_output_bytes: 1048576
+max_batch_seconds: 600
 allowed_hooks: ["tests.unit", "lint.python"]
 ```
 
 Runners must check `ExecutionPolicy.denial_reason()` before starting. A denial
 is recorded as `skipped` with reason `policy_denied`; it is never `fail` or
 `error`.
+
+## Running shell validation
+
+Run one declared shell item, or every shell item on a task:
+
+```bash
+backlog validation run 1457 --project-root .
+backlog validation run-all S-008 --project-root .
+backlog validation run-all S-008 --project-root . --fail-fast
+```
+
+The default batch behavior runs every item in declaration order. `--fail-fast`
+stops after the first fail, error, or timeout. `max_batch_seconds` is a trusted
+local wall-clock admission budget, separate from each item's timeout. If the
+remaining batch budget is shorter than the next declared item timeout, that
+item and every remaining item are audited as
+`skipped/batch_budget_exhausted`; no process or check action is started.
+
+The equivalent Python APIs are:
+
+```python
+with api.open(actor="validator") as bl:
+    one = bl.run_item(1457, ".")
+    all_results = bl.run_task("S-008", ".", fail_fast=False)
+```
+
+Commands are tokenized and spawned directly, never through a command shell.
+When `allowed_commands` is non-empty, the stored command's first token must
+match one of its entries. A shell item may request `output_limit_bytes`; policy
+denies a request above `max_output_bytes`, otherwise the policy maximum applies.
+The child receives only a minimal `PATH` plus explicitly declared,
+policy-allowed environment values. The working directory is resolved inside
+the explicit project root. Output capture is bounded across stdout and stderr;
+requested environment values are redacted before results are returned or
+audited.
+
+The returned `ExecutionResult` has `status`, `executor`, `expected`,
+`actual_exit_code`, bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`,
+and `output_truncated`. Exit or matcher differences are `fail`. Startup and
+runtime infrastructure problems are `error`. Timeout is `error/timed_out`.
+Policy and batch admission denials are `skipped`.
+
+An invocation emits `check.started` only after the process starts, followed by
+exactly one terminal check action. Resolution and startup errors emit only
+`check.failed`. Skipped attempts emit no check action and cannot alter task
+status.
 
 ## Results, pending, and source identity
 
