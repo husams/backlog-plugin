@@ -329,6 +329,50 @@ transitions:
         self.assertEqual(first["resolution"], "accepted_by_reviewer")
         self.assertEqual(second["resolution"], "accepted_by_reviewer")
 
+        self.run_cli(
+            "review", "reopen", "C-001",
+            "--author", "reviewer",
+            "--body", "The first issue regressed; please fix it again.",
+        )
+        self.assertEqual(self.status("F-001"), "incomplete")
+        reopened = self.run_cli(
+            "review", "thread", "C-001", json_output=True
+        )
+        self.assertEqual(reopened["state"], "awaiting_developer")
+        self.assertEqual(
+            reopened["last_comment"]["body"],
+            "The first issue regressed; please fix it again.",
+        )
+
+        self.run_cli(
+            "review", "reply", reopened["reply_to"],
+            "--author", "developer",
+            "--action", "fix",
+            "--body", "Fixed the regression.",
+        )
+        awaiting_review = self.run_cli(
+            "review", "thread", "C-001", json_output=True
+        )
+        self.run_cli(
+            "review", "reply", awaiting_review["reply_to"],
+            "--author", "reviewer",
+            "--action", "accept",
+            "--body", "Regression fix accepted.",
+        )
+        self.assertEqual(self.status("F-001"), "ready")
+
+        self.run_cli(
+            "review", "open", "F-001",
+            "--author", "reviewer",
+            "--severity", "blocker",
+            "--body", "A new blocker was found after refinement.",
+        )
+        self.assertEqual(self.status("F-001"), "incomplete")
+
+        from backlog_cli.api import Backlog
+
+        self.assertTrue(hasattr(Backlog, "review_reopen"))
+
 
 if __name__ == "__main__":
     unittest.main()

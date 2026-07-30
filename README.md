@@ -28,6 +28,10 @@ reviewers accept them. Individual replies never transition the task, and only
 after every blocker is reviewer-accepted does the review subsystem emit the
 aggregate `feedback.resolved` workflow action.
 
+If a reviewer opens a new blocker or reopens an accepted blocker with a reply,
+the shipped workflow invalidates readiness and transitions `Ready` back to
+`Incomplete`. The Python API exposes this as `review_reopen(...)`.
+
 The skill is self-contained under `skills/backlog/`. It includes its launchers,
 Python API, predefined scripts, documentation, and database tooling.
 

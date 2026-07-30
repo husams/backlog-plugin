@@ -98,6 +98,20 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
     conn.commit()
+    if severity == ReviewSeverity.BLOCKER:
+        trigger_action(
+            conn,
+            project_id,
+            task["key"],
+            Action.FEEDBACK_POSTED,
+            actor=author,
+            operation="review.blocker_opened",
+            parameters={
+                "root": ckey,
+                "body": body,
+                "severity": severity.value,
+            },
+        )
     return thread_summary(conn, ckey)
 
 
@@ -257,6 +271,21 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
         conn, project_id, thread["last_comment_key"], author, "comment", body,
         role=role, reopen=True, emit_action=False
     )
+    if thread["severity"] == ReviewSeverity.BLOCKER.value:
+        trigger_action(
+            conn,
+            project_id,
+            task["key"],
+            Action.FEEDBACK_REOPENED,
+            actor=author,
+            operation="review.blocker_reopened",
+            parameters={
+                "root": rk,
+                "reply": result["reply_to"],
+                "body": body,
+                "severity": thread["severity"],
+            },
+        )
     return result
 
 

@@ -444,6 +444,18 @@ class Backlog:
             role=role,
         ))
 
+    def review_reopen(self, root: str, *, author: str, body: str,
+                      role: str = "auto") -> Thread:
+        """Reviewer reopens a closed thread and posts the required reply."""
+        return _thread(review.reopen(
+            self._conn,
+            self.pid,
+            root,
+            author,
+            body,
+            role=role,
+        ))
+
     def assign(self, key: str, to: str | None = None, reviewer: str | None = None,
                actor: str | None = None) -> Task:
         row = core.assign(self._conn, self.pid, key, to=to, reviewer=reviewer,

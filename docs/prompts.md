@@ -173,6 +173,13 @@ Use `comment` for a question or clarification that should keep the thread open:
 Always reply to the comment identified by `reply_to`, not automatically to the
 root comment. This preserves the thread’s parent chain.
 
+Reopen a previously accepted blocker:
+
+> @backlog-plugin Reopen review thread `<root-comment-key>` as reviewer
+> `<reviewer>` with reply “<why the issue is active again>”. Use the review
+> reopen API, not a task action. Confirm the thread is awaiting the developer
+> and report the task state selected by the workflow.
+
 ## Complete example
 
 > @backlog-plugin For project `accounts`, create feature **User

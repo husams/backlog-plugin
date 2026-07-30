@@ -62,6 +62,17 @@ transitions:
     action: feedback.resolved
     to: ready
 
+  # A new or reopened blocker invalidates refinement readiness.
+  - task_types: [feature, story, subtask]
+    from: ready
+    action: feedback.posted
+    to: incomplete
+
+  - task_types: [feature, story, subtask]
+    from: ready
+    action: feedback.reopened
+    to: incomplete
+
   # Implementation
   - task_types: [feature, story, subtask]
     from: ready

@@ -109,6 +109,11 @@ the waiver afterwards, so an override stays visible.
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
+11. **Reopen through the thread API.** To reactivate an accepted finding, use
+    `review reopen ROOT --author REVIEWER --body REASON` or
+    `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
+    on a Ready task emits a managed event that the shipped workflow resolves to
+    Incomplete; never submit that `feedback.*` action yourself.
 
 ## Start here
 

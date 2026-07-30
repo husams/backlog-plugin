@@ -58,6 +58,7 @@ for writes made through the session.
 | `bl.set_pr(key, url=, number=, repo=, state=, review_state=, actor=)` | record PR data and emit the matching `pr.*` action |
 | `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | reviewer opens a typed thread; task status is unchanged |
 | `bl.review_reply(comment, author=, action=, body=, role=)` | advance the thread workflow; only reviewer acceptance closes it |
+| `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.commit()` | flush early; `open()` commits for you on exit |
@@ -88,7 +89,9 @@ The Python API requires an `Action` enum member and rejects arbitrary strings.
 The CLI serializes the same enum values for shell and automation callers.
 `feedback.*` members are review-managed and are rejected by `bl.trigger`;
 `feedback.resolved` is emitted internally only when every blocker has reviewer
-acceptance.
+acceptance. Opening or reopening a blocker emits managed `feedback.posted` or
+`feedback.reopened`; the shipped workflow maps either event from Ready to
+Incomplete.
 
 Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
 `assets/default-workflow.yaml`. It resolves `(task type, current state,

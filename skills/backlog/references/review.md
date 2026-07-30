@@ -17,15 +17,21 @@ threads and new threads without an explicit severity default to `blocker`.
 Only blocker threads closed with `accepted_by_reviewer` satisfy
 `review_threads_closed`.
 
-Opening feedback and individual thread replies never choose a task status.
-When a blocker means a feature is not ready for implementation, submit the
-project's refinement-incomplete action separately.
+Individual thread replies never choose a task status. Opening advisory or
+informational feedback does not affect task state. Outside the shipped
+Ready-invalidation rule below, use the project's semantic refinement action
+when a blocker means a feature is incomplete.
 
 The review subsystem emits the task-level `feedback.resolved` action only after
 every blocker thread is closed by reviewer acceptance. Agents cannot submit
 `feedback.*` actions directly. A project may map that aggregate action to
 `Ready`; until the aggregate condition is true, the task remains in its current
 state.
+
+There is one readiness invalidation rule: opening a new blocker or reopening an
+accepted blocker emits a review-managed event. In the shipped workflow,
+`feedback.posted` and `feedback.reopened` transition `Ready → Incomplete`.
+Advisory and informational threads do not change task status.
 
 ## The five actions
 
@@ -134,6 +140,12 @@ A closed thread refuses new replies. If it must be re-litigated:
 ```bash
 $BL review reopen C-003 --author senior-developer --body "This regressed in the rebase."
 ```
+
+`reopen` requires a non-empty reply and reviewer identity. It changes the
+thread to `awaiting_developer`, makes the supplied reply the latest comment,
+and, for a blocker on a Ready task, lets the workflow return the task to
+Incomplete. The same operation is available through
+`bl.review_reopen(root, author=, body=, role=)`.
 
 ## Why an item is stuck
 
