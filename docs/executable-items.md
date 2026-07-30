@@ -36,7 +36,8 @@ backlog item add S-001 --kind checklist --content "Policy accepts the release" \
 
 Shell options include `--timeout`, `--working-directory`,
 `--expected-exit-code`, one equals/contains/regex matcher per output stream,
-and repeatable `--env NAME=VALUE`. Hook arguments and expected results are
+and repeatable `--env NAME`. Environment values are resolved only from the
+trusted local runtime. Hook arguments and expected results are
 JSON. `item set` and task `set --ac` accept the same execution options.
 An executable operation accepts exactly one content line; omit the execution
 options to retain the established multi-line plain-text behavior.
@@ -137,6 +138,10 @@ Values are resolved from the executing process environment only after trusted
 local policy permits every requested name. A missing local value is a stable
 pre-invocation error. Name-to-value mappings are rejected, so shared execution
 specs, result rows, API results, and audit actions never receive the value.
+
+Schema v10 combines shell result fields with the v9 named-hook result fields.
+Opening an S-009-era v9 store additively installs the shell fields without
+altering its hook results.
 
 The returned `ExecutionResult` has `status`, `executor`, `expected`,
 `actual_exit_code`, bounded `stdout` and `stderr`, `duration_ms`, `diagnostic`,

@@ -104,7 +104,7 @@ checklist entry. Both accept `--requirement required|advisory` and
 
 Shell options are `--working-directory`, `--expected-exit-code`,
 `--stdout-equals|--stdout-contains|--stdout-regex`, the corresponding
-`--stderr-*` options, and repeatable `--env NAME=VALUE`. Hook options are
+`--stderr-*` options, and repeatable `--env NAME`. Hook options are
 `--arguments JSON` and `--expected-result JSON`. Executable input must contain
 one non-empty line; existing multi-line plain syntax is unchanged.
 

@@ -62,7 +62,7 @@ class ItemAuthoringCliTest(unittest.TestCase):
             "--requirement", "advisory",
             "--expected-exit-code", "0",
             "--stdout-contains", "OK",
-            "--env", "API_TOKEN=top-secret",
+            "--env", "API_TOKEN",
             json_output=True,
         )
         listed_text = self.run_cli("item", "list", created["key"])
@@ -201,13 +201,13 @@ class ItemAuthoringApiTest(unittest.TestCase):
         self.tmp.cleanup()
 
     @staticmethod
-    def shell(secret="hidden"):
+    def shell():
         return {
             "executor": "shell",
             "requirement": "required",
             "shell": {
                 "command": "true",
-                "environment": {"TOKEN": secret},
+                "environment": ["TOKEN"],
             },
         }
 
@@ -260,7 +260,7 @@ class ItemAuthoringApiTest(unittest.TestCase):
             updated = backlog.set_item_execution(
                 checklist["id"], {
                     "executor": "shell",
-                    "shell": {"command": "true", "environment": {"PASSWORD": "secret"}},
+                    "shell": {"command": "true", "environment": ["PASSWORD"]},
                 },
             )
             self.assertEqual(updated["execution_spec"]["shell"]["environment"], ["PASSWORD"])

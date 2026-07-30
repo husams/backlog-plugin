@@ -227,12 +227,41 @@ allowed_hooks: ["tests.run"]
         )
         self.assertEqual(
             self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], "9",
+            .fetchone()["value"], "10",
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
         ).fetchone()["gates"]
         self.assertIn("required_validations_pass", gates)
+
+    def test_s009_v9_store_migrates_to_combined_v10_schema(self):
+        for column in ("actual_exit_code", "stdout", "stderr", "duration_ms"):
+            self.conn.execute(
+                f"ALTER TABLE execution_result DROP COLUMN {column}"
+            )
+        self.conn.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
+        self.conn.commit()
+        spec = self.conn.spec
+        self.conn.close()
+        self.conn = db.connect(spec=spec)
+
+        columns = {
+            row["name"]
+            for row in self.conn.execute(
+                "PRAGMA table_info(execution_result)"
+            ).fetchall()
+        }
+        self.assertTrue({
+            "expected_result", "actual_result", "hook_name",
+            "implementation_identity",
+            "actual_exit_code", "stdout", "stderr", "duration_ms",
+        }.issubset(columns))
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()["value"],
+            "10",
+        )
 
     def test_dirty_source_fingerprint_excludes_ignored_files(self):
         repo = self.root / "repo"

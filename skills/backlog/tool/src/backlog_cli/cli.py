@@ -367,14 +367,15 @@ def _execution_spec(args) -> dict | None:
     timeout_value = getattr(args, "timeout", None)
     timeout = 60 if timeout_value is None else timeout_value
     if shell is not None:
-        environment = {}
-        for pair in getattr(args, "environment", None) or []:
-            if "=" not in pair:
-                raise BacklogError(f"--env must be NAME=VALUE, got {pair!r}")
-            name, value = pair.split("=", 1)
-            if not name:
+        environment = []
+        for name in getattr(args, "environment", None) or []:
+            if not name or "=" in name:
+                raise BacklogError(
+                    f"--env must be a variable NAME without a value, got {name!r}"
+                )
+            if not name.strip():
                 raise BacklogError("--env variable name cannot be empty")
-            environment[name] = value
+            environment.append(name)
         shell_spec = {
             "command": shell,
             "timeout_seconds": timeout,
@@ -1510,7 +1511,7 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument(f"--{stream}-equals")
             sp.add_argument(f"--{stream}-contains")
             sp.add_argument(f"--{stream}-regex")
-        sp.add_argument("--env", dest="environment", action="append", metavar="NAME=VALUE")
+        sp.add_argument("--env", dest="environment", action="append", metavar="NAME")
         sp.add_argument("--arguments", metavar="JSON")
         sp.add_argument("--expected-result", metavar="JSON")
 
