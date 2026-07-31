@@ -54,7 +54,9 @@ Neither party may leave the ball unattended:
 - Before handing work back, the implementer must answer every blocker,
   advisory, and informational thread awaiting them. The reply must explicitly
   accept the feedback through `fix` or `comment`, or reject it through
-  `reject`, with a non-empty explanation.
+  `reject`, with a non-empty explanation. When changes resolve the comment,
+  the explanation must be brief and concrete about what changed. A bare
+  statement such as "fixed" is not sufficient.
 - Before finishing a review, the opening reviewer must decide every
   implementer response awaiting them with `accept` or `reject` and a non-empty
   explanation. A neutral comment is not a reviewer decision.

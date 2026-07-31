@@ -124,7 +124,9 @@ role may leave work pending for the other without an explicit reply.
     back, the implementer MUST reply to every thread awaiting them with `fix`,
     `comment`, or `reject` and a non-empty body that explicitly accepts or
     rejects the feedback and explains the disposition. Implementers MUST NOT
-    leave any advisory or blocker unanswered.
+    leave any advisory or blocker unanswered. When resolving a comment with
+    changes, the implementer MUST briefly and concretely explain what changed;
+    long narratives or a bare statement such as "fixed" are not sufficient.
 12. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
     thread may accept or reject a developer response. The API reuses that
     reviewer automatically and treats any other responding author as the
