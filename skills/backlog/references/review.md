@@ -49,6 +49,20 @@ accepts or rejects → closed or awaiting developer. Only the party currently ho
 ball may reply. A developer cannot accept their own fix, and `fix` never closes
 the thread.
 
+Neither party may leave the ball unattended:
+
+- Before handing work back, the implementer must answer every blocker,
+  advisory, and informational thread awaiting them. The reply must explicitly
+  accept the feedback through `fix` or `comment`, or reject it through
+  `reject`, with a non-empty explanation.
+- Before finishing a review, the opening reviewer must decide every
+  implementer response awaiting them with `accept` or `reject` and a non-empty
+  explanation. A neutral comment is not a reviewer decision.
+- A review is complete only when the reviewer uses the configured semantic
+  action to accept the changes, or leaves explicit advisory/blocker feedback
+  and uses the configured changes-requested action to hand the item back.
+  Never leave a story or feature in an ambiguous, partially reviewed state.
+
 ## Reading: new comments only
 
 ```bash
@@ -156,3 +170,10 @@ ignored. A thread stays open until the opening reviewer accepts it:
 $BL review list S-004 --state open --severity blocker
 $BL gate S-004 --for accepted
 ```
+
+Before the implementer hands the item back, `review inbox --actor IMPLEMENTER`
+must contain no thread awaiting that implementer. Before the reviewer accepts
+the item or requests changes, `review inbox --actor REVIEWER` must contain no
+thread awaiting that reviewer. The final review action must then either accept
+the item or request changes; stopping without one of those outcomes is not a
+completed review.

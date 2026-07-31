@@ -114,11 +114,12 @@ the waiver afterwards, so an override stays visible.
    `review open`, `review reply`, or another documented review command.
    Use `artifact add` only when the user explicitly asks to attach or record a
    file, document, report, patch, log, design, or other durable artifact.
-11. **Every review thread requires a response and decision.** This includes
-    `nice_to_have` and `info` threads. A developer MUST reply with `fix`,
-    `comment`, or `reject`; the fixed thread reviewer MUST then reply with
-    `accept` or `reject` and a non-empty body. Reviewers cannot silently skip
-    feedback or use a neutral comment instead of a decision.
+11. **Implementers MUST answer every open review thread.** This includes
+    `blocker`, `nice_to_have`, and `info` threads. Before handing the story
+    back, the implementer MUST reply to every thread awaiting them with `fix`,
+    `comment`, or `reject` and a non-empty body that explicitly accepts or
+    rejects the feedback and explains the disposition. Implementers MUST NOT
+    leave any advisory or blocker unanswered.
 12. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
     thread may accept or reject a developer response. The API reuses that
     reviewer automatically and treats any other responding author as the
@@ -127,7 +128,20 @@ the waiver afterwards, so an override stays visible.
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
-13. **Reopen through the thread API.** To reactivate an accepted finding, use
+13. **Reviewers MUST decide every implementer response.** Before completing a
+    review, the reviewer MUST reply to every thread awaiting them with
+    `accept` or `reject` and a non-empty body explaining the decision. This
+    includes advisory and informational feedback. A reviewer MUST NOT leave a
+    response pending, silently abandon a thread, or substitute a neutral
+    comment for a decision.
+14. **Reviewers MUST leave the story or feature in a decisive state.** A review
+    ends only when the reviewer either accepts the changes through the
+    configured semantic action, or leaves explicit advisory/blocker threads
+    and hands the item back through the configured changes-requested action.
+    Reviewers MUST NOT finish with the item in an ambiguous or incomplete
+    review state. Before either outcome, all thread replies awaiting the
+    reviewer must already have an `accept` or `reject` decision.
+15. **Reopen through the thread API.** To reactivate an accepted finding, use
     `review reopen ROOT --author REVIEWER --body REASON` or
     `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
     on a Ready task emits a managed event that the shipped workflow resolves to
