@@ -62,6 +62,11 @@ Neither party may leave the ball unattended:
   action to accept the changes, or leaves explicit advisory/blocker feedback
   and uses the configured changes-requested action to hand the item back.
   Never leave a story or feature in an ambiguous, partially reviewed state.
+- If an implementer's changes for earlier feedback introduce a new blocker,
+  the reviewer must open a new blocker that identifies the resolving changes,
+  explains how those changes caused the blocking behavior, and states what
+  must be done differently to resolve it without repeating the regression.
+  Merely saying that the update is blocked is not an adequate review.
 
 ## Reading: new comments only
 

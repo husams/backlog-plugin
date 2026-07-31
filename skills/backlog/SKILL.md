@@ -79,6 +79,11 @@ the waiver afterwards, so an override stays visible.
 
 ## Hard rules
 
+Review work has exactly two accountable roles: the **implementer**, who must
+disposition every finding, and the **opening reviewer**, who must decide every
+implementer response and the final outcome of the story or feature. Neither
+role may leave work pending for the other without an explicit reply.
+
 1. **Never read the code.** Everything under `bin/`, `tool/` and `scripts/` is
    off limits. The markdown here is their documentation: [references/cli.md](references/cli.md)
    for commands, [references/scripts.md](references/scripts.md) for the ready-made
@@ -141,7 +146,14 @@ the waiver afterwards, so an override stays visible.
     Reviewers MUST NOT finish with the item in an ambiguous or incomplete
     review state. Before either outcome, all thread replies awaiting the
     reviewer must already have an `accept` or `reject` decision.
-15. **Reopen through the thread API.** To reactivate an accepted finding, use
+15. **New blockers caused by a response require a causal explanation.** When
+    changes made to resolve earlier feedback introduce a new blocker, the
+    reviewer MUST open a new blocker that states: (a) which recent resolving
+    changes introduced it, (b) how those changes caused the blocking behavior,
+    and (c) what must be done differently to resolve the blocker without
+    repeating the regression. A vague statement that the update is blocked is
+    not sufficient.
+16. **Reopen through the thread API.** To reactivate an accepted finding, use
     `review reopen ROOT --author REVIEWER --body REASON` or
     `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
     on a Ready task emits a managed event that the shipped workflow resolves to
