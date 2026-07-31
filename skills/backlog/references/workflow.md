@@ -60,6 +60,12 @@ failure **exits 1** listing which check failed and why.
 | `pr_approved` | `pr_review_state` is `approved` |
 | `pr_merged` | `pr_state` is `merged` |
 | `required_validations_pass` | every required executable item has a current pass or audited waiver |
+| `iteration_members_finished` | every Iteration member has reached a finished status |
+
+The shipped Iteration flow is `Planned -> Open -> Closed`, driven by
+`iteration.opened`, `iteration.closed`, and `iteration.reopened`. Closing never
+changes member status; reopening is rejected when membership conflicts with
+another Open Iteration.
 
 `$BL workflow gates` prints this list live.
 

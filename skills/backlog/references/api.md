@@ -67,7 +67,10 @@ assertion, not cryptographic authentication.
 | `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
-| `bl.create_feature(title, **fields)` / `bl.create_story(title, feature=, **fields)` / `bl.create_bug(title, **fields)` | create with optional plain/executable `acceptance_criteria`; bugs are standalone |
+| `bl.create_feature(...)` / `bl.create_story(...)` / `bl.create_bug(...)` / `bl.create_iteration(...)` | create with optional plain/executable `acceptance_criteria`; bugs and Iterations are standalone |
+| `task.iteration_members` / `task.iterations` | view Iteration membership from either side |
+| `bl.startable(actor, iteration="I-001")` | request unblocked deliverable work from one explicit Iteration; Iteration rows are excluded |
+| `bl.task_type_counts()` | counts by type, including `iteration` |
 | `bl.add_item(key, kind, content, execution_spec=None)` | author one plain/shell/hook item |
 | `bl.set_items(key, kind, items)` | replace items from strings or `{content, execution}` mappings |
 | `bl.run_item(item_id, project_root, policy=None, actor=None)` | execute one shell or hook item under trusted local policy |

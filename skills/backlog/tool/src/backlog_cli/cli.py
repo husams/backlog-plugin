@@ -460,6 +460,10 @@ def cmd_bug_add(ctx: Ctx, args) -> int:
     return _add_task(ctx, args, "bug", None)
 
 
+def cmd_iteration_add(ctx: Ctx, args) -> int:
+    return _add_task(ctx, args, "iteration", None)
+
+
 def cmd_subtask_add(ctx: Ctx, args) -> int:
     return _add_task(ctx, args, "subtask", args.story or args.bug)
 
@@ -476,7 +480,7 @@ def _list(ctx: Ctx, args, task_type: str | None) -> int:
         where += " AND t.status = ?"
         params.append(core.normalize_status(args.status))
     if getattr(args, "open", False):
-        where += " AND t.status NOT IN ('accepted','done')"
+        where += " AND t.closed_at IS NULL"
     if getattr(args, "assignee", None):
         where += " AND t.assignee = ?"
         params.append(args.assignee)
@@ -1194,6 +1198,8 @@ def cmd_board(ctx: Ctx, args) -> int:
     rows = _task_rows(conn, ctx.pid, "")
     if not args.all:
         rows = [r for r in rows if flows[r["task_type"]].is_open(r["status"])]
+    iterations = [r for r in rows if r["task_type"] == "iteration"]
+    rows = [r for r in rows if r["task_type"] != "iteration"]
     by_status: dict[str, list] = {}
     for r in rows:
         by_status.setdefault(r["status"], []).append(r)
@@ -1206,6 +1212,17 @@ def cmd_board(ctx: Ctx, args) -> int:
     }
     blocked = deps.blocked_by_map(conn, ctx.pid)
     lines = []
+    if iterations:
+        lines.append(f"== Iterations ({len(iterations)})")
+        for r in sorted(iterations, key=lambda x: (x["priority"], x["key"])):
+            member_count = conn.execute(
+                "SELECT COUNT(*) AS n FROM iteration_member WHERE iteration_id=?",
+                (r["id"],),
+            ).fetchone()["n"]
+            lines.append(
+                f"  {r['key']:<7} I  {r['priority']}  {r['assignee'] or '-':<12} "
+                f"{r['title']}  [{flows['iteration'].display(r['status'])}; {member_count} members]"
+            )
     for slug, display, _cat in order:
         group = by_status.pop(slug, [])
         if not group:
@@ -1231,6 +1248,7 @@ def cmd_board(ctx: Ctx, args) -> int:
         {"project": row_to_dict(ctx.project),
          "tasks_by_status": {slug: [row_to_dict(r) for r in group]
                              for slug, group in by_status.items()},
+         "iterations": [row_to_dict(r) for r in iterations],
          "open_review_threads": open_by_task, "blocked_by": blocked},
         f"project: {ctx.project['slug']}  ({ctx.project['name']})\n\n"
         + ("\n".join(lines) if lines else "(no open tasks)"),
@@ -1247,6 +1265,13 @@ def cmd_next(ctx: Ctx, args) -> int:
         where += " AND t.assignee = ?"
         params.append(actor)
     all_dev = _task_rows(conn, pid, where, params)
+    all_dev = [r for r in all_dev if r["task_type"] != "iteration"]
+    if args.iteration:
+        selected = core.get_task(conn, pid, args.iteration)
+        if selected["task_type"] != "iteration":
+            raise BacklogError(f"{selected['key']} is not an Iteration")
+        member_ids = {m["id"] for m in core.iteration_members(conn, selected["id"])}
+        all_dev = [r for r in all_dev if r["id"] in member_ids]
     blocked = deps.blocked_by_map(conn, pid)
     dev_items = [r for r in all_dev if r["key"] not in blocked]
     blocked_items = [r for r in all_dev if r["key"] in blocked]
@@ -1323,6 +1348,7 @@ _EXPORT_TABLES: list[tuple[str, str]] = [
     ("project", "id"),
     ("key_counter", "project_id"),
     ("task", "id"),
+    ("iteration_member", "iteration_id, member_id"),
     ("task_item", "id"),
     ("executable_item", "item_id"),
     ("execution_result", "id"),
@@ -1596,6 +1622,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(func=cmd_board)
 
     sp = sub.add_parser("next", help="what should be worked on now")
+    sp.add_argument("--iteration", help="only member work from this Iteration")
     sp.set_defaults(func=cmd_next)
 
     sp = sub.add_parser("show", help="one task in full")
@@ -1693,6 +1720,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = bp.add_parser("list")
     _add_list_filters(sp)
     sp.set_defaults(func=cmd_bug_list)
+
+    ip = sub.group("iteration", help="parallel units of work")
+    sp = ip.add_parser("add")
+    add_create_flags(sp, with_branch=False)
+    sp.set_defaults(func=cmd_iteration_add)
+    sp = ip.add_parser("list")
+    _add_list_filters(sp)
+    sp.set_defaults(func=lambda ctx, args: _list(ctx, args, "iteration"))
 
     sbp = sub.group("subtask", help="subtasks of a story or bug")
     sp = sbp.add_parser("add")

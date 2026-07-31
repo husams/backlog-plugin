@@ -17,16 +17,17 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 # --------------------------------------------------------------------------- #
 # tasks
 # --------------------------------------------------------------------------- #
 
-TASK_TYPES = ["feature", "story", "bug", "subtask"]
+TASK_TYPES = ["feature", "story", "bug", "subtask", "iteration"]
 
 TASK_TYPE_DISPLAY = {
-    "feature": "Feature", "story": "Story", "bug": "Bug", "subtask": "Subtask"
+    "feature": "Feature", "story": "Story", "bug": "Bug", "subtask": "Subtask",
+    "iteration": "Iteration",
 }
 
 # Which type may sit under which. A feature is a root; a story sits under a
@@ -37,15 +38,19 @@ TASK_PARENT_TYPES: dict[str, set[str]] = {
     "story": {"feature"},
     "bug": set(),
     "subtask": {"story", "bug"},
+    "iteration": set(),
 }
 
-TASK_KEY_PREFIX = {"feature": "F", "story": "S", "bug": "B", "subtask": "T"}
+TASK_KEY_PREFIX = {
+    "feature": "F", "story": "S", "bug": "B", "subtask": "T", "iteration": "I"
+}
 
 TASK_TYPE_ALIASES = {
     "epic": "feature",
     "feat": "feature",
     "user_story": "story",
     "defect": "bug",
+    "sprint": "iteration",
     "task": "subtask",
     "sub_task": "subtask",
     "subtask": "subtask",
@@ -61,6 +66,9 @@ STATUSES = [
     "needs_work",
     "accepted",
     "done",
+    "planned",
+    "open",
+    "closed",
 ]
 
 STATUS_DISPLAY = {
@@ -72,6 +80,9 @@ STATUS_DISPLAY = {
     "needs_work": "Need work",
     "accepted": "Accepted",
     "done": "Done",
+    "planned": "Planned",
+    "open": "Open",
+    "closed": "Closed",
 }
 
 # The status *vocabulary* is common to every task type and is deliberately NOT
@@ -109,6 +120,7 @@ TRANSITIONS_BY_TYPE: dict[str, dict[str, set[str]]] = {
     "story": TRANSITIONS,
     "bug": TRANSITIONS,
     "subtask": TRANSITIONS,
+    "iteration": {"planned": {"open"}, "open": {"closed"}, "closed": {"open"}},
 }
 
 
@@ -127,8 +139,8 @@ STATUS_ALIASES = {
     "merged": "done",
     "new": "created",
     "todo": "ready",
-    # the retired feature vocabulary, so old commands and imports still parse
-    "planned": "created",
+    # the retired feature vocabulary, so old commands and imports still parse.
+    # `planned` is now a first-class Iteration state and must not be rewritten.
     "active": "in_progress",
     "shipped": "done",
     "dropped": "incomplete",
@@ -158,6 +170,7 @@ GATE_CHECKS = [
     "pr_approved",            # the pull request is approved
     "pr_merged",              # the pull request is merged
     "required_validations_pass",  # required executable items have a fresh pass
+    "iteration_members_finished", # every Iteration member is finished
 ]
 
 GATE_DESCRIPTIONS = {
@@ -168,6 +181,7 @@ GATE_DESCRIPTIONS = {
     "pr_approved": "the pull request is approved (waivable with --no-pr)",
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
     "required_validations_pass": "every required executable item has a fresh passing result",
+    "iteration_members_finished": "every Iteration member has reached a finished status",
 }
 
 # The workflow every new project starts with: today's behaviour, expressed as
@@ -215,6 +229,17 @@ DEFAULT_TRANSITIONS = {
 DEFAULT_TRANSITIONS["subtask"] = DEFAULT_TRANSITIONS["story"]
 DEFAULT_TRANSITIONS["bug"] = DEFAULT_TRANSITIONS["story"]
 
+ITERATION_STATUS_ROWS = [
+    ("planned", "Planned", "backlog", 0, 1, 0),
+    ("open", "Open", "active", 0, 0, 0),
+    ("closed", "Closed", "done", 1, 0, 1),
+]
+DEFAULT_TRANSITIONS["iteration"] = [
+    ("planned", "open", ""),
+    ("open", "closed", "iteration_members_finished"),
+    ("closed", "open", "iteration_members_finished"),
+]
+
 # --------------------------------------------------------------------------- #
 # templates
 # --------------------------------------------------------------------------- #
@@ -228,7 +253,10 @@ DEFAULT_TRANSITIONS["bug"] = DEFAULT_TRANSITIONS["story"]
 # first use, which makes them listable, copyable and editable like any other.
 
 _SOFTWARE_WORKFLOWS = {
-    ttype: {"statuses": DEFAULT_STATUS_ROWS, "transitions": DEFAULT_TRANSITIONS[ttype]}
+    ttype: {
+        "statuses": ITERATION_STATUS_ROWS if ttype == "iteration" else DEFAULT_STATUS_ROWS,
+        "transitions": DEFAULT_TRANSITIONS[ttype],
+    }
     for ttype in TASK_TYPES
 }
 
@@ -282,8 +310,10 @@ BUILTIN_TEMPLATES = [
         "description": ("No review stage and no pull-request gates — for work "
                         "tracked for visibility rather than delivered through review."),
         "is_default": 0,
-        "workflows": {t: {"statuses": _LIGHTWEIGHT_STATUSES,
-                          "transitions": _LIGHTWEIGHT_TRANSITIONS} for t in TASK_TYPES},
+        "workflows": {t: {
+            "statuses": ITERATION_STATUS_ROWS if t == "iteration" else _LIGHTWEIGHT_STATUSES,
+            "transitions": DEFAULT_TRANSITIONS["iteration"] if t == "iteration" else _LIGHTWEIGHT_TRANSITIONS,
+        } for t in TASK_TYPES},
     },
     {
         "slug": "research",
@@ -291,8 +321,10 @@ BUILTIN_TEMPLATES = [
         "description": ("Propose, investigate, draft, review, publish — for "
                         "investigation rather than shipped code."),
         "is_default": 0,
-        "workflows": {t: {"statuses": _RESEARCH_STATUSES,
-                          "transitions": _RESEARCH_TRANSITIONS} for t in TASK_TYPES},
+        "workflows": {t: {
+            "statuses": ITERATION_STATUS_ROWS if t == "iteration" else _RESEARCH_STATUSES,
+            "transitions": DEFAULT_TRANSITIONS["iteration"] if t == "iteration" else _RESEARCH_TRANSITIONS,
+        } for t in TASK_TYPES},
     },
 ]
 
@@ -507,7 +539,7 @@ CREATE TABLE IF NOT EXISTS task (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id          INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     key                 TEXT NOT NULL,
-    task_type           TEXT NOT NULL CHECK (task_type IN ('feature','story','bug','subtask')),
+    task_type           TEXT NOT NULL CHECK (task_type IN ('feature','story','bug','subtask','iteration')),
     parent_id           INTEGER REFERENCES task(id) ON DELETE SET NULL,
     title               TEXT NOT NULL,
     description         TEXT NOT NULL DEFAULT '',
@@ -542,6 +574,15 @@ CREATE TABLE IF NOT EXISTS task (
 CREATE INDEX IF NOT EXISTS idx_task_project ON task(project_id, status);
 CREATE INDEX IF NOT EXISTS idx_task_parent  ON task(parent_id);
 CREATE INDEX IF NOT EXISTS idx_task_type    ON task(project_id, task_type);
+
+CREATE TABLE IF NOT EXISTS iteration_member (
+    iteration_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    member_id    INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    created_at   TEXT NOT NULL,
+    PRIMARY KEY (iteration_id, member_id),
+    CHECK (iteration_id != member_id)
+);
+CREATE INDEX IF NOT EXISTS idx_iteration_member_member ON iteration_member(member_id);
 
 -- Sections of a task: acceptance criteria, checklist entries, loose notes.
 CREATE TABLE IF NOT EXISTS task_item (
