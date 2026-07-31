@@ -84,6 +84,14 @@ disposition every finding, and the **opening reviewer**, who must decide every
 implementer response and the final outcome of the story or feature. Neither
 role may leave work pending for the other without an explicit reply.
 
+Review authorship is attributed, not authenticated: `author=` and `--author`
+are caller assertions. The tool enforces that only the thread's opening
+reviewer can accept or reject a developer response, and an API session opened
+with `api.open(actor=...)` rejects a different review author, but neither is
+cryptographic proof of the human behind a process. Use `review audit ROOT` or
+`bl.review_audit(ROOT)` to inspect decision authors and timestamps; do not
+treat a recorded acceptance alone as evidence that a person verified the fix.
+
 1. **Never read the code.** Everything under `bin/`, `tool/` and `scripts/` is
    off limits. The markdown here is their documentation: [references/cli.md](references/cli.md)
    for commands, [references/scripts.md](references/scripts.md) for the ready-made
@@ -135,6 +143,8 @@ role may leave work pending for the other without an explicit reply.
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
+    Always open Python sessions with `api.open(actor=YOUR_IDENTITY)` before
+    writing reviews so the session rejects mismatched `author=` assertions.
 13. **Reviewers MUST decide every implementer response.** Before completing a
     review, the reviewer MUST reply to every thread awaiting them with
     `accept` or `reject` and a non-empty body explaining the decision. This

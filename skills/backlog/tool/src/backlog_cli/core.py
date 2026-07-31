@@ -674,6 +674,12 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
             else ("waived (--allow-blocked): " if allow_blocked else "blocked by ")
             + ", ".join(f"{b['other_key']}={b['other_status']}" for b in blockers),
         ))
+        opens = blocking_threads(conn, task["id"])
+        checks.append(Check(
+            "review_threads_closed", not opens,
+            "no blocking review threads open" if not opens
+            else f"{len(opens)} blocking: " + ", ".join(t["root_key"] for t in opens),
+        ))
 
     if target in ("accepted", "merge"):
         from .execution import required_validations_pass

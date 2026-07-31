@@ -178,6 +178,7 @@ $BL pr sync KEY      # pull state from the `gh` CLI
 ```bash
 $BL review open KEY --author A --body B [--role reviewer|developer] [--severity blocker|nice_to_have|info] [--title T] [--file PATH] [--line N]
 $BL review reply COMMENT_KEY --author A --action comment|fix|reject|accept --body B
+$BL review audit ROOT
 $BL review reopen ROOT_KEY --author A --body B
 $BL review severity ROOT_KEY --severity blocker|nice_to_have|info --author A
 $BL review inbox [--actor X] [--role R] [--item KEY] [--severity blocker|nice_to_have|info]

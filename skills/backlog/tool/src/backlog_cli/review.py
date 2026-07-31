@@ -55,10 +55,13 @@ def resolve_role(task: Row, author: str, role: str | None) -> str:
         return "reviewer"
     if task["assignee"] and author == task["assignee"]:
         return "developer"
+    if not task["reviewer"] and author != task["assignee"]:
+        return "reviewer"
     raise BacklogError(
         f"cannot infer role for author {author!r} on {task['key']} "
         f"(assignee={task['assignee'] or '-'}, reviewer={task['reviewer'] or '-'}). "
-        "Pass --role reviewer|developer."
+        "Pass role=\"reviewer\" or role=\"developer\" in Python "
+        "(--role reviewer|developer on the CLI)."
     )
 
 
@@ -174,7 +177,55 @@ def set_severity(conn: Conn, project_id: int, root_key: str,
         detail=f"severity changed on {rk}",
     )
     conn.commit()
+    if (
+        level == ReviewSeverity.BLOCKER
+        and thread["severity"] != ReviewSeverity.BLOCKER.value
+        and thread["state"] != "closed"
+    ):
+        trigger_action(
+            conn,
+            project_id,
+            task["key"],
+            Action.FEEDBACK_POSTED,
+            actor=author,
+            operation="review.blocker_escalated",
+            parameters={
+                "root": rk,
+                "from_severity": thread["severity"],
+                "severity": level.value,
+            },
+        )
     return thread_summary(conn, rk)
+
+
+def audit(conn: Conn, project_id: int, root_key: str) -> dict:
+    """Return the immutable attribution trail for a thread and its decisions."""
+    rk = normalize_key(root_key)
+    thread = conn.execute(
+        "SELECT r.* FROM review_thread r JOIN task t ON t.id = r.task_id "
+        "WHERE r.root_key = ? AND t.project_id = ?",
+        (rk, project_id),
+    ).fetchone()
+    if thread is None:
+        raise BacklogError(f"no review thread rooted at {rk}")
+    task = get_task_by_id(conn, thread["task_id"])
+    rows = conn.execute(
+        "SELECT * FROM review_comment WHERE root_key = ? ORDER BY seq", (rk,)
+    ).fetchall()
+    return {
+        "root": rk,
+        "target": task["key"],
+        "reviewer": thread["opened_by"],
+        "state": thread["state"],
+        "resolution": thread["resolution"],
+        "opened_at": thread["opened_at"],
+        "closed_by": thread["closed_by"],
+        "closed_at": thread["closed_at"],
+        "decisions": [
+            _comment_dict(row, thread["opened_by"])
+            for row in rows if row["action"] in ("accept", "reject")
+        ],
+    }
 
 
 def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: str,

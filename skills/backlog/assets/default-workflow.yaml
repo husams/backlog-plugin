@@ -78,7 +78,7 @@ transitions:
     from: ready
     action: work.started
     to: in_progress
-    gates: [dependencies_clear]
+    gates: [dependencies_clear, review_threads_closed]
 
   - task_types: [feature, story, subtask]
     from: needs_work

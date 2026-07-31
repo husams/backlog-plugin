@@ -140,6 +140,18 @@ validated:
 $BL assign S-004 --to developer --reviewer senior-developer
 ```
 
+`author=`/`--author` is an attribution assertion, not authenticated identity.
+The tool rejects an accept/reject from anyone other than the opening reviewer.
+For Python review writes, open the session with `api.open(actor="...")`; it
+also rejects a different `author=` value. Inspect the decision trail with
+`$BL review audit C-003` or `bl.review_audit("C-003")`. A stored acceptance is
+not, by itself, proof that the named human personally verified the change.
+
+Escalating an open advisory or informational thread to `blocker` emits the
+same managed `feedback.posted` event as opening a blocker. With the shipped
+workflow this moves a Ready task to Incomplete. An open blocker also fails the
+`start` gate, including in a custom workflow that does not map that event.
+
 ## Disagreeing
 
 `reject` is a first-class move for both sides. A developer who believes the

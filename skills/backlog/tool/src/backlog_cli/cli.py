@@ -1120,6 +1120,20 @@ def cmd_review_thread(ctx: Ctx, args) -> int:
     return 0
 
 
+def cmd_review_audit(ctx: Ctx, args) -> int:
+    result = review.audit(ctx.conn, ctx.pid, args.root)
+    decisions = result["decisions"]
+    text = (
+        f"{result['root']}  reviewer={result['reviewer']}  state={result['state']}\n"
+        + ("\n".join(
+            f"{d['key']}  {d['at']}  {d['author']}  {d['action']}  {d['body']}"
+            for d in decisions
+        ) if decisions else "(no accept/reject decisions)")
+    )
+    ctx.emit(result, text)
+    return 0
+
+
 def cmd_review_list(ctx: Ctx, args) -> int:
     threads = review.list_threads(
         ctx.conn, ctx.pid, args.key, state=args.state, severity=args.severity
@@ -1803,6 +1817,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("root")
     sp.add_argument("--full", action="store_true")
     sp.set_defaults(func=cmd_review_thread)
+    sp = rp.add_parser("audit")
+    sp.add_argument("root")
+    sp.set_defaults(func=cmd_review_audit)
     sp = rp.add_parser("list")
     sp.add_argument("key")
     sp.add_argument("--state", choices=["open", "closed", "all"], default="open")

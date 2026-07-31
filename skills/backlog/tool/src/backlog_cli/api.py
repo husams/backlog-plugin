@@ -154,7 +154,14 @@ class Task:
 
     @property
     def children(self) -> list["Task"]:
-        return [Task(r, self._bl) for r in core.children_of(self._bl._conn, self._row["id"])]
+        return [self._bl._task(r) for r in core.children_of(
+            self._bl._conn, self._row["id"]
+        )]
+
+    @property
+    def parent(self) -> str | None:
+        """Parent task key; alias for ``parent_key``."""
+        return self._row["parent_key"]
 
     @property
     def blockers(self) -> list[dict]:
@@ -360,7 +367,7 @@ class Backlog:
             )
             if spec is not None:
                 execution.set_executable(self._conn, item["id"], spec)
-        return Task(core.get_task(self._conn, self.pid, row["key"]), self)
+        return self._task(core.get_task(self._conn, self.pid, row["key"]))
 
     def create_feature(self, title: str, **kwargs) -> Task:
         """Create a feature with optional plain or executable criteria."""
@@ -412,11 +419,23 @@ class Backlog:
 
     def task(self, key: str) -> Task:
         """One task by key. Raises BacklogError if it does not exist."""
-        return Task(core.get_task(self._conn, self.pid, key), self)
+        return self._task(core.get_task(self._conn, self.pid, key))
 
     def find(self, key: str) -> Task | None:
         row = core.find_task(self._conn, self.pid, key)
-        return Task(row, self) if row is not None else None
+        return self._task(row) if row is not None else None
+
+    def _task(self, row) -> Task:
+        """Give every Task accessor the same parent projection."""
+        data = dict(row)
+        parent_id = data.get("parent_id")
+        if "parent_key" not in data:
+            parent = (
+                self._conn.execute("SELECT key FROM task WHERE id = ?", (parent_id,)).fetchone()
+                if parent_id is not None else None
+            )
+            data["parent_key"] = parent["key"] if parent is not None else None
+        return Task(data, self)
 
     def tasks(self, *, status: str | None = None, task_type: str | None = None,
               assignee: str | None = None, reviewer: str | None = None,
@@ -446,7 +465,7 @@ class Backlog:
             sql += " AND " + " AND ".join(where)
         rows = self._conn.execute(sql + " ORDER BY t.priority, t.key",
                                   [self.pid, *params]).fetchall()
-        return [Task(r, self) for r in rows]
+        return [self._task(r) for r in rows]
 
     def counts(self) -> dict[str, int]:
         """How many tasks sit in each status. Useful for a one-line board."""
@@ -491,6 +510,16 @@ class Backlog:
     def cycles(self) -> list[list[str]]:
         """Dependency cycles, as lists of keys. Empty when the graph is sane."""
         return deps.cycles(self._conn)
+
+    def dependencies(self, key: str, kind: str | None = None) -> list[dict]:
+        """All dependency edges touching a task, including satisfied edges."""
+        task = self.task(key)
+        return deps.edges_for(self._conn, task.id, kind)
+
+    def artifacts(self, key: str) -> list[dict]:
+        """Every durable artifact recorded against a task."""
+        task = self.task(key)
+        return [dict(row) for row in core.list_artifacts(self._conn, task.id)]
 
     # -- gates ------------------------------------------------------------ #
 
@@ -537,6 +566,10 @@ class Backlog:
             for comment in review.comment_updates(self._conn, root, after=after)
         ]
 
+    def review_audit(self, root: str) -> dict:
+        """Decision attribution and timestamps for one review thread."""
+        return review.audit(self._conn, self.pid, root)
+
     # -- writing ---------------------------------------------------------- #
 
     def trigger(self, key: str, action: Action, *,
@@ -560,7 +593,7 @@ class Backlog:
             parameters=parameters,
             **waivers,
         )
-        return Task(row, self)
+        return self._task(row)
 
     def set_pr(self, key: str, *, url: str | None = None,
                number: int | None = None, repo: str | None = None,
@@ -578,13 +611,14 @@ class Backlog:
             review_state=review_state,
             actor=actor or self.actor,
         )
-        return Task(row, self)
+        return self._task(row)
 
     def review_open(self, key: str, *, author: str, body: str,
                     role: str = "auto", title: str = "",
                     file: str | None = None, line: int | None = None,
                     severity: ReviewSeverity = ReviewSeverity.BLOCKER) -> Thread:
         """Open a thread without directly changing the task's workflow state."""
+        self._require_session_actor(author)
         if not isinstance(severity, ReviewSeverity):
             raise TypeError("severity must be a ReviewSeverity")
         return _thread(review.open_thread(
@@ -603,6 +637,7 @@ class Backlog:
     def review_set_severity(self, root: str, *,
                             severity: ReviewSeverity, author: str) -> Thread:
         """Change a review thread's severity and record the actor."""
+        self._require_session_actor(author)
         if not isinstance(severity, ReviewSeverity):
             raise TypeError("severity must be a ReviewSeverity")
         return _thread(review.set_severity(
@@ -612,6 +647,7 @@ class Backlog:
     def review_reply(self, comment: str, *, author: str, action: str,
                      body: str, role: str = "auto") -> Thread:
         """Reply to review feedback and emit the matching feedback action."""
+        self._require_session_actor(author)
         return _thread(review.reply(
             self._conn,
             self.pid,
@@ -625,6 +661,7 @@ class Backlog:
     def review_reopen(self, root: str, *, author: str, body: str,
                       role: str = "auto") -> Thread:
         """Reviewer reopens a closed thread and posts the required reply."""
+        self._require_session_actor(author)
         return _thread(review.reopen(
             self._conn,
             self.pid,
@@ -634,12 +671,18 @@ class Backlog:
             role=role,
         ))
 
+    def _require_session_actor(self, author: str) -> None:
+        if self.actor is not None and author != self.actor:
+            raise BacklogError(
+                f"review author {author!r} does not match session actor {self.actor!r}"
+            )
+
     def assign(self, key: str, to: str | None = None, reviewer: str | None = None,
                actor: str | None = None) -> Task:
         row = core.assign(self._conn, self.pid, key, to=to, reviewer=reviewer,
                           actor=actor or self.actor)
         self._conn.commit()
-        return Task(row, self)
+        return self._task(row)
 
     def set_item_execution(self, item_id: int, spec: dict) -> dict:
         """Attach or replace the typed execution declaration for one item."""

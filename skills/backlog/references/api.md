@@ -32,8 +32,10 @@ api.open(project=None, actor=None)     # context manager -> Backlog
 ```
 
 Resolves the same store the CLI would (`.backlog/`, `BACKLOG_DB`, …). Commits on
-a clean exit, closes the connection either way. `actor` is the default attribution
-for writes made through the session.
+a clean exit, closes the connection either way. `actor` is the default
+attribution for writes and is mandatory in practice for review writes: when it
+is set, `review_*` rejects any different `author=` value. It is still a caller
+assertion, not cryptographic authentication.
 
 ## Backlog — the session
 
@@ -51,6 +53,8 @@ for writes made through the session.
 | `bl.startable(actor=None)` | open tasks with no unfinished blockers |
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
+| `bl.dependencies(key, kind=None)` | all incoming and outgoing edges, including satisfied dependencies, notes and statuses |
+| `bl.artifacts(key)` | all durable artifacts recorded on a task |
 | `bl.can(key, target="merge", **waivers)` | `Gate` — evaluates, never moves |
 | `bl.inbox(actor=None, role=None, severity=None)` | `list[Thread]` waiting on someone, optionally filtered by `ReviewSeverity` |
 | `bl.threads(key, state="open", severity=None)` | `list[Thread]` on one task, optionally filtered by `ReviewSeverity` |
@@ -59,6 +63,7 @@ for writes made through the session.
 | `bl.review_open(key, author=, body=, severity=ReviewSeverity.BLOCKER, role=, title=, file=, line=)` | reviewer opens a typed thread; task status is unchanged |
 | `bl.review_reply(comment, author=, action=, body=)` | advance the thread workflow; participant roles come from the thread |
 | `bl.review_updates(root, after=)` | only comments added after the last comment key already in context |
+| `bl.review_audit(root)` | decision authors, actions and timestamps for one thread |
 | `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
@@ -151,6 +156,7 @@ Any column is an attribute: `key`, `title`, `status`, `task_type`, `priority`,
 | `t.age_days` / `t.idle_days` | days since created / since last change |
 | `t.is_open` | not closed |
 | `t.children` | `list[Task]` |
+| `t.parent` | parent task key; alias for `parent_key` |
 | `t.blockers` | unfinished blockers as `{other_key, other_status}` |
 | `t.items(kind=None)` | criteria / checklist / notes as strings |
 | `t.item_details(kind=None)` | value-opaque plain/executable views with requirement and state |
