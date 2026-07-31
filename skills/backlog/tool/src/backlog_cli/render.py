@@ -158,6 +158,7 @@ def _matcher_text(value: dict) -> str:
 
 
 def render_task(conn: Conn, row: Row) -> str:
+    from . import core, workflow
     from .core import children_of, list_artifacts, open_threads, task_items
 
     parent = None
@@ -167,7 +168,9 @@ def render_task(conn: Conn, row: Row) -> str:
         ).fetchone()
 
     out = [f"{row['key']}  [{TASK_TYPE_DISPLAY[row['task_type']]}]  {row['title']}"]
-    out.append(f"  status     : {STATUS_DISPLAY.get(row['status'], row['status'])}")
+    out.append(
+        f"  status     : {workflow.get(conn, row['project_id'], row['task_type']).display(row['status'])}"
+    )
     out.append(f"  priority   : {row['priority']}")
     out.append(f"  parent     : {parent['key'] if parent else '-'}")
     out.append(f"  owner      : {row['owner'] or '-'}")
@@ -207,6 +210,26 @@ def render_task(conn: Conn, row: Row) -> str:
         for k in kids:
             out.append(f"    {k['key']}  "
                        f"{STATUS_DISPLAY.get(k['status'], k['status']):<12} {k['title']}")
+
+    if row["task_type"] == "iteration":
+        members = core.iteration_members(conn, row["id"])
+        out.append(f"  members: {len(members)}")
+        for member in members:
+            member_flow = workflow.get(conn, row["project_id"], member["task_type"])
+            out.append(
+                f"    {member['key']}  {member_flow.display(member['status']):<12} "
+                f"{member['title']}"
+            )
+    else:
+        iterations = conn.execute(
+            "SELECT i.key,i.title,i.status FROM iteration_member m "
+            "JOIN task i ON i.id=m.iteration_id WHERE m.member_id=? ORDER BY i.priority,i.key",
+            (row["id"],),
+        ).fetchall()
+        if iterations:
+            out.append("  iterations:")
+            for iteration in iterations:
+                out.append(f"    {iteration['key']}  {iteration['status']:<12} {iteration['title']}")
 
     arts = list_artifacts(conn, row["id"])
     if arts:

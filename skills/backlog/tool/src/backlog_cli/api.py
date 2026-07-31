@@ -194,6 +194,24 @@ class Task:
     def open_threads(self) -> list[str]:
         return [r["root_key"] for r in core.open_threads(self._bl._conn, self._row["id"])]
 
+    @property
+    def iteration_members(self) -> list["Task"]:
+        """Tasks grouped by this Iteration, ordered by priority."""
+        if self.task_type != "iteration":
+            return []
+        return [self._bl._task(r) for r in core.iteration_members(
+            self._bl._conn, self._row["id"]
+        )]
+
+    @property
+    def iterations(self) -> list["Task"]:
+        """Iterations containing this task."""
+        rows = self._bl._conn.execute(
+            "SELECT i.* FROM iteration_member m JOIN task i ON i.id=m.iteration_id "
+            "WHERE m.member_id=? ORDER BY i.priority,i.key", (self._row["id"],)
+        ).fetchall()
+        return [self._bl._task(r) for r in rows]
+
 
 @dataclass(frozen=True)
 class Gate:
@@ -382,6 +400,15 @@ class Backlog:
         """Create a standalone bug with optional plain or executable criteria."""
         return self.create_task("bug", title, parent=None, **kwargs)
 
+    def create_iteration(self, title: str, **kwargs) -> Task:
+        """Create a standalone parallel unit of work."""
+        kwargs.pop("branch", None)
+        return self.create_task("iteration", title, parent=None, **kwargs)
+
+    def add_iteration_member(self, iteration: str, member: str) -> None:
+        """Associate deliverable work with an Iteration without changing its status."""
+        core.add_iteration_member(self._conn, self.pid, iteration, member)
+
     def add_item(
         self, key: str, kind: str, content: str, *, execution_spec: dict | None = None
     ) -> dict:
@@ -478,6 +505,14 @@ class Backlog:
             (self.pid,)).fetchall()
         return {r["status"]: int(r["n"]) for r in rows}
 
+    def task_type_counts(self) -> dict[str, int]:
+        """How many rows exist for each task type, including Iterations."""
+        rows = self._conn.execute(
+            "SELECT task_type,COUNT(*) AS n FROM task WHERE project_id=? GROUP BY task_type",
+            (self.pid,),
+        ).fetchall()
+        return {r["task_type"]: int(r["n"]) for r in rows}
+
     def statuses(self, task_type: str = "story") -> list[str]:
         """The statuses this project's flow actually defines for a task type."""
         return list(workflow.get(self._conn, self.pid, core.normalize_type(task_type)).statuses)
@@ -494,10 +529,15 @@ class Backlog:
             config_dir, task.task_type, task.status
         )
 
-    def startable(self, actor: str | None = None) -> list[Task]:
-        """Open, unblocked tasks -- optionally only those assigned to `actor`."""
+    def startable(self, actor: str | None = None,
+                  iteration: str | None = None) -> list[Task]:
+        """Open, unblocked deliverables, optionally selected by Iteration."""
         out = []
         for t in self.tasks(assignee=actor, open_only=True):
+            if t.task_type == "iteration":
+                continue
+            if iteration and all(i.key != core.normalize_key(iteration) for i in t.iterations):
+                continue
             if not t.blockers:
                 out.append(t)
         return out

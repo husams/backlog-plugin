@@ -311,7 +311,7 @@ class ExecutionReportingTest(unittest.TestCase):
         version = self.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
-        self.assertEqual(version, "12")
+        self.assertEqual(version, "13")
         actor = self.conn.execute(
             "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
         ).fetchone()["actor"]
@@ -331,7 +331,7 @@ class ExecutionReportingTest(unittest.TestCase):
         exported = self.cli("export", "--out", str(export_path))
         self.assertEqual(exported.returncode, 0, exported.stderr)
         payload = json.loads(export_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema_version"], 12)
+        self.assertEqual(payload["schema_version"], 13)
         self.assertEqual(
             payload["tables"]["execution_result"][0]["actor"], "S-010"
         )

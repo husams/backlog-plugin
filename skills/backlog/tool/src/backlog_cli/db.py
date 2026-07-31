@@ -522,7 +522,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         return notes
 
     if from_version >= 3 or not conn.table_exists("feature"):
-        if from_version < 12:
+        if from_version < 13:
             notes += _upgrade_bug_task_constraint(conn)
         _add_column(conn, "project", "template_id", "INTEGER")
         _add_column(
@@ -557,6 +557,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
             notes.append("installed templates: " + ", ".join(added))
         notes += _adopt_default_template(conn)
         notes += _upgrade_bug_template_workflows(conn)
+        notes += _upgrade_iteration_template_workflows(conn)
         notes += _seed_missing_workflows(conn)
         notes += _upgrade_feature_review_flow(conn)
         notes += _upgrade_required_validation_gates(conn)
@@ -587,12 +588,12 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
 
 
 def _upgrade_bug_task_constraint(conn: Conn) -> list[str]:
-    """Allow Bug rows in stores created before schema v12."""
+    """Allow Bug and Iteration rows in stores created before schema v13."""
     if conn.is_postgres:
         conn.execute("ALTER TABLE task DROP CONSTRAINT IF EXISTS task_task_type_check")
         conn.execute(
             "ALTER TABLE task ADD CONSTRAINT task_task_type_check "
-            "CHECK (task_type IN ('feature','story','bug','subtask'))"
+            "CHECK (task_type IN ('feature','story','bug','subtask','iteration'))"
         )
         conn.commit()
         return ["enabled the bug task type"]
@@ -600,11 +601,11 @@ def _upgrade_bug_task_constraint(conn: Conn) -> list[str]:
     conn.rollback()
     conn.execute("PRAGMA foreign_keys = OFF")
     conn.executescript("""
-CREATE TABLE task_v12 (
+CREATE TABLE task_v13 (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     key TEXT NOT NULL,
-    task_type TEXT NOT NULL CHECK (task_type IN ('feature','story','bug','subtask')),
+    task_type TEXT NOT NULL CHECK (task_type IN ('feature','story','bug','subtask','iteration')),
     parent_id INTEGER REFERENCES task(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -631,16 +632,16 @@ CREATE TABLE task_v12 (
     closed_at TEXT,
     UNIQUE (project_id, key)
 );
-INSERT INTO task_v12 SELECT * FROM task;
+INSERT INTO task_v13 SELECT * FROM task;
 DROP TABLE task;
-ALTER TABLE task_v12 RENAME TO task;
+ALTER TABLE task_v13 RENAME TO task;
 CREATE INDEX idx_task_project ON task(project_id, status);
 CREATE INDEX idx_task_parent ON task(parent_id);
 CREATE INDEX idx_task_type ON task(project_id, task_type);
 """)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
-    return ["enabled the bug task type"]
+    return ["enabled the bug and iteration task types"]
 
 
 def _upgrade_bug_template_workflows(conn: Conn) -> list[str]:
@@ -679,6 +680,44 @@ def _upgrade_bug_template_workflows(conn: Conn) -> list[str]:
         added += 1
     conn.commit()
     return [f"added Bug workflows to {added} template(s)"] if added else []
+
+
+def _upgrade_iteration_template_workflows(conn: Conn) -> list[str]:
+    """Give existing templates the shipped three-state Iteration flow."""
+    added = 0
+    for template in conn.execute("SELECT id FROM template ORDER BY id").fetchall():
+        exists = conn.execute(
+            "SELECT id FROM template_workflow WHERE template_id=? AND task_type='iteration'",
+            (template["id"],),
+        ).fetchone()
+        if exists is not None:
+            continue
+        wf_id = conn.insert_returning_id(
+            "INSERT INTO template_workflow(template_id,task_type,name,description) "
+            "VALUES(?,'iteration','iteration flow','Parallel unit of work')",
+            (template["id"],),
+        )
+        conn.executemany(
+            "INSERT INTO template_status(template_workflow_id,slug,display,category,position,"
+            "satisfies_dependency,is_initial,is_terminal,description) VALUES(?,?,?,?,?,?,?,?,?)",
+            [
+                (wf_id, "planned", "Planned", "backlog", 0, 0, 1, 0, ""),
+                (wf_id, "open", "Open", "active", 1, 0, 0, 0, ""),
+                (wf_id, "closed", "Closed", "done", 2, 1, 0, 1, ""),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO template_transition(template_workflow_id,from_status,to_status,gates,note) "
+            "VALUES(?,?,?,?,?)",
+            [
+                (wf_id, "planned", "open", "", "iteration.opened"),
+                (wf_id, "open", "closed", "iteration_members_finished", "iteration.closed"),
+                (wf_id, "closed", "open", "iteration_members_finished", "iteration.reopened"),
+            ],
+        )
+        added += 1
+    conn.commit()
+    return [f"added Iteration workflows to {added} template(s)"] if added else []
 
 
 def _add_column(conn: Conn, table: str, column: str, decl: str) -> None:

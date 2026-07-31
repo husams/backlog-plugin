@@ -51,7 +51,7 @@ template ──copied at project creation──> project ──> task ──┬�
                                                 type)
 ```
 
-`task` is **one table** for features, stories, bugs and subtasks, told apart by
+`task` is **one table** for features, stories, bugs, subtasks and Iterations, told apart by
 `task_type` and nested through `parent_id`. A feature holds stories; a story
 holds subtasks.
 

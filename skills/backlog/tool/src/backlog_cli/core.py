@@ -134,6 +134,29 @@ def children_of(conn: Conn, task_id: int) -> list[Row]:
     ).fetchall()
 
 
+def iteration_members(conn: Conn, iteration_id: int) -> list[Row]:
+    return conn.execute(
+        "SELECT t.* FROM iteration_member m JOIN task t ON t.id=m.member_id "
+        "WHERE m.iteration_id=? ORDER BY t.priority,t.key", (iteration_id,)
+    ).fetchall()
+
+
+def add_iteration_member(conn: Conn, project_id: int, iteration_key: str,
+                         member_key: str) -> None:
+    iteration = get_task(conn, project_id, iteration_key)
+    member = get_task(conn, project_id, member_key)
+    if iteration["task_type"] != "iteration":
+        raise BacklogError(f"{iteration['key']} is not an Iteration")
+    if member["task_type"] == "iteration":
+        raise BacklogError("an Iteration cannot be a member of another Iteration")
+    conn.execute(
+        "INSERT INTO iteration_member(iteration_id,member_id,created_at) VALUES(?,?,?) "
+        "ON CONFLICT(iteration_id,member_id) DO NOTHING",
+        (iteration["id"], member["id"], utcnow()),
+    )
+    conn.commit()
+
+
 def open_threads(conn: Conn, task_id: int) -> list[Row]:
     return conn.execute(
         "SELECT * FROM review_thread WHERE task_id = ? AND state != 'closed' ORDER BY root_key",
@@ -630,6 +653,30 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                 else "pending or non-passing required items: "
                 + ", ".join(f"#{item_id}" for item_id in pending_or_failed),
             ))
+        elif name == "iteration_members_finished":
+            members = iteration_members(conn, task["id"])
+            unfinished = [m for m in members if not workflow.get(
+                conn, project_id, m["task_type"]
+            ).satisfies(m["status"])]
+            if task["status"] == "closed":
+                conflicts = conn.execute(
+                    "SELECT DISTINCT i.key FROM iteration_member mine "
+                    "JOIN iteration_member other ON other.member_id=mine.member_id "
+                    "JOIN task i ON i.id=other.iteration_id "
+                    "WHERE mine.iteration_id=? AND other.iteration_id!=? AND i.status='open' "
+                    "ORDER BY i.key", (task["id"], task["id"]),
+                ).fetchall()
+                checks.append(Check(
+                    name, not conflicts,
+                    "no membership conflicts" if not conflicts else
+                    "members also belong to open Iterations: " + ", ".join(r["key"] for r in conflicts),
+                ))
+            else:
+                checks.append(Check(
+                    name, not unfinished,
+                    "all members finished" if not unfinished else "unfinished members: "
+                    + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
+                ))
         else:
             checks.append(Check(name, False, "unknown gate check"))
     return checks

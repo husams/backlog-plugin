@@ -69,6 +69,9 @@ class Action(str, Enum):
     DELIVERY_ACCEPTED = "delivery.accepted"
     DELIVERY_REJECTED = "delivery.rejected"
     DELIVERY_RELEASED = "delivery.released"
+    ITERATION_OPENED = "iteration.opened"
+    ITERATION_CLOSED = "iteration.closed"
+    ITERATION_REOPENED = "iteration.reopened"
 
 
 THREAD_MANAGED_ACTIONS = frozenset({
@@ -179,10 +182,10 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
             f"cannot apply {source}: task states are not declared: {details}"
         )
 
-    initial = [row["slug"] for row in states if row.get("initial")]
-    if len(initial) != 1:
-        raise BacklogError(f"{source} must define exactly one initial state")
     for row in states:
+        declared_types = row.get("task_types", TASK_TYPES)
+        if not isinstance(declared_types, list) or any(t not in TASK_TYPES for t in declared_types):
+            raise BacklogError(f"state {row['slug']} in {source} has invalid task_types")
         category = row.get("category", "active")
         if category not in STATUS_CATEGORIES:
             raise BacklogError(
@@ -217,6 +220,12 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
     ts = utcnow()
     conn.execute("DELETE FROM workflow WHERE project_id = ?", (project_id,))
     for task_type in TASK_TYPES:
+        typed_states = [row for row in states if task_type in row.get("task_types", TASK_TYPES)]
+        initial = [row["slug"] for row in typed_states if row.get("initial")]
+        if len(initial) != 1:
+            raise BacklogError(
+                f"{source} must define exactly one initial state for {task_type}"
+            )
         workflow_id = conn.insert_returning_id(
             "INSERT INTO workflow(project_id, task_type, name, description, created_at, "
             "updated_at) VALUES(?,?,?,?,?,?)",
@@ -238,7 +247,7 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
                     int(bool(row.get("terminal"))),
                     row.get("description", ""),
                 )
-                for position, row in enumerate(states)
+                for position, row in enumerate(typed_states)
             ],
         )
         conn.executemany(
