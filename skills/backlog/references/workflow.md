@@ -172,8 +172,9 @@ or subtask.
 ## Closing the loop
 
 A task is closed only when its action flow says so, and the CLI enforces every step.
-For a Story or Bug on the shipped delivery flow that means: every review thread
-closed and accepted, the PR approved, the PR merged, and every child finished.
+For a Story or Bug on the shipped delivery flow that means: every blocking
+review thread is closed by reviewer acceptance, the PR approved, the PR merged,
+and every child finished.
 For an Iteration, the configured close action additionally requires every
 retained member to be finished and every Iteration review thread of any severity
 to be closed; the member statuses are not changed by closing. Then and only
