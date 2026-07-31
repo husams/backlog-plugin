@@ -67,5 +67,15 @@ Open threads waiting on the actor, oldest first, each with the root comment, the
 latest reply, where it points, and the comment key to reply to. `--role
 developer|reviewer` narrows it further.
 
+Use this only for the session's initial, narrowly actor-scoped review read;
+also pass `--role` when it narrows the request. Retain each thread's root and
+returned `reply_to` key. For subsequent checks of known roots, do not run triage
+or reload the inbox; call `bl.review_updates(ROOT, after=LAST_SEEN)` from a
+short Python snippet, process every returned comment, and print only newly added
+comments. Before handoff, a single final semantically scoped inbox discovery is
+allowed only to identify previously unseen roots. See
+[review.md](review.md#reading-reviews-strict-incremental-procedure) and
+[api.md](api.md#incremental-review-reads).
+
 Reply with the CLI: `backlog review reply C-003 --author claude --action fix
 --body "..."`.

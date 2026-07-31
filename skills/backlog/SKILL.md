@@ -96,38 +96,75 @@ treat a recorded acceptance alone as evidence that a person verified the fix.
    off limits. The markdown here is their documentation: [references/cli.md](references/cli.md)
    for commands, [references/scripts.md](references/scripts.md) for the ready-made
    scripts, [references/api.md](references/api.md) for the Python API.
-2. **Compute in Python, answer in prose.** When you use `$PY`, reduce inside the
-   snippet and print the conclusion — a count, a list of keys, a verdict. Do not
-   print a dataset back into your own context and summarise it there.
-3. **Never build complex shell workflows.** The shell is limited to launching
+2. **Reason with code; return only the evidence needed.** For questions,
+   reviews, and responses to feedback, use the documented Python API to filter,
+   join, compare, count, group, and validate records in-process. Print only the
+   smallest sufficient result: the relevant keys and fields, a count, a
+   verdict, or the specific evidence needed to explain the conclusion. Never
+   dump a large result set into model context and reason over the dump.
+3. **Use the narrowest complete read, in this order.** First call a public API
+   method with every applicable semantic filter, such as task key, actor, role,
+   state, severity, status, task type, or `after=LAST_SEEN`. If that call returns
+   a complete in-process collection, reduce it in Python and print only relevant
+   records or an aggregate. If the documented API instead reports a bounded
+   batch or continuation cursor, consume all matching batches in the same
+   process while retaining only that reduced result. Pagination exists only to
+   establish completeness after semantic filtering; it never replaces filtering
+   or justifies printing each page. Never start with an unfiltered board, inbox,
+   task collection, thread history, or JSON dump for convenience.
+4. **Truncated data is unusable for conclusions.** Never answer a question,
+   review work, or respond to feedback from a result marked or suspected as
+   truncated. `budget.max_results`, output clipping, an API page size, or a
+   display limit is not evidence that the remaining records are irrelevant. If
+   a result is incomplete, use code to examine the complete matching record
+   set. When a documented API returns records in batches or behind a
+   continuation cursor, consume every matching batch until the API confirms
+   there are no remaining matches, reducing in-process as the batches arrive.
+   If completeness cannot be established, stop and state that the evidence is
+   incomplete; do not provide a verdict or feedback.
+5. **Never impose an arbitrary hard result limit.** Do not hard-code a maximum
+   number of tasks, comments, threads, artifacts, or search results when
+   correctness depends on examining the whole matching set. Prefer a selective
+   query first; when the matching set is still large, examine it to exhaustion
+   in code while retaining only the aggregate or relevant matches.
+   A user-requested bound or a limit that is semantically part of the question
+   is allowed, but it must not silently stand in for complete evidence.
+6. **Never build complex shell workflows.** The shell is limited to launching
    one documented command or one short `$PY` snippet. MUST NOT create shell
    scripts, pipelines, loops, temporary scripts, or repeated CLI sequences for
    work supported by the public API.
-4. **Leave nothing behind.** Snippets go in on stdin. Never write a `.py` file, a
+7. **Leave nothing behind.** Snippets go in on stdin. Never write a `.py` file, a
    temp file or a scratch artifact to answer a question.
-5. **Never touch tables or the database directly.** No `sqlite3`, no `psql`, no
+8. **Never touch tables or the database directly.** No `sqlite3`, no `psql`, no
    SQL, schema imports, connection attributes, or internal API attributes. Use
    only the documented public API. Direct access bypasses the flow, gates and
    audit trail.
-6. **Never request a destination status.** Before any state-changing event,
+9. **Never request a destination status.** Before any state-changing event,
    run `$BL actions KEY`, then submit the matching semantic action with
    `$BL action KEY ACTION`. The workflow—not the agent—chooses the state.
-7. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
-8. **Do not start blocked work.** If `action ... work.started` fails on
+10. **Never merge a PR unless `$BL gate <KEY> --for merge` exits 0.**
+11. **Do not start blocked work.** If `action ... work.started` fails on
    `dependencies_clear`, pick something else.
-9. **Never re-read context in the same session.** On the first review read, keep
-   each thread's `reply_to` key in context. Later call
-   `bl.review_updates(ROOT, after=LAST_SEEN)` and read only newly added
-   comments. MUST NOT re-read task descriptions, inbox summaries, full threads,
-   or other large text already present in context. A full read is allowed only
-   when context was lost or a new comment is genuinely ambiguous, and the agent
-   must state that reason.
-10. **Review feedback is not an artifact.** Requests to post, add, leave,
+12. **Reviews are incremental, never historical by default.** Begin with one
+   narrowly scoped inbox read using every applicable actor, role, item, and
+   severity filter. Keep every returned thread's root key and `reply_to`; the
+   latter is its `LAST_SEEN` key. For later comments on a known thread, call
+   `bl.review_updates(ROOT, after=LAST_SEEN)`, process every returned comment in
+   order, and advance `LAST_SEEN` only after all of them are processed. An empty
+   result means there is nothing new on that root. MUST NOT poll known roots by
+   re-reading task descriptions, inbox summaries, full threads, old comments,
+   or other text already present in context. If new roots may have been opened
+   and handoff requires a complete inbox, make one final semantically scoped
+   discovery read in-process and print only previously unseen roots. A full
+   thread read is allowed only after context loss or when a new comment cannot
+   be understood from retained context; state the specific reason before doing
+   it.
+13. **Review feedback is not an artifact.** Requests to post, add, leave,
    answer, accept, reject, or reply to a review or feedback must use
    `review open`, `review reply`, or another documented review command.
    Use `artifact add` only when the user explicitly asks to attach or record a
    file, document, report, patch, log, design, or other durable artifact.
-11. **Implementers MUST answer every open review thread.** This includes
+14. **Implementers MUST answer every open review thread.** This includes
     `blocker`, `nice_to_have`, and `info` threads. Before handing the story
     back, the implementer MUST reply to every thread awaiting them with `fix`,
     `comment`, or `reject` and a non-empty body that explicitly accepts or
@@ -135,7 +172,7 @@ treat a recorded acceptance alone as evidence that a person verified the fix.
     leave any advisory or blocker unanswered. When resolving a comment with
     changes, the implementer MUST briefly and concretely explain what changed;
     long narratives or a bare statement such as "fixed" are not sufficient.
-12. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
+15. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
     thread may accept or reject a developer response. The API reuses that
     reviewer automatically and treats any other responding author as the
     developer/assignee for that reply. Callers MUST NOT repeat or alter role,
@@ -145,27 +182,27 @@ treat a recorded acceptance alone as evidence that a person verified the fix.
     task status unchanged.
     Always open Python sessions with `api.open(actor=YOUR_IDENTITY)` before
     writing reviews so the session rejects mismatched `author=` assertions.
-13. **Reviewers MUST decide every implementer response.** Before completing a
+16. **Reviewers MUST decide every implementer response.** Before completing a
     review, the reviewer MUST reply to every thread awaiting them with
     `accept` or `reject` and a non-empty body explaining the decision. This
     includes advisory and informational feedback. A reviewer MUST NOT leave a
     response pending, silently abandon a thread, or substitute a neutral
     comment for a decision.
-14. **Reviewers MUST leave the story or feature in a decisive state.** A review
+17. **Reviewers MUST leave the story or feature in a decisive state.** A review
     ends only when the reviewer either accepts the changes through the
     configured semantic action, or leaves explicit advisory/blocker threads
     and hands the item back through the configured changes-requested action.
     Reviewers MUST NOT finish with the item in an ambiguous or incomplete
     review state. Before either outcome, all thread replies awaiting the
     reviewer must already have an `accept` or `reject` decision.
-15. **New blockers caused by a response require a causal explanation.** When
+18. **New blockers caused by a response require a causal explanation.** When
     changes made to resolve earlier feedback introduce a new blocker, the
     reviewer MUST open a new blocker that states: (a) which recent resolving
     changes introduced it, (b) how those changes caused the blocking behavior,
     and (c) what must be done differently to resolve the blocker without
     repeating the regression. A vague statement that the update is blocked is
     not sufficient.
-16. **Reopen through the thread API.** To reactivate an accepted finding, use
+19. **Reopen through the thread API.** To reactivate an accepted finding, use
     `review reopen ROOT --author REVIEWER --body REASON` or
     `bl.review_reopen(...)`. The reply is required. A new or reopened blocker
     on a Ready task emits a managed event that the shipped workflow resolves to

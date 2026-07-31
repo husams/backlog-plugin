@@ -14,14 +14,29 @@ with api.open(actor="claude") as bl:
 PY
 ```
 
-## Three rules
+## Retrieval and processing rules
 
 1. **Feed the snippet on stdin.** Never write a `.py` file, a temp file or any
    other artifact to answer a question. The heredoc above leaves nothing behind.
-2. **Print the answer, not the data.** Reduce inside Python — count it, sort it,
-   pick the top three — and print a sentence or a short table. Never print a
-   task list you intend to read and re-summarise, and never print JSON.
-3. **The rules still apply.** `trigger` submits a typed action and lets this
+2. **Filter before reducing.** Pass every semantic filter the public method
+   supports (`key`, `actor`, `role`, `state`, `severity`, `status`, `type`,
+   `after`, and so on). Do not fetch all records and ask the model to locate the
+   relevant ones.
+3. **Reduce before printing.** Use Python to count, group, compare, validate,
+   or select the relevant records. Print only the conclusion and the minimum
+   keys or fields needed to support it. Never print JSON or a dataset for the
+   model to re-read and summarise.
+4. **Paginate only to establish completeness after filtering.** The public
+   collection methods documented below return complete lists, so reduce those
+   lists directly in-process. If another documented method reports a
+   continuation cursor or bounded batch, first apply its semantic filters, then
+   consume every matching batch while retaining only the aggregate or relevant
+   matches. Do not print each batch or invent a hard result limit.
+5. **Reject incomplete evidence.** A truncated response, `budget.max_results`,
+   output clipping, or an unconsumed continuation cursor cannot support a
+   conclusion, review, or feedback response. Establish completeness or report
+   that no conclusion can be made.
+6. **The workflow rules still apply.** `trigger` submits a typed action and lets this
    project's workflow choose the destination; `can` runs the real gates and
    every write is logged. There is no direct-status or SQL escape hatch.
 
@@ -249,18 +264,56 @@ enough, `backlog review show <root> --full`.
 
 ## Incremental review reads
 
-Read an inbox once. Keep each thread's `reply_to` key in session context, then
-read only later additions:
+Read a narrowly filtered inbox once. Keep each thread's `reply_to` key in
+session context as `LAST_SEEN`, then read only later additions:
 
 ```python
 updates = bl.review_updates("C-003", after="C-007")
 ```
 
-The result is `list[ReviewComment]`; an empty list means nothing changed.
+The result is `list[ReviewComment]` ordered oldest-to-newest; an empty list
+means nothing changed.
 Each comment exposes `key`, `root_key`, `parent_key`, `author`, `assignee`,
 `reviewer`, `role`, `action`, `body`, `file`, `line`, and `created_at`.
 `reviewer` is inherited from the thread opener. For a developer reply,
 `assignee` is the responding author.
+
+For multiple already-known threads, process updates in code and print only
+threads that actually changed:
+
+```bash
+backlog-py <<'PY'
+from backlog_cli import api
+
+# Retain this small mapping in session context from the first inbox read.
+last_seen = {"C-003": "C-007", "C-010": "C-012"}
+
+with api.open() as bl:
+    changed = []
+    next_last_seen = []
+    for root, after in last_seen.items():
+        updates = bl.review_updates(root, after=after)
+        if updates:
+            for comment in updates:
+                changed.append((root, comment.key, comment.author,
+                                comment.action, comment.body))
+            next_last_seen.append((root, updates[-1].key))
+    for root, key, author, action, body in changed:
+        print(f"{root} new={key} by={author} action={action}: {body}")
+    for root, key in next_last_seen:
+        print(f"{root} advance_LAST_SEEN={key} after processing")
+PY
+```
+
+After processing every printed comment for a root, copy its
+`advance_LAST_SEEN` value into retained session context. Do not call `inbox()`
+again to detect comments on known roots, and do not call a full thread read to
+rediscover comments already in context. If new roots may have opened and a
+handoff verdict requires a complete inbox, one final inbox call is allowed only
+with all applicable semantic filters and in-process reduction to previously
+unseen root keys. A full thread read is an exception only when session context
+was lost or a new comment is genuinely ambiguous without omitted history;
+state which condition applies first.
 
 ## Worked examples
 
@@ -270,7 +323,7 @@ Which stories would be unblocked if S-002 landed:
 backlog-py <<'PY'
 from backlog_cli import api
 with api.open() as bl:
-    freed = [t.key for t in bl.tasks(open_only=True)
+    freed = [t.key for t in bl.tasks(open_only=True, task_type="story")
              if any(b["other_key"] == "S-002" for b in t.blockers)]
     print(f"landing S-002 unblocks {len(freed)}: {', '.join(freed) or 'nothing'}")
 PY

@@ -103,7 +103,7 @@ Neither party may leave the ball unattended:
   must be done differently to resolve it without repeating the regression.
   Merely saying that the update is blocked is not an adequate review.
 
-## Reading: new comments only
+## Reading reviews: strict incremental procedure
 
 ```bash
 $BL review inbox --actor developer
@@ -117,11 +117,58 @@ For each thread waiting on you this returns:
 - `reply_to` — the comment key to reply to,
 - `hidden_comments` — how many middle comments were omitted.
 
-That is the first read. Keep `reply_to` in session context. On later checks use
-`bl.review_updates(ROOT, after=LAST_SEEN)` and read only the returned comments.
-Never re-read the inbox, task description, or full thread in the same session.
-Only use a full read if context was lost or a new reply is genuinely ambiguous,
-and say why.
+That is the session's one initial inbox read. Make it as narrow as the request
+allows by applying every compatible `--actor`, `--role`, `--item`, and
+`--severity` filter. Keep each returned thread's root key and `reply_to` in
+session context; `reply_to` is that thread's `LAST_SEEN` comment key.
+
+For every later check:
+
+1. Call `bl.review_updates(ROOT, after=LAST_SEEN)` for already-known relevant
+   threads. Do not call the inbox again to poll those roots.
+2. Ignore an empty result: it means there is no new comment to review.
+3. Process every returned comment in its oldest-to-newest API order. Retain the
+   original finding and relevant context already in the session; do not
+   retrieve them again.
+4. Only after every returned comment is processed, replace `LAST_SEEN` with the
+   final returned comment key.
+5. If many known threads are checked, loop over their small `root → LAST_SEEN`
+   mapping in Python and print only threads with updates, plus only the fields
+   needed to act (`root`, new key, author, action, body, and location when
+   relevant).
+
+Never print all comments for the model to filter. Never re-read the task
+description, inbox summary, full thread, old replies, or unrelated threads in
+the same session. A full thread read is allowed only if session context was
+lost or a newly returned comment is genuinely ambiguous without omitted
+history. State the exact exception before reading it. Truncation is never such
+an exception: narrow first, then consume every batch the documented API
+requires while reducing in-process; do not reason from an incomplete page.
+
+Minimal update check:
+
+```bash
+$PY <<'PY'
+from backlog_cli import api
+
+last_seen = {"C-003": "C-007", "C-010": "C-012"}
+with api.open() as bl:
+    next_last_seen = []
+    for root, after in last_seen.items():
+        updates = bl.review_updates(root, after=after)
+        if not updates:
+            continue
+        for comment in updates:
+            print(f"{root} new={comment.key} by={comment.author} "
+                  f"action={comment.action}: {comment.body}")
+        next_last_seen.append((root, updates[-1].key))
+    for root, key in next_last_seen:
+        print(f"{root} advance_LAST_SEEN={key} after processing")
+PY
+```
+
+Only copy an `advance_LAST_SEEN` value into retained session context after
+every preceding new comment for that root has been processed successfully.
 
 Other reads:
 
@@ -225,9 +272,11 @@ $BL review list S-004 --state open --severity blocker
 $BL gate S-004 --for accepted
 ```
 
-Before the implementer hands the item back, `review inbox --actor IMPLEMENTER`
-must contain no thread awaiting that implementer. Before the reviewer accepts
-the item or requests changes, `review inbox --actor REVIEWER` must contain no
-thread awaiting that reviewer. The final review action must then either accept
-the item or request changes; stopping without one of those outcomes is not a
-completed review.
+Before handoff, use `review_updates` to exhaust every known relevant root. If
+new roots could have been opened since the initial read, make exactly one final
+inbox discovery with all applicable actor, role, item, and severity filters;
+reduce it in-process and print only roots absent from the retained
+`root -> LAST_SEEN` mapping. Do not print or re-read summaries for known roots.
+Process any newly discovered roots before continuing. The final review action
+must then either accept the item or request changes; stopping without one of
+those outcomes is not a completed review.
