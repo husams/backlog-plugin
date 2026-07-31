@@ -167,6 +167,31 @@ def seed_all(conn: Conn, project_id: int) -> None:
     templates.instantiate(conn, int(tpl["id"]), project_id)
 
 
+def upgrade(conn: Conn, project_id: int) -> list[str]:
+    """Add missing shipped task-type flows without replacing local flows."""
+    from . import templates
+
+    existing = conn.execute(
+        "SELECT description FROM workflow WHERE project_id=? ORDER BY task_type",
+        (project_id,),
+    ).fetchall()
+    markers = {row["description"] for row in existing}
+    action_marker = next(
+        (value for value in markers if value.startswith("action-workflow:")), None
+    ) if len(markers) == 1 else None
+    tpl = template_of(conn, project_id)
+    added = templates.instantiate(conn, int(tpl["id"]), project_id, replace=False)
+    if action_marker and added:
+        placeholders = ",".join("?" for _ in added)
+        conn.execute(
+            f"UPDATE workflow SET description=? WHERE project_id=? "
+            f"AND task_type IN ({placeholders})",
+            (action_marker, project_id, *added),
+        )
+        conn.commit()
+    return added
+
+
 def reset(conn: Conn, project_id: int, task_type: str | None = None) -> None:
     """Back to the project's template, discarding local edits to the flow."""
     from . import templates

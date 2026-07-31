@@ -235,7 +235,7 @@ def cmd_doctor(ctx: Ctx, args) -> int:
         "JOIN task p ON p.id = c.parent_id "
         "WHERE (c.task_type = 'subtask' AND p.task_type NOT IN ('story','bug')) "
         "   OR (c.task_type = 'story'   AND p.task_type != 'feature') "
-        "   OR (c.task_type IN ('feature','bug'))"
+        "   OR (c.task_type IN ('feature','bug','iteration'))"
     ).fetchall()
     problems += [f"{r['key']} is a {r['task_type']} under a {r['parent_type']}"
                  for r in bad_parent]
@@ -252,7 +252,8 @@ def cmd_doctor(ctx: Ctx, args) -> int:
         "LEFT JOIN workflow w ON w.project_id = t.project_id AND w.task_type = t.task_type "
         "WHERE w.id IS NULL"
     ).fetchall()
-    problems += [f"no workflow for {r['task_type']} in project {r['project_id']}"
+    problems += [f"no workflow for {r['task_type']} in project {r['project_id']}; "
+                 "run `backlog workflow upgrade` to add missing shipped flows"
                  for r in no_flow]
     off_flow = conn.execute(
         "SELECT t.key, t.status, t.task_type FROM task t "
@@ -860,6 +861,19 @@ def cmd_workflow_apply(ctx: Ctx, args) -> int:
     return 0
 
 
+def cmd_workflow_upgrade(ctx: Ctx, args) -> int:
+    """Add only missing task-type flows from the project's template."""
+    slug = ctx.project_override or ctx.spec.project
+    project = require_project(ctx.conn, slug)
+    added = workflow.upgrade(ctx.conn, int(project["id"]))
+    ctx.emit(
+        {"project": project["slug"], "added": added},
+        ("added missing workflows: " + ", ".join(added)) if added
+        else "workflow already up to date; no project-specific flow was changed",
+    )
+    return 0
+
+
 def cmd_workflow_show(ctx: Ctx, args) -> int:
     return cmd_statuses(ctx, args)
 
@@ -1392,7 +1406,14 @@ def cmd_history(ctx: Ctx, args) -> int:
 
 _EXPORT_TABLES: list[tuple[str, str]] = [
     ("meta", "key"),
+    ("template", "id"),
+    ("template_workflow", "id"),
+    ("template_status", "id"),
+    ("template_transition", "id"),
     ("project", "id"),
+    ("workflow", "id"),
+    ("workflow_status", "id"),
+    ("workflow_transition", "id"),
     ("key_counter", "project_id"),
     ("task", "id"),
     ("iteration_member", "iteration_id, member_id"),
@@ -1452,6 +1473,7 @@ def cmd_import(ctx: Ctx, args) -> int:
     if not args.replace:
         raise BacklogError("import rewrites the whole store; pass --replace to confirm")
     _validate_import_tasks(data["tables"].get("task", []))
+    _validate_import_workflows(data["tables"])
     if not conn.is_postgres:
         conn.execute("PRAGMA foreign_keys = OFF")
     for t, _ in reversed(_EXPORT_TABLES):
@@ -1497,6 +1519,29 @@ def _validate_import_tasks(rows: list[dict]) -> None:
                 f"import rejected: a {task_type} cannot sit under a {parent_type} "
                 f"({parent.get('key') or parent_id})"
             )
+
+
+def _validate_import_workflows(tables: dict[str, list[dict]]) -> None:
+    """Reject task types whose project workflow is absent before replacing data."""
+    available = {
+        (row.get("project_id"), row.get("task_type"))
+        for row in tables.get("workflow", [])
+    }
+    projects = {row.get("id"): row.get("slug") for row in tables.get("project", [])}
+    missing = sorted({
+        (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
+        for row in tables.get("task", [])
+        if core.normalize_type(row.get("task_type") or "") in ("bug", "iteration")
+        if (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
+        not in available
+    })
+    if missing:
+        project_id, task_type = missing[0]
+        raise BacklogError(
+            f"import rejected: {task_type} tasks require a {task_type} workflow "
+            f"in project {projects.get(project_id) or project_id}; run "
+            "`backlog workflow upgrade` in the source project and export again"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -1624,6 +1669,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--template", help="default: the template the project was created from")
     sp.add_argument("--type", choices=TASK_TYPES)
     sp.set_defaults(func=cmd_workflow_apply)
+    sp = wp.add_parser(
+        "upgrade",
+        help="add missing shipped task-type flows without changing existing flows",
+    )
+    sp.set_defaults(func=cmd_workflow_upgrade)
     sp = wp.add_parser("show", help="the flow this project runs")
     sp.add_argument("--type", choices=TASK_TYPES)
     sp.set_defaults(func=cmd_workflow_show)

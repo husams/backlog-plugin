@@ -712,7 +712,7 @@ def _upgrade_iteration_template_workflows(conn: Conn) -> list[str]:
             "VALUES(?,?,?,?,?)",
             [
                 (wf_id, "planned", "open", "", "iteration.opened"),
-                (wf_id, "open", "closed", "iteration_members_finished", "iteration.closed"),
+                (wf_id, "open", "closed", "iteration_members_finished,iteration_comments_closed", "iteration.closed"),
                 (wf_id, "closed", "open", "iteration_members_finished", "iteration.reopened"),
             ],
         )
@@ -1108,8 +1108,10 @@ def list_projects(conn: Conn) -> list[Row]:
     ).fetchall()
 
 
-_SERIAL_TABLES = ["project", "task", "task_item", "execution_result", "validation_waiver",
-                  "dependency", "artifact",
+_SERIAL_TABLES = ["template", "template_workflow", "template_status",
+                  "template_transition", "project", "workflow", "workflow_status",
+                  "workflow_transition", "task", "task_item", "execution_result",
+                  "validation_waiver", "dependency", "artifact",
                   "review_thread", "review_comment", "event"]
 
 

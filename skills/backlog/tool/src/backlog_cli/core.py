@@ -973,6 +973,8 @@ def trigger_action(
     conn.commit()
     if destination is None:
         return get_task_by_id(conn, task["id"]), [], False
+    if destination == task["status"]:
+        return get_task_by_id(conn, task["id"]), [], False
     row, checks = _transition(
         conn,
         project_id,
