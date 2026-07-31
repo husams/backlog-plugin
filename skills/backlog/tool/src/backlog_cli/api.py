@@ -407,7 +407,11 @@ class Backlog:
 
     def add_iteration_member(self, iteration: str, member: str) -> None:
         """Associate deliverable work with an Iteration without changing its status."""
-        core.add_iteration_member(self._conn, self.pid, iteration, member)
+        core.add_iteration_member(self._conn, self.pid, iteration, member, actor=self.actor)
+
+    def remove_iteration_member(self, iteration: str, member: str) -> None:
+        """Remove work from an Open Iteration without changing the work itself."""
+        core.remove_iteration_member(self._conn, self.pid, iteration, member, actor=self.actor)
 
     def add_item(
         self, key: str, kind: str, content: str, *, execution_spec: dict | None = None
@@ -532,11 +536,21 @@ class Backlog:
     def startable(self, actor: str | None = None,
                   iteration: str | None = None) -> list[Task]:
         """Open, unblocked deliverables, optionally selected by Iteration."""
+        selected = None
+        if iteration:
+            selected = self.task(iteration)
+            if selected.task_type != "iteration":
+                raise BacklogError(f"{selected.key} is not an Iteration")
+            if selected.status != "open":
+                raise BacklogError(
+                    f"{selected.key} is {selected.status}; work may only be "
+                    "selected from an Open Iteration"
+                )
         out = []
         for t in self.tasks(assignee=actor, open_only=True):
-            if t.task_type == "iteration":
+            if t.task_type not in {"story", "bug"} or t.status not in core.ACTIONABLE_BY_DEV:
                 continue
-            if iteration and all(i.key != core.normalize_key(iteration) for i in t.iterations):
+            if selected and all(i.key != selected.key for i in t.iterations):
                 continue
             if not t.blockers:
                 out.append(t)

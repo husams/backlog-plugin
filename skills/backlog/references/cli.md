@@ -74,6 +74,8 @@ $BL feature  add --title T [--description D] [--ac "..."] [--priority P0..P3] [-
 $BL story    add --title T [--feature F-001] [--branch B] [...]
 $BL bug      add --title T [--branch B] [...]
 $BL iteration add --title T [--priority P0..P3] [...]
+$BL iteration member-add I-001 S-001
+$BL iteration member-remove I-001 S-001
 $BL subtask  add (--story S-001 | --bug B-001) --title T [...]
 $BL task     add --type feature|story|bug|subtask [--parent KEY] --title T [...]
 
@@ -82,8 +84,10 @@ $BL assign KEY [--to X] [--reviewer Y] [--to-kind human|agent] [--reviewer-kind 
 ```
 
 A subtask requires a story or bug; a story may hang off a feature or stand
-alone; features, bugs, and Iterations are roots. `next --iteration I-001`
-selects member work from one Iteration. `--ac` replaces the acceptance criteria,
+alone; features, bugs, and Iterations are roots. Only a Ready Story or standalone
+Bug may be added to an Open Iteration, and it may belong to only one Open
+Iteration. `next --iteration I-001` and `board --iteration I-001` select eligible
+member work from that Open Iteration. `--ac` replaces the acceptance criteria,
 one per line.
 Assignee and reviewer names are free text — the human/agent kind is guessed
 from the name and shown with a `*` on agents.
