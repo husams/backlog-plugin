@@ -65,22 +65,24 @@ See [templates.md](templates.md).
 | `$BL history KEY` | audit trail |
 
 Filters: `--status S`, `--open`, `--assignee X`, `--reviewer Y`, `--parent KEY`,
-`--type feature|story|subtask`.
+`--type feature|story|bug|subtask`.
 
 ## Creating and editing
 
 ```bash
 $BL feature  add --title T [--description D] [--ac "..."] [--priority P0..P3] [--owner X]
 $BL story    add --title T [--feature F-001] [--branch B] [...]
-$BL subtask  add --story S-001 --title T [...]
-$BL task     add --type feature|story|subtask [--parent KEY] --title T [...]
+$BL bug      add --title T [--branch B] [...]
+$BL subtask  add (--story S-001 | --bug B-001) --title T [...]
+$BL task     add --type feature|story|bug|subtask [--parent KEY] --title T [...]
 
 $BL set KEY [--title|--description|--ac|--priority|--owner|--branch|--parent]
 $BL assign KEY [--to X] [--reviewer Y] [--to-kind human|agent] [--reviewer-kind ...]
 ```
 
-A subtask requires a story; a story may hang off a feature or stand alone; a
-feature is a root. `--ac` replaces the acceptance criteria, one per line.
+A subtask requires a story or bug; a story may hang off a feature or stand
+alone; features and bugs are roots. `--ac` replaces the acceptance criteria,
+one per line.
 Assignee and reviewer names are free text — the human/agent kind is guessed
 from the name and shown with a `*` on agents.
 

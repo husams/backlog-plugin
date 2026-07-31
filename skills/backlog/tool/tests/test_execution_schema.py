@@ -227,14 +227,14 @@ allowed_hooks: ["tests.run"]
         )
         self.assertEqual(
             self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], "11",
+            .fetchone()["value"], "12",
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
         ).fetchone()["gates"]
         self.assertIn("required_validations_pass", gates)
 
-    def test_s009_v9_store_migrates_through_combined_v10_to_v11_schema(self):
+    def test_s009_v9_store_migrates_through_current_schema(self):
         for column in ("actual_exit_code", "stdout", "stderr", "duration_ms"):
             self.conn.execute(
                 f"ALTER TABLE execution_result DROP COLUMN {column}"
@@ -260,7 +260,7 @@ allowed_hooks: ["tests.run"]
             self.conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()["value"],
-            "11",
+            "12",
         )
 
     def test_dirty_source_fingerprint_excludes_ignored_files(self):

@@ -5,11 +5,12 @@
 ```
 Feature  F-001   a planned capability, a container
   Story  S-001   a user-visible slice, carries the PR
-   Task  T-001   a subtask of one story, inside that PR
+Bug      B-001   a standalone defect, carries the PR
+   Task  T-001   a subtask of one story or bug, inside that PR
 ```
 
-All three are rows in `task`, told apart by `task_type`. A story may stand
-alone without a feature; a subtask always belongs to a story.
+All four are rows in `task`, told apart by `task_type`. A story may stand alone
+without a feature; a bug is always standalone; a subtask belongs to a story or bug.
 
 ## Filing a feature and its stories
 

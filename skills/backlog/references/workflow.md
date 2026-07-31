@@ -124,8 +124,8 @@ $BL pr sync <KEY>                # or pull it all from `gh`
 - `--state`: `none | draft | open | merged | closed`
 - `--review-state`: `none | pending | changes_requested | approved`
 
-A feature rejects `pr set` outright: a pull request belongs to a story or a
-subtask.
+A feature rejects `pr set` outright: a pull request belongs to a story, bug,
+or subtask.
 
 ## Closing the loop
 
