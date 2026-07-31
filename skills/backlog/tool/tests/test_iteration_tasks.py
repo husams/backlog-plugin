@@ -146,6 +146,126 @@ class IterationTaskIntegrationTest(unittest.TestCase):
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn("I-002", rejected.stderr)
 
+    def test_iteration_comments_use_review_threads_and_block_closure_at_all_severities(self):
+        self.cli(
+            "iteration", "add", "--title", "Feedback cycle",
+            "--assignee", "developer", "--reviewer", "assigned-reviewer",
+        )
+
+        roots = []
+        for severity in ("blocker", "nice_to_have", "info"):
+            opened = self.cli(
+                "review", "open", "I-001", "--author", "opening-reviewer",
+                "--role", "reviewer", "--severity", severity,
+                "--body", f"{severity} retrospective observation",
+                json_output=True,
+            )
+            roots.append(opened["root"])
+            self.assertEqual(opened["target_type"], "iteration")
+            self.assertEqual(opened["severity"], severity)
+            self.assertEqual(opened["awaiting_role"], "developer")
+            self.assertEqual(opened["awaiting_actor"], "developer")
+            self.assertEqual(self.cli("show", "I-001", json_output=True)["status"], "planned")
+
+        developer_inbox = self.cli(
+            "review", "inbox", "--actor", "developer", "--item", "I-001",
+            json_output=True,
+        )
+        self.assertEqual([row["severity"] for row in developer_inbox],
+                         ["blocker", "nice_to_have", "info"])
+        for root, action in zip(roots, ("fix", "comment", "reject")):
+            reply = self.cli(
+                "review", "reply", root, "--author", "developer", "--action", action,
+                "--body", f"Developer disposition via {action}", json_output=True,
+            )
+            self.assertEqual(reply["awaiting_role"], "reviewer")
+            self.assertEqual(reply["awaiting_actor"], "opening-reviewer")
+
+        reviewer_inbox = self.cli(
+            "review", "inbox", "--actor", "opening-reviewer", "--item", "I-001",
+            json_output=True,
+        )
+        self.assertEqual([row["root"] for row in reviewer_inbox], roots)
+        forbidden = self.raw(
+            "review", "reply", reviewer_inbox[0]["reply_to"], "--author", "assigned-reviewer",
+            "--action", "accept", "--body", "Attempt to replace opening reviewer",
+        )
+        self.assertNotEqual(forbidden.returncode, 0)
+        self.assertIn("does not allow developer action 'accept'", forbidden.stderr)
+
+        for row in reviewer_inbox:
+            self.cli(
+                "review", "reply", row["reply_to"], "--author", "opening-reviewer",
+                "--action", "accept", "--body", "Accepted for retrospective",
+            )
+            audit = self.cli("review", "audit", row["root"], json_output=True)
+            self.assertEqual(audit["reviewer"], "opening-reviewer")
+            self.assertEqual(audit["decisions"][-1]["author"], "opening-reviewer")
+            self.assertEqual(audit["decisions"][-1]["action"], "accept")
+
+        self.cli("action", "I-001", "iteration.opened")
+        observation = self.cli(
+            "review", "open", "I-001", "--author", "opening-reviewer",
+            "--role", "reviewer", "--severity", "info",
+            "--body", "Unexpected behavior to retain", json_output=True,
+        )
+        rejected = self.raw("action", "I-001", "iteration.closed")
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn("iteration_comments_closed", rejected.stderr)
+        self.assertIn(observation["root"], rejected.stderr)
+        self.assertEqual(self.cli("show", "I-001", json_output=True)["status"], "open")
+        response = self.cli(
+            "review", "reply", observation["root"], "--author", "developer",
+            "--action", "comment", "--body", "Captured for the retrospective",
+            json_output=True,
+        )
+        self.cli(
+            "review", "reply", response["reply_to"], "--author", "opening-reviewer",
+            "--action", "accept", "--body", "Observation recorded",
+        )
+        self.cli("action", "I-001", "iteration.closed")
+
+        retained = self.cli(
+            "review", "list", "I-001", "--state", "all", json_output=True,
+        )
+        self.assertEqual({row["root"] for row in retained}, {*roots, observation["root"]})
+        self.assertTrue(all(row["state"] == "closed" for row in retained))
+
+        after_close = self.cli(
+            "review", "open", "I-001", "--author", "opening-reviewer",
+            "--role", "reviewer", "--severity", "nice_to_have",
+            "--body", "Post-close retrospective note", json_output=True,
+        )
+        self.assertEqual(self.cli("show", "I-001", json_output=True)["status"], "closed")
+        post_response = self.cli(
+            "review", "reply", after_close["root"], "--author", "developer",
+            "--action", "fix", "--body", "Added the missing note", json_output=True,
+        )
+        self.cli(
+            "review", "reply", post_response["reply_to"], "--author", "opening-reviewer",
+            "--action", "accept", "--body", "Verified after closure",
+        )
+        forbidden_reopen = self.raw(
+            "review", "reopen", after_close["root"], "--author", "developer",
+            "--body", "Developer cannot reopen",
+        )
+        self.assertNotEqual(forbidden_reopen.returncode, 0)
+        self.cli(
+            "review", "reopen", after_close["root"], "--author", "opening-reviewer",
+            "--body", "Reconsider during retrospective",
+        )
+        self.assertEqual(self.cli("show", "I-001", json_output=True)["status"], "closed")
+
+        exported = self.root / "events.json"
+        self.cli("export", "--out", str(exported))
+        actions = [
+            event["to_value"] for event in json.loads(exported.read_text())["tables"]["event"]
+            if event["kind"] == "action" and event["entity_key"] == "I-001"
+        ]
+        self.assertIn("feedback.posted", actions)
+        self.assertIn("feedback.resolved", actions)
+        self.assertIn("feedback.reopened", actions)
+
 
 if __name__ == "__main__":
     unittest.main()

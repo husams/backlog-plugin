@@ -311,7 +311,7 @@ class ExecutionReportingTest(unittest.TestCase):
         version = self.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
-        self.assertEqual(version, "13")
+        self.assertEqual(version, "14")
         actor = self.conn.execute(
             "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
         ).fetchone()["actor"]
@@ -322,6 +322,14 @@ class ExecutionReportingTest(unittest.TestCase):
             "SELECT id FROM workflow WHERE project_id=? AND task_type='bug'",
             (self.project["id"],),
         ).fetchone())
+        iteration_close = self.conn.execute(
+            "SELECT tr.gates FROM workflow_transition tr "
+            "JOIN workflow w ON w.id=tr.workflow_id "
+            "WHERE w.project_id=? AND w.task_type='iteration' "
+            "AND tr.from_status='open' AND tr.to_status='closed'",
+            (self.project["id"],),
+        ).fetchone()
+        self.assertIn("iteration_comments_closed", iteration_close["gates"])
 
     def test_current_export_import_preserves_actor_history_and_waivers(self):
         item = self.shell_item(expected=4)
@@ -331,7 +339,7 @@ class ExecutionReportingTest(unittest.TestCase):
         exported = self.cli("export", "--out", str(export_path))
         self.assertEqual(exported.returncode, 0, exported.stderr)
         payload = json.loads(export_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema_version"], 13)
+        self.assertEqual(payload["schema_version"], 14)
         self.assertEqual(
             payload["tables"]["execution_result"][0]["actor"], "S-010"
         )
