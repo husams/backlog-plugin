@@ -1,7 +1,8 @@
 # Dependencies
 
 A dependency is an edge between two tasks. Both ends are `task.id`, so a
-feature blocking a story is the same row shape as a subtask blocking a subtask
+Feature blocking a Story is the same row shape as a Bug blocking a Story or a
+subtask blocking a subtask
 — the database keeps the endpoints honest and "this story is blocked by that
 feature" is expressible directly.
 
@@ -19,6 +20,7 @@ $BL dep add S-002 --blocks S-004        # the same edge, said the other way
 $BL dep add S-004 --blocked-by F-001    # a story waiting on a whole feature
 $BL dep add S-004 --relates S-009
 $BL dep add S-011 --duplicates S-004
+$BL dep add B-001 --blocked-by S-002 --note "the fix depends on the parser contract"
 $BL dep rm  S-002 --blocks S-004
 ```
 
@@ -91,3 +93,10 @@ $BL next --actor developer           # offers S-002 only
 ```
 
 Dependencies survive `export` / `import`.
+
+Bugs participate in dependencies exactly like Stories and may own subtasks;
+their `B-` key is the endpoint to use. An Iteration is a grouping and should
+not be used as a substitute for membership: add a Ready Story or standalone
+Ready Bug with `iteration member-add`, then select it with `next --iteration`
+or `board --iteration`. Iteration closure is governed by its member-finished
+and comment-closed gates, not by a dependency edge.

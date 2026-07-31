@@ -50,7 +50,7 @@ assertion, not cryptographic authentication.
 | `bl.statuses(task_type="story")` | the statuses this project's flow defines |
 | `bl.flow(task_type="story")` | the `Workflow`: `.allows(a,b)`, `.next_from(s)`, `.display(s)`, `.initial`, `.terminal` |
 | `bl.actions(key)` | the `list[Action]` configured for this task's current state |
-| `bl.startable(actor=None, iteration=None)` | actionable Stories and Bugs with no unfinished blockers; an Iteration filter requires an Open Iteration |
+| `bl.startable(actor=None, iteration=None)` | actionable Stories and Bugs with no unfinished blockers; the Iteration row is excluded, and an Iteration filter requires an Open Iteration |
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
 | `bl.dependencies(key, kind=None)` | all incoming and outgoing edges, including satisfied dependencies, notes and statuses |
@@ -67,8 +67,8 @@ assertion, not cryptographic authentication.
 | `bl.review_reopen(root, author=, body=, role=)` | reviewer reopens a closed thread, posts a reply, and emits managed blocker invalidation |
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
-| `bl.create_feature(...)` / `bl.create_story(...)` / `bl.create_bug(...)` / `bl.create_iteration(...)` | create with optional plain/executable `acceptance_criteria`; bugs and Iterations are standalone |
-| `task.iteration_members` / `task.iterations` | view Iteration membership from either side |
+| `bl.create_feature(...)` / `bl.create_story(...)` / `bl.create_bug(...)` / `bl.create_iteration(...)` | create with optional plain/executable `acceptance_criteria`; Bugs and Iterations are standalone |
+| `task.iteration_members` / `task.iterations` | view Iteration membership from either side: an Iteration exposes its member Tasks, while a Story or Bug exposes its Iterations |
 | `bl.add_iteration_member(iteration, member)` / `bl.remove_iteration_member(iteration, member)` | auditably manage Ready Story/Bug membership on an Open Iteration; actor comes from `api.open(actor=...)` |
 | `bl.startable(actor, iteration="I-001")` | request unblocked deliverable work from one explicit Iteration; Iteration rows are excluded |
 | `bl.task_type_counts()` | counts by type, including `iteration` |
@@ -88,6 +88,58 @@ from the explicit project checkout. The default batch behavior runs
 everything; `fail_fast=True` stops after the first fail, error, or item
 timeout. Required-item aggregate success means current pass (waivers satisfy
 the acceptance gate but are not reported as execution passes).
+
+## Bug and Iteration lifecycle
+
+`create_bug(title, **kwargs)` creates a standalone `Task` with a `B-` key;
+there is no Feature parent. It supports the same child, dependency, review,
+PR, and delivery operations as a Story. `create_iteration(title, **kwargs)`
+creates a standalone `Task` with an `I-` key. The returned tasks expose their
+`task_type`, status, parent/child views, and (where applicable) PR and review
+metadata like every other `Task`.
+
+Use the public action enum for an Iteration's lifecycle. The workflow, rather
+than the caller, selects the destination:
+
+```python
+from backlog_cli import api
+from backlog_cli.api import Action
+
+with api.open(actor="codex") as bl:
+    bug = bl.create_bug(
+        "Recovery link expires too early",
+        priority="P1",
+        acceptance_criteria=["A valid link remains usable until its expiry."],
+    )
+    bl.trigger(bug.key, Action.REFINEMENT_ACCEPTED)
+    iteration = bl.create_iteration("July delivery slice", priority="P1")
+    bl.trigger(iteration.key, Action.ITERATION_OPENED)
+    bl.add_iteration_member(iteration.key, bug.key)
+
+    iteration = bl.task(iteration.key)
+    members = iteration.iteration_members
+    selected = bl.startable(actor="codex", iteration=iteration.key)
+
+    # After the member reaches a finished status and comments are accepted:
+    bl.trigger(iteration.key, Action.ITERATION_CLOSED)
+    # After closure, if no retained member conflicts with another Open Iteration:
+    bl.trigger(iteration.key, Action.ITERATION_REOPENED)
+```
+
+`add_iteration_member` and `remove_iteration_member` are audit-recorded
+operations. Adding requires an Open Iteration and a Ready Story or standalone
+Ready Bug; Features, subtasks, Iterations, Bugs with a parent, and non-Ready
+members are rejected. A Story or Bug can belong to only one Open Iteration.
+Those checks happen when adding: an admitted member remains a member while it
+starts, enters review, needs work, becomes Accepted or Done, or returns to
+Incomplete. Removing from an Open Iteration does not delete or transition the
+member. Reopening a Closed Iteration rejects retained members that conflict
+with another Open Iteration.
+
+The Iteration row is excluded from unscoped `startable()` results. Passing
+`iteration="I-001"` requires that Iteration to be Open and returns only its
+member work that is eligible for selection; `task.iterations` and
+`task.iteration_members` provide the corresponding views from either side.
 
 ## Actions and transition hooks
 
@@ -115,7 +167,10 @@ The CLI serializes the same enum values for shell and automation callers.
 `feedback.resolved` is emitted internally only when every blocker has reviewer
 acceptance. Opening or reopening a blocker emits managed `feedback.posted` or
 `feedback.reopened`; the shipped workflow maps either event from Ready to
-Incomplete.
+Incomplete for deliverable tasks. On an Iteration, `feedback.posted`,
+`feedback.reopened`, and `feedback.resolved` are explicit lifecycle no-ops;
+`iteration_comments_closed` still gates `Action.ITERATION_CLOSED` on every
+open comment severity.
 
 Backlog loads `.backlog/workflow.yaml` when present, otherwise the bundled
 `assets/default-workflow.yaml`. It resolves `(task type, current state,
@@ -148,6 +203,13 @@ serialized value.
 No public API accepts a destination status. `trigger` is the only general
 state-transition entry point; project hooks may override the action's proposed
 state through `pre_transition`.
+
+Iteration comments use the same `review_open`, `review_reply`, `threads`,
+`review_updates`, and `review_reopen` APIs as comments on other tasks. The
+opening reviewer owns acceptance, and all blocker, nice-to-have, and info
+threads must be closed before an Iteration can close. Open and resolved
+comments remain available through the Iteration's task and thread views after
+it is Closed.
 
 ## Task
 

@@ -17,6 +17,12 @@ threads and new threads without an explicit severity default to `blocker`.
 Only blocker threads closed with `accepted_by_reviewer` satisfy
 `review_threads_closed`.
 
+Iteration closure is intentionally stricter than the deliverable acceptance
+gate: `iteration_comments_closed` requires every open Iteration thread to be
+closed, regardless of whether its severity is `blocker`, `nice_to_have`, or
+`info`. Severity still communicates urgency; it does not let a retrospective
+observation be abandoned.
+
 Individual thread replies never choose a task status. Opening advisory or
 informational feedback does not affect task state. Outside the shipped
 Ready-invalidation rule below, use the project's semantic refinement action
@@ -32,6 +38,33 @@ There is one readiness invalidation rule: opening a new blocker or reopening an
 accepted blocker emits a review-managed event. In the shipped workflow,
 `feedback.posted` and `feedback.reopened` transition `Ready → Incomplete`.
 Advisory and informational threads do not change task status.
+
+On an Iteration, review-managed `feedback.posted`, `feedback.reopened`, and
+`feedback.resolved` are lifecycle no-ops in `Planned`, `Open`, and `Closed`.
+They still create the normal audited thread activity, and open or resolved
+comments remain visible after the Iteration closes. Only the
+`iteration_comments_closed` gate controls whether `iteration.closed` may
+succeed.
+
+## Iteration retrospective comments
+
+Use the normal review-thread interface on an Iteration to record unexpected
+behavior, retrospective observations, and follow-up improvements:
+
+```bash
+$BL review open I-001 --author reviewer --severity nice_to_have \
+    --body "The handoff exposed a missing release checklist item."
+$BL review reply C-003 --author developer --action fix \
+    --body "Added the checklist item and linked the follow-up."
+$BL review reply C-004 --author reviewer --action accept --body "Confirmed."
+```
+
+The opening reviewer owns acceptance, rejection of the implementer's response,
+and reopening an accepted thread. Implementers answer with `fix`, `comment`, or
+`reject` as usual. Iteration threads appear in review inboxes with severity,
+awaiting role, awaiting actor, and audit history just like threads on Stories
+and Bugs. Closure is rejected while any severity remains open, and the error
+identifies the blocking root comment keys.
 
 ## The five actions
 

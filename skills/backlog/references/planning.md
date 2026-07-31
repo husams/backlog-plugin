@@ -13,6 +13,11 @@ Iteration I-001 a parallel grouping of independently deliverable work
 All five are rows in `task`, told apart by `task_type`. A story may stand alone
 without a feature; a bug is always standalone; a subtask belongs to a story or bug.
 
+Keys are project-local and identify the task type: `F-` features, `S-` stories,
+`B-` standalone Bugs, `T-` subtasks, and `I-` Iterations. A Bug is a
+deliverable root, not a Story that happens to describe a defect; an Iteration is
+a parallel grouping, not a parent task.
+
 ## Filing a feature and its stories
 
 ```bash
@@ -28,6 +33,65 @@ cidx index --incremental exits 0 and reports the skipped count."
 $BL subtask add --story S-001 --title "Record per-TU input hashes at index time"
 $BL subtask add --story S-001 --title "Add --incremental to cidx index"
 ```
+
+## Filing a standalone Bug
+
+Use a Bug when the defect owns its delivery work and pull request. It has no
+Feature parent, but it supports the same acceptance criteria, subtasks,
+assignments, dependencies, review threads, PR metadata, and delivery gates as a
+Story:
+
+```bash
+$BL bug add --title "Recovery link expires too early" --priority P1 \
+  --description "A link issued near the token boundary expires immediately." \
+  --ac "A valid link remains usable until its configured expiry."
+$BL subtask add --bug B-001 --title "Add a boundary-time regression test"
+$BL assign B-001 --to codex --reviewer husam
+```
+
+The resulting `B-001` is standalone. Supplying a Feature parent to a Bug is
+rejected; use a dependency or an Iteration when the defect is related to a
+Feature's work.
+
+## Opening and selecting an Iteration
+
+An Iteration groups independently deliverable Stories and Bugs while leaving
+each member's own lifecycle and pull request unchanged. Multiple Iterations can
+be Open at once, and their priority orders the Iteration summaries:
+
+```bash
+$BL iteration add --title "July delivery slice" --priority P1
+$BL action I-001 iteration.opened --actor product-manager
+
+# Add only Ready Stories or standalone Ready Bugs to an Open Iteration.
+$BL action B-001 refinement.accepted --actor product-manager
+$BL iteration member-add I-001 S-001
+$BL iteration member-add I-001 B-001
+$BL next --actor codex --iteration I-001
+$BL board --iteration I-001
+
+# Removal does not delete the member or change its lifecycle status.
+$BL iteration member-remove I-001 B-001
+
+# After retained members finish and Iteration comments are resolved:
+$BL action I-001 iteration.closed --actor product-manager
+# After closure, if no retained member conflicts with another Open Iteration:
+$BL action I-001 iteration.reopened --actor product-manager
+```
+
+Membership is checked when it is added: only a Story or standalone Bug in
+`Ready` may be added, the Iteration must be `Open`, and a member cannot be in
+another Open Iteration. Once admitted, the member remains in the Iteration as
+it moves through its own workflow, including review, Needs Work, Accepted,
+Done, or feedback-driven Incomplete. Removing a member is allowed from an Open
+Iteration and changes neither the member nor its status. Reopening a Closed
+Iteration is refused if a retained member conflicts with another Open
+Iteration; no membership is silently dropped.
+
+The generic `next`/`startable` selection never returns the Iteration row itself.
+Use `--iteration I-001` when requesting member work; the selected Iteration
+must be Open. The unscoped commands remain available for work outside an
+Iteration.
 
 Every new task starts in **its flow's initial status** — `Created` on the
 shipped flow, but `Proposed` on the `research` template. Check with
