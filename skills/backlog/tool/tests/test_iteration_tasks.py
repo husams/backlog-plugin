@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,20 @@ class IterationTaskIntegrationTest(unittest.TestCase):
         ):
             self.cli("action", key, action)
 
+    def ready_story(self, title="Story", assignee="codex", feature=None):
+        args = ["story", "add", "--title", title, "--assignee", assignee]
+        if feature:
+            args += ["--feature", feature]
+        created = self.cli(*args, json_output=True)
+        self.cli("action", created["key"], "refinement.accepted")
+        return created["key"]
+
+    def ready_bug(self, title="Bug", assignee="codex"):
+        created = self.cli("bug", "add", "--title", title, "--assignee", assignee,
+                           json_output=True)
+        self.cli("action", created["key"], "refinement.accepted")
+        return created["key"]
+
     def test_iteration_identity_fields_flow_and_semantic_actions(self):
         created = self.cli(
             "iteration", "add", "--title", "Parallel slice",
@@ -80,71 +95,149 @@ class IterationTaskIntegrationTest(unittest.TestCase):
         self.assertIn("Open", statuses)
         self.assertIn("Closed", statuses)
 
-    def test_parallel_open_iterations_priority_board_and_explicit_selection(self):
+    def test_agents_add_story_from_any_feature_and_standalone_bug(self):
         self.cli("iteration", "add", "--title", "Later", "--priority", "P2")
         self.cli("iteration", "add", "--title", "First", "--priority", "P0")
-        self.cli("feature", "add", "--title", "Alpha", "--assignee", "codex")
-        self.cli("feature", "add", "--title", "Beta", "--assignee", "codex")
-        self.cli("action", "F-001", "refinement.accepted")
-        self.cli("action", "F-002", "refinement.accepted")
-        env, cwd = self.open_api()
-        with env, cwd, api.open(actor="codex") as bl:
-            bl.add_iteration_member("I-001", "F-001")
-            bl.add_iteration_member("I-002", "F-002")
+        self.cli("feature", "add", "--title", "Alpha")
+        story = self.ready_story("Across feature", feature="F-001")
+        bug = self.ready_bug("Standalone")
         self.cli("action", "I-001", "iteration.opened")
         self.cli("action", "I-002", "iteration.opened")
+        self.cli("--actor", "agent-a", "iteration", "member-add", "I-001", story)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="agent-b") as bl:
+            bl.add_iteration_member("I-002", bug)
+            self.assertEqual([t.key for t in bl.task("I-001").iteration_members], [story])
+            self.assertEqual([t.key for t in bl.task(bug).iterations], ["I-002"])
         board = self.cli("board")
         self.assertIn("== Iterations (2)", board)
         self.assertLess(board.index("I-002"), board.index("I-001"))
         selected = self.cli("next", "--iteration", "I-001")
-        self.assertIn("F-001", selected)
-        self.assertNotIn("F-002", selected)
+        self.assertIn(story, selected)
+        self.assertNotIn(bug, selected)
         self.assertNotIn("I-001", self.cli("next"))
         env, cwd = self.open_api()
         with env, cwd, api.open(actor="codex") as bl:
             self.assertEqual([t.key for t in bl.startable("codex", iteration="I-002")],
-                             ["F-002"])
+                             [bug])
             self.assertEqual(bl.task_type_counts()["iteration"], 2)
+
+    def test_add_rejects_ineligible_types_statuses_and_non_open_target(self):
+        self.cli("iteration", "add", "--title", "Target")
+        self.cli("feature", "add", "--title", "Feature")
+        self.cli("story", "add", "--feature", "F-001", "--title", "Not ready")
+        self.cli("subtask", "add", "--story", "S-001", "--title", "Child")
+        for key in ("F-001", "T-001", "I-001"):
+            result = self.raw("iteration", "member-add", "I-001", key)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Open Iteration", result.stderr)
+        self.cli("action", "I-001", "iteration.opened")
+        for key in ("F-001", "T-001", "I-001"):
+            result = self.raw("iteration", "member-add", "I-001", key)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("only Ready Stories", result.stderr)
+        result = self.raw("iteration", "member-add", "I-001", "S-001")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("only Ready Stories", result.stderr)
 
     def test_close_rejects_unfinished_members_without_changing_them(self):
         self.cli("iteration", "add", "--title", "Close gate")
-        self.cli("feature", "add", "--title", "Member")
-        env, cwd = self.open_api()
-        with env, cwd, api.open(actor="codex") as bl:
-            bl.add_iteration_member("I-001", "F-001")
         self.cli("action", "I-001", "iteration.opened")
+        story = self.ready_story("Member")
+        self.cli("iteration", "member-add", "I-001", story)
         rejected = self.raw("action", "I-001", "iteration.closed")
         self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("F-001=created", rejected.stderr)
-        self.assertIn("Created", self.cli("show", "F-001"))
-        self.finish_feature("F-001")
-        self.cli("action", "I-001", "iteration.closed")
-        self.assertIn("Done", self.cli("show", "F-001"))
+        self.assertIn(f"{story}=ready", rejected.stderr)
+        self.assertIn("Ready", self.cli("show", story))
 
-    def test_details_api_views_and_reopen_membership_conflict(self):
+    def test_remove_preserves_status_and_membership_persists_across_lifecycle(self):
+        self.cli("iteration", "add", "--title", "Current")
+        self.cli("action", "I-001", "iteration.opened")
+        story = self.ready_story("Persistent")
+        self.cli("--actor", "membership-agent", "iteration", "member-add", "I-001", story)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="fixture") as bl:
+            task = bl.task(story)
+            for status in ("in_progress", "in_review", "needs_work", "accepted", "done", "incomplete"):
+                bl._conn.execute("UPDATE task SET status=? WHERE id=?", (status, task.id))
+                self.assertEqual([i.key for i in bl.task(story).iterations], ["I-001"])
+            bl._conn.execute("UPDATE task SET status='needs_work' WHERE id=?", (task.id,))
+        before = self.cli("show", story)
+        self.cli("--actor", "membership-agent", "iteration", "member-remove", "I-001", story)
+        after = self.cli("show", story)
+        self.assertIn("Needs Work", before)
+        self.assertIn("Needs Work", after)
+        self.assertNotIn("iterations:", after)
+        history = self.cli("history", "I-001")
+        self.assertIn("iteration.member_added", history)
+        self.assertIn("iteration.member_removed", history)
+        self.assertIn("membership-agent", history)
+        self.assertRegex(history, re.compile(r"20\d\d-\d\d-\d\dT"))
+
+    def test_open_iteration_exclusivity_and_reopen_lists_every_conflict(self):
         self.cli("iteration", "add", "--title", "Original")
         self.cli("iteration", "add", "--title", "Current")
-        self.cli("feature", "add", "--title", "Shared member")
-        env, cwd = self.open_api()
-        with env, cwd, api.open(actor="codex") as bl:
-            bl.add_iteration_member("I-001", "F-001")
-            bl.add_iteration_member("I-002", "F-001")
-            self.assertEqual([t.key for t in bl.task("I-001").iteration_members], ["F-001"])
-            self.assertEqual([t.key for t in bl.task("F-001").iterations], ["I-001", "I-002"])
         self.cli("action", "I-001", "iteration.opened")
-        self.finish_feature("F-001")
-        self.cli("action", "I-001", "iteration.closed")
         self.cli("action", "I-002", "iteration.opened")
-        detail = self.cli("show", "I-001")
-        self.assertIn("members: 1", detail)
-        self.assertIn("F-001", detail)
-        exported = self.root / "iterations.json"
-        self.cli("export", "--out", str(exported))
-        payload = json.loads(exported.read_text())
-        self.assertEqual(len(payload["tables"]["iteration_member"]), 2)
+        story = self.ready_story("Shared member")
+        bug = self.ready_bug("Shared bug")
+        self.cli("iteration", "member-add", "I-001", story)
+        conflict = self.raw("iteration", "member-add", "I-002", story)
+        self.assertNotEqual(conflict.returncode, 0)
+        self.assertIn(f"{story} already belongs to Open Iteration I-001", conflict.stderr)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="legacy-fixture") as bl:
+            original = bl.task("I-001")
+            current = bl.task("I-002")
+            story_task = bl.task(story)
+            bug_task = bl.task(bug)
+            bl._conn.execute("UPDATE task SET status='closed' WHERE id=?", (original.id,))
+            bl._conn.execute("INSERT INTO iteration_member(iteration_id,member_id,created_at) VALUES(?,?,datetime('now'))",
+                             (current.id, story_task.id))
+            bl._conn.execute("INSERT INTO iteration_member(iteration_id,member_id,created_at) VALUES(?,?,datetime('now'))",
+                             (original.id, bug_task.id))
+            bl._conn.execute("INSERT INTO iteration_member(iteration_id,member_id,created_at) VALUES(?,?,datetime('now'))",
+                             (current.id, bug_task.id))
         rejected = self.raw("action", "I-001", "iteration.reopened")
         self.assertNotEqual(rejected.returncode, 0)
-        self.assertIn("I-002", rejected.stderr)
+        self.assertIn(f"{story} in I-002", rejected.stderr)
+        self.assertIn(f"{bug} in I-002", rejected.stderr)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="verifier") as bl:
+            self.assertEqual([i.key for i in bl.task(story).iterations],
+                             ["I-001", "I-002"])
+            self.assertEqual([i.key for i in bl.task(bug).iterations],
+                             ["I-001", "I-002"])
+
+    def test_scoped_next_api_and_board_require_open_iteration_and_show_only_eligible(self):
+        self.cli("iteration", "add", "--title", "Scope")
+        member = self.ready_story("Member")
+        outside = self.ready_bug("Outside")
+        self.cli("feature", "add", "--title", "Unscoped feature", "--assignee", "codex")
+        self.cli("action", "F-001", "refinement.accepted")
+        self.assertIn(outside, self.cli("next"))
+        for command in (("next", "--iteration", "I-001"),
+                        ("board", "--iteration", "I-001")):
+            rejected = self.raw(*command)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("Open Iteration", rejected.stderr)
+        self.cli("action", "I-001", "iteration.opened")
+        self.cli("iteration", "member-add", "I-001", member)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="codex") as bl:
+            self.assertIn("F-001", [t.key for t in bl.startable("codex")])
+            self.assertEqual([t.key for t in bl.startable("codex", iteration="I-001")],
+                             [member])
+        selected = self.cli("next", "--iteration", "I-001")
+        board = self.cli("board", "--iteration", "I-001")
+        for output in (selected, board):
+            self.assertIn(member, output)
+            self.assertNotIn(outside, output)
+        board_json = self.cli("board", "--iteration", "I-001", json_output=True)
+        self.assertEqual([m["key"] for m in board_json["iterations"][0]["eligible_members"]],
+                         [member])
+        self.cli("action", member, "work.started")
+        self.assertIn(member, self.cli("board", "--iteration", "I-001"))
 
     def test_iteration_comments_use_review_threads_and_block_closure_at_all_severities(self):
         self.cli(

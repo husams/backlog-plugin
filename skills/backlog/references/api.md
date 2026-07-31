@@ -50,7 +50,7 @@ assertion, not cryptographic authentication.
 | `bl.statuses(task_type="story")` | the statuses this project's flow defines |
 | `bl.flow(task_type="story")` | the `Workflow`: `.allows(a,b)`, `.next_from(s)`, `.display(s)`, `.initial`, `.terminal` |
 | `bl.actions(key)` | the `list[Action]` configured for this task's current state |
-| `bl.startable(actor=None)` | open tasks with no unfinished blockers |
+| `bl.startable(actor=None, iteration=None)` | actionable Stories and Bugs with no unfinished blockers; an Iteration filter requires an Open Iteration |
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
 | `bl.dependencies(key, kind=None)` | all incoming and outgoing edges, including satisfied dependencies, notes and statuses |
@@ -69,6 +69,7 @@ assertion, not cryptographic authentication.
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.create_feature(...)` / `bl.create_story(...)` / `bl.create_bug(...)` / `bl.create_iteration(...)` | create with optional plain/executable `acceptance_criteria`; bugs and Iterations are standalone |
 | `task.iteration_members` / `task.iterations` | view Iteration membership from either side |
+| `bl.add_iteration_member(iteration, member)` / `bl.remove_iteration_member(iteration, member)` | auditably manage Ready Story/Bug membership on an Open Iteration; actor comes from `api.open(actor=...)` |
 | `bl.startable(actor, iteration="I-001")` | request unblocked deliverable work from one explicit Iteration; Iteration rows are excluded |
 | `bl.task_type_counts()` | counts by type, including `iteration` |
 | `bl.add_item(key, kind, content, execution_spec=None)` | author one plain/shell/hook item |

@@ -464,6 +464,24 @@ def cmd_iteration_add(ctx: Ctx, args) -> int:
     return _add_task(ctx, args, "iteration", None)
 
 
+def cmd_iteration_member_add(ctx: Ctx, args) -> int:
+    core.add_iteration_member(
+        ctx.conn, ctx.pid, args.iteration, args.member, actor=args.actor
+    )
+    ctx.emit({"iteration": args.iteration.upper(), "member": args.member.upper()},
+             f"added {args.member.upper()} to {args.iteration.upper()}")
+    return 0
+
+
+def cmd_iteration_member_remove(ctx: Ctx, args) -> int:
+    core.remove_iteration_member(
+        ctx.conn, ctx.pid, args.iteration, args.member, actor=args.actor
+    )
+    ctx.emit({"iteration": args.iteration.upper(), "member": args.member.upper()},
+             f"removed {args.member.upper()} from {args.iteration.upper()}")
+    return 0
+
+
 def cmd_subtask_add(ctx: Ctx, args) -> int:
     return _add_task(ctx, args, "subtask", args.story or args.bug)
 
@@ -1196,10 +1214,24 @@ def cmd_board(ctx: Ctx, args) -> int:
                 order.append((st["slug"], st["display"], st["category"]))
 
     rows = _task_rows(conn, ctx.pid, "")
+    blocked = deps.blocked_by_map(conn, ctx.pid)
     if not args.all:
         rows = [r for r in rows if flows[r["task_type"]].is_open(r["status"])]
     iterations = [r for r in rows if r["task_type"] == "iteration"]
     rows = [r for r in rows if r["task_type"] != "iteration"]
+    if args.iteration:
+        selected = core.get_task(conn, ctx.pid, args.iteration)
+        if selected["task_type"] != "iteration":
+            raise BacklogError(f"{selected['key']} is not an Iteration")
+        if selected["status"] != "open":
+            raise BacklogError(
+                f"{selected['key']} is {selected['status']}; the board may only "
+                "be scoped to an Open Iteration"
+            )
+        member_ids = {m["id"] for m in core.iteration_members(conn, selected["id"])}
+        iterations = [selected]
+        rows = [r for r in rows if r["id"] in member_ids and r["task_type"] in {"story", "bug"}
+                and r["status"] in core.ACTIONABLE_BY_DEV and r["key"] not in blocked]
     by_status: dict[str, list] = {}
     for r in rows:
         by_status.setdefault(r["status"], []).append(r)
@@ -1210,19 +1242,26 @@ def cmd_board(ctx: Ctx, args) -> int:
             "WHERE r.state != 'closed' AND t.project_id = ? GROUP BY t.key", (ctx.pid,)
         ).fetchall()
     }
-    blocked = deps.blocked_by_map(conn, ctx.pid)
+    eligible_by_iteration = {
+        r["key"]: [m for m in core.iteration_members(conn, r["id"])
+                   if m["task_type"] in {"story", "bug"}
+                   and m["status"] in core.ACTIONABLE_BY_DEV
+                   and m["key"] not in blocked]
+        for r in iterations
+    }
     lines = []
     if iterations:
         lines.append(f"== Iterations ({len(iterations)})")
         for r in sorted(iterations, key=lambda x: (x["priority"], x["key"])):
-            member_count = conn.execute(
-                "SELECT COUNT(*) AS n FROM iteration_member WHERE iteration_id=?",
-                (r["id"],),
-            ).fetchone()["n"]
+            eligible = eligible_by_iteration[r["key"]]
             lines.append(
                 f"  {r['key']:<7} I  {r['priority']}  {r['assignee'] or '-':<12} "
-                f"{r['title']}  [{flows['iteration'].display(r['status'])}; {member_count} members]"
+                f"{r['title']}  [{flows['iteration'].display(r['status'])}; "
+                f"{len(eligible)} eligible members]"
             )
+            for member in eligible:
+                lines.append(f"    {member['key']:<7} {TASK_KEY_PREFIX[member['task_type']]}  "
+                             f"{member['priority']}  {member['title']}")
     for slug, display, _cat in order:
         group = by_status.pop(slug, [])
         if not group:
@@ -1248,7 +1287,10 @@ def cmd_board(ctx: Ctx, args) -> int:
         {"project": row_to_dict(ctx.project),
          "tasks_by_status": {slug: [row_to_dict(r) for r in group]
                              for slug, group in by_status.items()},
-         "iterations": [row_to_dict(r) for r in iterations],
+         "iterations": [{**row_to_dict(r),
+                         "eligible_members": [row_to_dict(m)
+                                              for m in eligible_by_iteration[r["key"]]]}
+                        for r in iterations],
          "open_review_threads": open_by_task, "blocked_by": blocked},
         f"project: {ctx.project['slug']}  ({ctx.project['name']})\n\n"
         + ("\n".join(lines) if lines else "(no open tasks)"),
@@ -1270,6 +1312,11 @@ def cmd_next(ctx: Ctx, args) -> int:
         selected = core.get_task(conn, pid, args.iteration)
         if selected["task_type"] != "iteration":
             raise BacklogError(f"{selected['key']} is not an Iteration")
+        if selected["status"] != "open":
+            raise BacklogError(
+                f"{selected['key']} is {selected['status']}; work may only be "
+                "selected from an Open Iteration"
+            )
         member_ids = {m["id"] for m in core.iteration_members(conn, selected["id"])}
         all_dev = [r for r in all_dev if r["id"] in member_ids]
     blocked = deps.blocked_by_map(conn, pid)
@@ -1619,6 +1666,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("board", help="this project's open work grouped by status")
     sp.add_argument("--all", action="store_true", help="include Accepted and Done")
+    sp.add_argument("--iteration", help="only eligible member work from this Open Iteration")
     sp.set_defaults(func=cmd_board)
 
     sp = sub.add_parser("next", help="what should be worked on now")
@@ -1728,6 +1776,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = ip.add_parser("list")
     _add_list_filters(sp)
     sp.set_defaults(func=lambda ctx, args: _list(ctx, args, "iteration"))
+    sp = ip.add_parser("member-add", help="add a Ready Story or Bug to an Open Iteration")
+    sp.add_argument("iteration")
+    sp.add_argument("member")
+    sp.set_defaults(func=cmd_iteration_member_add)
+    sp = ip.add_parser("member-remove", help="remove work from an Open Iteration")
+    sp.add_argument("iteration")
+    sp.add_argument("member")
+    sp.set_defaults(func=cmd_iteration_member_remove)
 
     sbp = sub.group("subtask", help="subtasks of a story or bug")
     sp = sbp.add_parser("add")
