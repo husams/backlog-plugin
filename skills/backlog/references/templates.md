@@ -16,9 +16,9 @@ $BL templates
 
 | Template | Flow |
 | --- | --- |
-| `software-delivery` *(default)* | Features, stories, and subtasks follow Created → Ready → In Progress → In Review → Accepted → Done, with an Incomplete refinement path and a Needs Work implementation-review loop. Stories and subtasks enforce PR gates. |
-| `lightweight` | Created → Ready → In Progress → Done (+ Dropped). No review stage, no PR gates. |
-| `research` | Proposed → Investigating → Drafted → Reviewed → Published (+ Parked). |
+| `software-delivery` *(default)* | Features, stories, Bugs, and subtasks follow Created → Ready → In Progress → In Review → Accepted → Done, with an Incomplete refinement path and a Needs Work implementation-review loop. Stories, Bugs, and subtasks enforce PR gates. Iterations follow Planned → Open → Closed. |
+| `lightweight` | Features, stories, Bugs, and subtasks follow Created → Ready → In Progress → Done (+ Dropped), with no review stage or PR gates. Iterations follow Planned → Open → Closed. |
+| `research` | Features, stories, Bugs, and subtasks follow Proposed → Investigating → Drafted → Reviewed → Published (+ Parked). Iterations follow Planned → Open → Closed. |
 
 They install themselves on first use and are editable and copyable like any
 template you write.
@@ -45,6 +45,20 @@ Tasks created in that project then start in the template's initial status —
 
 Without `--template` a project uses the default; `$BL template default <slug>`
 changes which that is.
+
+## Upgrading an existing project
+
+Projects created by an older release can add newly shipped task-type flows with:
+
+```bash
+$BL workflow upgrade
+```
+
+The operation is idempotent and non-destructive: it copies only flows missing
+from the project and never replaces project-specific statuses, transitions, or
+gates. Run it again safely after upgrading the backlog skill; a project that is
+already current reports that no flow changed. `backlog doctor` recommends this
+command when tasks exist without their required flow.
 
 ## Adjusting one project's flow
 

@@ -61,6 +61,8 @@ failure **exits 1** listing which check failed and why.
 | `pr_merged` | `pr_state` is `merged` |
 | `required_validations_pass` | every required executable item has a current pass or audited waiver |
 | `iteration_members_finished` | every Iteration member has reached a finished status |
+| `iteration_comments_closed` | every Iteration review thread is closed |
+| `iteration_members_finished` | every Iteration member has reached a finished status |
 
 The shipped Iteration flow is `Planned -> Open -> Closed`, driven by
 `iteration.opened`, `iteration.closed`, and `iteration.reopened`. Closing never

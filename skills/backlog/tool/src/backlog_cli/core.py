@@ -741,6 +741,13 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                     "all members finished" if not unfinished else "unfinished members: "
                     + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
                 ))
+        elif name == "iteration_comments_closed":
+            opens = open_threads(conn, task["id"])
+            checks.append(Check(
+                name, not opens,
+                "all Iteration review threads closed" if not opens
+                else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
+            ))
         else:
             checks.append(Check(name, False, "unknown gate check"))
     return checks
@@ -972,6 +979,8 @@ def trigger_action(
     )
     conn.commit()
     if destination is None:
+        return get_task_by_id(conn, task["id"]), [], False
+    if destination == task["status"]:
         return get_task_by_id(conn, task["id"]), [], False
     row, checks = _transition(
         conn,

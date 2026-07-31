@@ -172,6 +172,7 @@ GATE_CHECKS = [
     "pr_merged",              # the pull request is merged
     "required_validations_pass",  # required executable items have a fresh pass
     "iteration_members_finished", # every Iteration member is finished
+    "iteration_comments_closed",  # every Iteration review thread is resolved
 ]
 
 GATE_DESCRIPTIONS = {
@@ -184,6 +185,7 @@ GATE_DESCRIPTIONS = {
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
     "required_validations_pass": "every required executable item has a fresh passing result",
     "iteration_members_finished": "every Iteration member has reached a finished status",
+    "iteration_comments_closed": "every Iteration review thread is closed",
 }
 
 # The workflow every new project starts with: today's behaviour, expressed as
