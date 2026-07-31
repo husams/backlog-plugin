@@ -1,6 +1,6 @@
 """Tasks, their sections, status transitions and the completion gates.
 
-One `task` table carries features, stories and subtasks. The status vocabulary
+One `task` table carries features, stories, bugs and subtasks. The status vocabulary
 is shared, but the legal flow and the gates are per task type — a story is
 delivered through review and a pull request, a feature is a container whose
 progress is the progress of its children.
@@ -190,7 +190,7 @@ def add_task(
             )
         parent_id = prow["id"]
     elif task_type == "subtask":
-        raise BacklogError("a subtask requires a parent story (--story <KEY>)")
+        raise BacklogError("a subtask requires a parent story or bug (--parent <KEY>)")
 
     key = next_key(conn, project_id, TASK_KEY_PREFIX[task_type])
     initial = workflow.get(conn, project_id, task_type).initial
@@ -394,7 +394,7 @@ def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
     if task["task_type"] not in PR_BEARING_TYPES:
         raise BacklogError(
             f"{task['key']} is a {task['task_type']}; a pull request belongs to a "
-            "story or a subtask, not to a container."
+            "story, bug, or subtask, not to a container."
         )
     sets, values, notes = [], [], []
 
@@ -709,7 +709,7 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
         kids = children_of(conn, task["id"])
         if kids:
             open_kids = [k for k in kids if k["status"] not in SATISFIED_STATUSES]
-            label = "subtasks" if ttype == "story" else "stories"
+            label = "subtasks" if ttype in ("story", "bug") else "stories"
             checks.append(Check(
                 "children_complete",
                 not open_kids or allow_open_children,

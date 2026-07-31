@@ -46,6 +46,7 @@ from .schema import (
     SCHEMA_VERSION,
     STATUS_DISPLAY,
     STATUSES,
+    TASK_PARENT_TYPES,
     TASK_TYPES,
     transitions_for,
 )
@@ -232,9 +233,9 @@ def cmd_doctor(ctx: Ctx, args) -> int:
     bad_parent = conn.execute(
         "SELECT c.key, c.task_type, p.task_type AS parent_type FROM task c "
         "JOIN task p ON p.id = c.parent_id "
-        "WHERE (c.task_type = 'subtask' AND p.task_type != 'story') "
+        "WHERE (c.task_type = 'subtask' AND p.task_type NOT IN ('story','bug')) "
         "   OR (c.task_type = 'story'   AND p.task_type != 'feature') "
-        "   OR (c.task_type = 'feature')"
+        "   OR (c.task_type IN ('feature','bug'))"
     ).fetchall()
     problems += [f"{r['key']} is a {r['task_type']} under a {r['parent_type']}"
                  for r in bad_parent]
@@ -455,8 +456,12 @@ def cmd_story_add(ctx: Ctx, args) -> int:
     return _add_task(ctx, args, "story", args.feature)
 
 
+def cmd_bug_add(ctx: Ctx, args) -> int:
+    return _add_task(ctx, args, "bug", None)
+
+
 def cmd_subtask_add(ctx: Ctx, args) -> int:
-    return _add_task(ctx, args, "subtask", args.story)
+    return _add_task(ctx, args, "subtask", args.story or args.bug)
 
 
 def _list(ctx: Ctx, args, task_type: str | None) -> int:
@@ -496,6 +501,10 @@ def cmd_feature_list(ctx: Ctx, args) -> int:
 
 def cmd_story_list(ctx: Ctx, args) -> int:
     return _list(ctx, args, "story")
+
+
+def cmd_bug_list(ctx: Ctx, args) -> int:
+    return _list(ctx, args, "bug")
 
 
 def cmd_subtask_list(ctx: Ctx, args) -> int:
@@ -1369,6 +1378,7 @@ def cmd_import(ctx: Ctx, args) -> int:
 
     if not args.replace:
         raise BacklogError("import rewrites the whole store; pass --replace to confirm")
+    _validate_import_tasks(data["tables"].get("task", []))
     if not conn.is_postgres:
         conn.execute("PRAGMA foreign_keys = OFF")
     for t, _ in reversed(_EXPORT_TABLES):
@@ -1390,6 +1400,30 @@ def cmd_import(ctx: Ctx, args) -> int:
              f"replaced backlog from {args.file}"
              + (f"\n  sequences resynced: {', '.join(moved)}" if moved else ""))
     return 0
+
+
+def _validate_import_tasks(rows: list[dict]) -> None:
+    """Reject invalid task hierarchies before an import deletes existing data."""
+    by_id = {row.get("id"): row for row in rows}
+    for row in rows:
+        key = row.get("key") or "<unknown>"
+        task_type = core.normalize_type(row.get("task_type") or "")
+        parent_id = row.get("parent_id")
+        if parent_id is None:
+            if task_type == "subtask":
+                raise BacklogError(
+                    f"import rejected: subtask {key} requires a parent story or bug"
+                )
+            continue
+        parent = by_id.get(parent_id)
+        if parent is None:
+            raise BacklogError(f"import rejected: {key} refers to missing parent id {parent_id}")
+        parent_type = core.normalize_type(parent.get("task_type") or "")
+        if parent_type not in TASK_PARENT_TYPES[task_type]:
+            raise BacklogError(
+                f"import rejected: a {task_type} cannot sit under a {parent_type} "
+                f"({parent.get('key') or parent_id})"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -1652,9 +1686,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--parent", help="filter by feature key")
     sp.set_defaults(func=cmd_story_list)
 
-    sbp = sub.group("subtask", help="subtasks of a story")
+    bp = sub.group("bug", help="standalone defects")
+    sp = bp.add_parser("add")
+    add_create_flags(sp)
+    sp.set_defaults(func=cmd_bug_add)
+    sp = bp.add_parser("list")
+    _add_list_filters(sp)
+    sp.set_defaults(func=cmd_bug_list)
+
+    sbp = sub.group("subtask", help="subtasks of a story or bug")
     sp = sbp.add_parser("add")
-    sp.add_argument("--story", required=True)
+    parent = sp.add_mutually_exclusive_group(required=True)
+    parent.add_argument("--story")
+    parent.add_argument("--bug")
     add_create_flags(sp)
     sp.set_defaults(func=cmd_subtask_add)
     sp = sbp.add_parser("list")

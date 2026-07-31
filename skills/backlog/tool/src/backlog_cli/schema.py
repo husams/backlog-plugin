@@ -7,7 +7,7 @@ Shape (schema v3):
               │        └─ review_thread ─ review_comment
               └─ dependency              task -> task edges
 
-`task` is one table for features, stories and subtasks, discriminated by
+`task` is one table for features, stories, bugs and subtasks, discriminated by
 `task_type` and nested through `parent_id`. Everything that used to need a
 union across two tables — dependencies most of all — is now a plain foreign
 key.
@@ -17,30 +17,35 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 # --------------------------------------------------------------------------- #
 # tasks
 # --------------------------------------------------------------------------- #
 
-TASK_TYPES = ["feature", "story", "subtask"]
+TASK_TYPES = ["feature", "story", "bug", "subtask"]
 
-TASK_TYPE_DISPLAY = {"feature": "Feature", "story": "Story", "subtask": "Subtask"}
+TASK_TYPE_DISPLAY = {
+    "feature": "Feature", "story": "Story", "bug": "Bug", "subtask": "Subtask"
+}
 
 # Which type may sit under which. A feature is a root; a story sits under a
-# feature or stands alone; a subtask always belongs to a story.
+# feature or stands alone; a bug is always a root; a subtask belongs to a
+# story or a bug.
 TASK_PARENT_TYPES: dict[str, set[str]] = {
     "feature": set(),
     "story": {"feature"},
-    "subtask": {"story"},
+    "bug": set(),
+    "subtask": {"story", "bug"},
 }
 
-TASK_KEY_PREFIX = {"feature": "F", "story": "S", "subtask": "T"}
+TASK_KEY_PREFIX = {"feature": "F", "story": "S", "bug": "B", "subtask": "T"}
 
 TASK_TYPE_ALIASES = {
     "epic": "feature",
     "feat": "feature",
     "user_story": "story",
+    "defect": "bug",
     "task": "subtask",
     "sub_task": "subtask",
     "subtask": "subtask",
@@ -102,6 +107,7 @@ FEATURE_TRANSITIONS: dict[str, set[str]] = {
 TRANSITIONS_BY_TYPE: dict[str, dict[str, set[str]]] = {
     "feature": FEATURE_TRANSITIONS,
     "story": TRANSITIONS,
+    "bug": TRANSITIONS,
     "subtask": TRANSITIONS,
 }
 
@@ -207,6 +213,7 @@ DEFAULT_TRANSITIONS = {
     ],
 }
 DEFAULT_TRANSITIONS["subtask"] = DEFAULT_TRANSITIONS["story"]
+DEFAULT_TRANSITIONS["bug"] = DEFAULT_TRANSITIONS["story"]
 
 # --------------------------------------------------------------------------- #
 # templates
@@ -345,7 +352,7 @@ PR_REVIEW_STATES = ["none", "pending", "changes_requested", "approved"]
 
 # A feature is a container: it has no branch and no PR of its own, so the PR
 # gates simply do not apply to it.
-PR_BEARING_TYPES = {"story", "subtask"}
+PR_BEARING_TYPES = {"story", "bug", "subtask"}
 
 DEPENDENCY_KINDS = ["blocks", "relates", "duplicates"]
 HARD_DEPENDENCY_KINDS = {"blocks"}
@@ -500,7 +507,7 @@ CREATE TABLE IF NOT EXISTS task (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id          INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     key                 TEXT NOT NULL,
-    task_type           TEXT NOT NULL CHECK (task_type IN ('feature','story','subtask')),
+    task_type           TEXT NOT NULL CHECK (task_type IN ('feature','story','bug','subtask')),
     parent_id           INTEGER REFERENCES task(id) ON DELETE SET NULL,
     title               TEXT NOT NULL,
     description         TEXT NOT NULL DEFAULT '',

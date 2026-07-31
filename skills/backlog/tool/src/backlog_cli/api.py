@@ -378,6 +378,10 @@ class Backlog:
         """Create a story with optional plain or executable criteria."""
         return self.create_task("story", title, parent=feature, **kwargs)
 
+    def create_bug(self, title: str, **kwargs) -> Task:
+        """Create a standalone bug with optional plain or executable criteria."""
+        return self.create_task("bug", title, parent=None, **kwargs)
+
     def add_item(
         self, key: str, kind: str, content: str, *, execution_spec: dict | None = None
     ) -> dict:

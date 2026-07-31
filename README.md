@@ -6,7 +6,7 @@ through project-defined delivery flows.
 
 The plugin manages:
 
-- features, stories, and subtasks;
+- features, stories, standalone bugs, and subtasks;
 - acceptance criteria, checklists, notes, priorities, and assignments;
 - dependencies and blocked work;
 - review threads with fixed blocker, nice-to-have, or informational severity,
@@ -224,6 +224,7 @@ backlog feature add --title "Account recovery"
 backlog story add --feature F-001 --title "Request a recovery link" \
   --ac "A valid account can request a time-limited recovery link."
 backlog subtask add --story S-001 --title "Add the recovery endpoint"
+backlog bug add --title "Recovery link expires too early"
 ```
 
 Inspect and submit semantic workflow actions:
@@ -245,7 +246,7 @@ backlog-py scripts/start_work.py S-001 --actor codex
 
 ## Custom workflows
 
-Each project can define separate flows for features, stories, and subtasks. A
+Each project can define separate flows for features, stories, bugs, and subtasks. A
 flow controls:
 
 - available statuses and their display order;

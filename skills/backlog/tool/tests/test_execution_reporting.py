@@ -287,7 +287,7 @@ class ExecutionReportingTest(unittest.TestCase):
         )
         self.assertEqual(execution.item_state(self.conn, passed["id"]), "pass")
 
-    def test_exact_v10_store_migrates_additively_to_v11(self):
+    def test_exact_v10_store_migrates_additively_to_current_schema(self):
         item = self.shell_item()
         executable = execution.executable_item(self.conn, item["id"])
         execution.record_result(
@@ -311,13 +311,19 @@ class ExecutionReportingTest(unittest.TestCase):
         version = self.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
-        self.assertEqual(version, "11")
+        self.assertEqual(version, "12")
         actor = self.conn.execute(
             "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
         ).fetchone()["actor"]
         self.assertEqual(actor, "unknown")
+        bug = core.add_task(self.conn, self.project["id"], "bug", "Migrated defect")
+        self.assertEqual((bug["key"], bug["task_type"]), ("B-001", "bug"))
+        self.assertIsNotNone(self.conn.execute(
+            "SELECT id FROM workflow WHERE project_id=? AND task_type='bug'",
+            (self.project["id"],),
+        ).fetchone())
 
-    def test_v11_export_import_preserves_actor_history_and_waivers(self):
+    def test_current_export_import_preserves_actor_history_and_waivers(self):
         item = self.shell_item(expected=4)
         self.bl.run_item(item["id"], self.root, policy=self.policy)
         self.bl.waive_validation(item["id"], reason="Round-trip waiver")
@@ -325,7 +331,7 @@ class ExecutionReportingTest(unittest.TestCase):
         exported = self.cli("export", "--out", str(export_path))
         self.assertEqual(exported.returncode, 0, exported.stderr)
         payload = json.loads(export_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema_version"], 11)
+        self.assertEqual(payload["schema_version"], 12)
         self.assertEqual(
             payload["tables"]["execution_result"][0]["actor"], "S-010"
         )
