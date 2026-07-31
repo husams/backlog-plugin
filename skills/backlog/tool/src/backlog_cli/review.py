@@ -129,14 +129,15 @@ def open_thread(conn: Conn, project_id: int, key: str, author: str, body: str,
     log_event(conn, "review", project_id, task["id"], task["key"], author,
               to_value=ckey, detail=f"opened {ckey}")
     conn.commit()
-    if severity == ReviewSeverity.BLOCKER:
+    if severity == ReviewSeverity.BLOCKER or task["task_type"] == "iteration":
         trigger_action(
             conn,
             project_id,
             task["key"],
             Action.FEEDBACK_POSTED,
             actor=author,
-            operation="review.blocker_opened",
+            operation=("review.iteration_comment_opened"
+                       if task["task_type"] == "iteration" else "review.blocker_opened"),
             parameters={
                 "root": ckey,
                 "body": body,
@@ -298,11 +299,7 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
               detail=f"{action} on {thread['root_key']} ({ckey})")
     conn.commit()
     if emit_action:
-        if (
-            action == "accept"
-            and thread["severity"] == ReviewSeverity.BLOCKER.value
-            and not _unresolved_blockers(conn, task["id"])
-        ):
+        if action == "accept" and _feedback_is_resolved(conn, task, thread):
             trigger_action(
                 conn,
                 project_id,
@@ -329,6 +326,25 @@ def _unresolved_blockers(conn: Conn, task_id: int) -> list[Row]:
     ).fetchall()
 
 
+def _unresolved_threads(conn: Conn, task_id: int) -> list[Row]:
+    """Iteration comments of every severity require reviewer acceptance."""
+    return conn.execute(
+        "SELECT * FROM review_thread WHERE task_id = ? "
+        "AND (state != 'closed' OR COALESCE(resolution, '') != 'accepted_by_reviewer') "
+        "ORDER BY root_key",
+        (task_id,),
+    ).fetchall()
+
+
+def _feedback_is_resolved(conn: Conn, task: Row, thread: Row) -> bool:
+    if task["task_type"] == "iteration":
+        return not _unresolved_threads(conn, task["id"])
+    return (
+        thread["severity"] == ReviewSeverity.BLOCKER.value
+        and not _unresolved_blockers(conn, task["id"])
+    )
+
+
 def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
            role: str | None = None) -> dict:
     body = _require_body(body)
@@ -352,14 +368,15 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
         conn, project_id, thread["last_comment_key"], author, "comment", body,
         role=role, reopen=True, emit_action=False
     )
-    if thread["severity"] == ReviewSeverity.BLOCKER.value:
+    if thread["severity"] == ReviewSeverity.BLOCKER.value or task["task_type"] == "iteration":
         trigger_action(
             conn,
             project_id,
             task["key"],
             Action.FEEDBACK_REOPENED,
             actor=author,
-            operation="review.blocker_reopened",
+            operation=("review.iteration_comment_reopened"
+                       if task["task_type"] == "iteration" else "review.blocker_reopened"),
             parameters={
                 "root": rk,
                 "reply": result["reply_to"],
@@ -410,7 +427,7 @@ def thread_summary(conn: Conn, root_key: str) -> dict:
     if thread["state"] == "awaiting_developer":
         awaiting = task["assignee"]
     elif thread["state"] == "awaiting_reviewer":
-        awaiting = task["reviewer"]
+        awaiting = thread["opened_by"]
 
     return {
         "root": rk,
@@ -496,7 +513,7 @@ def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | Non
         params.append(f"awaiting_{role}")
     if actor:
         sql += (" AND ((r.state = 'awaiting_developer' AND t.assignee = ?)"
-                "   OR (r.state = 'awaiting_reviewer' AND t.reviewer = ?))")
+                "   OR (r.state = 'awaiting_reviewer' AND r.opened_by = ?))")
         params += [actor, actor]
     sql += " ORDER BY t.priority, t.key, r.root_key"
     return [thread_summary(conn, r["root_key"]) for r in conn.execute(sql, params).fetchall()]

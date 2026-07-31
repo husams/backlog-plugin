@@ -612,6 +612,13 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                 "no blocking review threads open" if not opens
                 else f"{len(opens)} blocking: " + ", ".join(t["root_key"] for t in opens),
             ))
+        elif name == "iteration_comments_closed":
+            opens = open_threads(conn, task["id"])
+            checks.append(Check(
+                name, not opens,
+                "no Iteration comments open" if not opens
+                else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
+            ))
         elif name == "pr_recorded":
             if not bears_pr:
                 checks.append(Check(name, True, f"not applicable to a {task['task_type']}"))
@@ -801,9 +808,6 @@ def _transition(conn: Conn, project_id: int, key: str, to_status: str,
     wf = workflow.get(conn, project_id, task["task_type"])
     target = wf.resolve(to_status) if _known(wf, to_status) else normalize_status(to_status, wf)
     current = task["status"]
-
-    if target == current:
-        raise BacklogError(f"{task['key']} is already {wf.display(current)}")
 
     from . import hooks
     from .api import Backlog

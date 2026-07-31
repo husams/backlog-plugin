@@ -559,6 +559,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += _upgrade_bug_template_workflows(conn)
         notes += _upgrade_iteration_template_workflows(conn)
         notes += _seed_missing_workflows(conn)
+        notes += _upgrade_iteration_feedback_flow(conn)
         notes += _upgrade_feature_review_flow(conn)
         notes += _upgrade_required_validation_gates(conn)
         resync_sequences(conn)
@@ -718,6 +719,36 @@ def _upgrade_iteration_template_workflows(conn: Conn) -> list[str]:
         added += 1
     conn.commit()
     return [f"added Iteration workflows to {added} template(s)"] if added else []
+
+
+def _upgrade_iteration_feedback_flow(conn: Conn) -> list[str]:
+    """Add all-severity comment closure policy to existing Iteration flows."""
+    changed = 0
+    for workflow_table, transition_table, fk in (
+        ("template_workflow", "template_transition", "template_workflow_id"),
+        ("workflow", "workflow_transition", "workflow_id"),
+    ):
+        workflows = conn.execute(
+            f"SELECT id FROM {workflow_table} WHERE task_type = 'iteration'"
+        ).fetchall()
+        for workflow_row in workflows:
+            workflow_id = workflow_row["id"]
+            close = conn.execute(
+                f"SELECT id, gates FROM {transition_table} "
+                f"WHERE {fk} = ? AND from_status = 'open' AND to_status = 'closed'",
+                (workflow_id,),
+            ).fetchone()
+            if close is not None:
+                gates = [g.strip() for g in (close["gates"] or "").split(",") if g.strip()]
+                if "iteration_comments_closed" not in gates:
+                    gates.append("iteration_comments_closed")
+                    conn.execute(
+                        f"UPDATE {transition_table} SET gates = ? WHERE id = ?",
+                        (",".join(gates), close["id"]),
+                    )
+                    changed += 1
+    conn.commit()
+    return [f"gated Iteration closure in {changed} transition(s)"] if changed else []
 
 
 def _add_column(conn: Conn, table: str, column: str, decl: str) -> None:

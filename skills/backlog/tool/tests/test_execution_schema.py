@@ -227,7 +227,7 @@ allowed_hooks: ["tests.run"]
         )
         self.assertEqual(
             self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], "13",
+            .fetchone()["value"], "14",
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
@@ -260,7 +260,7 @@ allowed_hooks: ["tests.run"]
             self.conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()["value"],
-            "13",
+            "14",
         )
 
     def test_dirty_source_fingerprint_excludes_ignored_files(self):

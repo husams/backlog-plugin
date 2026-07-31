@@ -74,13 +74,60 @@ transitions:
     from: open
     action: iteration.closed
     to: closed
-    gates: [iteration_members_finished]
+    gates: [iteration_members_finished, iteration_comments_closed]
 
   - task_types: [iteration]
     from: closed
     action: iteration.reopened
     to: open
     gates: [iteration_members_finished]
+
+  # Iteration comments are review-managed lifecycle events. They are explicit
+  # no-ops in every Iteration state; closure is gated independently below.
+  - task_types: [iteration]
+    from: planned
+    action: feedback.posted
+    to: planned
+
+  - task_types: [iteration]
+    from: planned
+    action: feedback.reopened
+    to: planned
+
+  - task_types: [iteration]
+    from: planned
+    action: feedback.resolved
+    to: planned
+
+  - task_types: [iteration]
+    from: open
+    action: feedback.posted
+    to: open
+
+  - task_types: [iteration]
+    from: open
+    action: feedback.reopened
+    to: open
+
+  - task_types: [iteration]
+    from: open
+    action: feedback.resolved
+    to: open
+
+  - task_types: [iteration]
+    from: closed
+    action: feedback.posted
+    to: closed
+
+  - task_types: [iteration]
+    from: closed
+    action: feedback.reopened
+    to: closed
+
+  - task_types: [iteration]
+    from: closed
+    action: feedback.resolved
+    to: closed
 
   # Backlog refinement
   - task_types: [feature, story, bug, subtask]

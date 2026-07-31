@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -166,6 +166,7 @@ GATE_CHECKS = [
     "dependencies_clear",     # nothing that blocks this task is still open
     "children_complete",      # every child task is finished
     "review_threads_closed",  # no open blocker review thread
+    "iteration_comments_closed",  # no open Iteration thread of any severity
     "pr_recorded",            # a pull request is referenced
     "pr_approved",            # the pull request is approved
     "pr_merged",              # the pull request is merged
@@ -177,6 +178,7 @@ GATE_DESCRIPTIONS = {
     "dependencies_clear": "nothing that blocks this task is still open",
     "children_complete": "every child task has reached a finished status",
     "review_threads_closed": "no blocking review thread is still open",
+    "iteration_comments_closed": "no Iteration comment of any severity is still open",
     "pr_recorded": "a pull request is referenced (waivable with --no-pr)",
     "pr_approved": "the pull request is approved (waivable with --no-pr)",
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
@@ -236,7 +238,7 @@ ITERATION_STATUS_ROWS = [
 ]
 DEFAULT_TRANSITIONS["iteration"] = [
     ("planned", "open", ""),
-    ("open", "closed", "iteration_members_finished"),
+    ("open", "closed", "iteration_members_finished,iteration_comments_closed"),
     ("closed", "open", "iteration_members_finished"),
 ]
 
