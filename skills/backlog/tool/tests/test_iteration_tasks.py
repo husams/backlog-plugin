@@ -213,6 +213,8 @@ class IterationTaskIntegrationTest(unittest.TestCase):
         self.cli("iteration", "add", "--title", "Scope")
         member = self.ready_story("Member")
         outside = self.ready_bug("Outside")
+        self.cli("feature", "add", "--title", "Unscoped feature", "--assignee", "codex")
+        self.cli("action", "F-001", "refinement.accepted")
         self.assertIn(outside, self.cli("next"))
         for command in (("next", "--iteration", "I-001"),
                         ("board", "--iteration", "I-001")):
@@ -221,6 +223,11 @@ class IterationTaskIntegrationTest(unittest.TestCase):
             self.assertIn("Open Iteration", rejected.stderr)
         self.cli("action", "I-001", "iteration.opened")
         self.cli("iteration", "member-add", "I-001", member)
+        env, cwd = self.open_api()
+        with env, cwd, api.open(actor="codex") as bl:
+            self.assertIn("F-001", [t.key for t in bl.startable("codex")])
+            self.assertEqual([t.key for t in bl.startable("codex", iteration="I-001")],
+                             [member])
         selected = self.cli("next", "--iteration", "I-001")
         board = self.cli("board", "--iteration", "I-001")
         for output in (selected, board):

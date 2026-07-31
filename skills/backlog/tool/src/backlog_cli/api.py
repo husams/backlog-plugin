@@ -548,9 +548,13 @@ class Backlog:
                 )
         out = []
         for t in self.tasks(assignee=actor, open_only=True):
-            if t.task_type not in {"story", "bug"} or t.status not in core.ACTIONABLE_BY_DEV:
-                continue
-            if selected and all(i.key != selected.key for i in t.iterations):
+            if selected:
+                if (t.task_type not in {"story", "bug"}
+                        or t.status not in core.ACTIONABLE_BY_DEV):
+                    continue
+                if all(i.key != selected.key for i in t.iterations):
+                    continue
+            elif t.task_type == "iteration":
                 continue
             if not t.blockers:
                 out.append(t)
