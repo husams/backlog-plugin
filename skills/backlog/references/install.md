@@ -138,7 +138,8 @@ backlog-py scripts/standup.py
 ## Updating
 
 Edit the markdown, scripts or runtime tool, bump `version` in
-`.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`, then validate
-the skill and plugin. Symlinked installs pick changes up immediately. In a session
-started with `--plugin-dir`, `/reload-plugins` picks the change up; an installed
-plugin copy needs `/plugin marketplace update backlog-marketplace`.
+`.codex-plugin/plugin.json`, `.claude-plugin/plugin.json`, and
+`.claude-plugin/marketplace.json`, then validate the skill and plugin. Symlinked
+installs pick changes up immediately. In a session started with `--plugin-dir`,
+`/reload-plugins` picks the change up; an installed plugin copy needs its
+marketplace refreshed and the plugin updated or reinstalled.

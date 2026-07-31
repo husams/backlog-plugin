@@ -1,6 +1,6 @@
 {
   "name": "backlog-plugin",
-  "version": "1.6.4+codex.20260731122348",
+  "version": "1.6.5+codex.20260731211919",
   "description": "Track project backlogs, dependencies, workflows, reviews, and pull request gates.",
   "author": {
     "name": "Husam Senussi",
