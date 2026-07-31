@@ -52,6 +52,19 @@ class BugIterationWorkflowUpgradeTest(unittest.TestCase):
         ))
 
     def test_every_shipped_template_exposes_dedicated_bug_and_iteration_flows(self):
+        expected_gates = {
+            "dependencies_clear", "children_complete", "review_threads_closed",
+            "iteration_comments_closed", "pr_recorded", "pr_approved", "pr_merged",
+            "required_validations_pass", "iteration_members_finished",
+        }
+        rendered = self.cli("workflow", "gates")
+        rendered_gates = [
+            line.split()[0] for line in rendered.splitlines()
+            if line.split() and line.split()[0] in expected_gates
+        ]
+        self.assertEqual(set(rendered_gates), expected_gates)
+        self.assertEqual(len(rendered_gates), len(expected_gates))
+
         for template in ("software-delivery", "lightweight", "research"):
             slug = template.replace("-", "")
             self.cli("project", "add", "--name", slug, "--slug", slug, "--template", template)

@@ -741,13 +741,6 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                     "all members finished" if not unfinished else "unfinished members: "
                     + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
                 ))
-        elif name == "iteration_comments_closed":
-            opens = open_threads(conn, task["id"])
-            checks.append(Check(
-                name, not opens,
-                "all Iteration review threads closed" if not opens
-                else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
-            ))
         else:
             checks.append(Check(name, False, "unknown gate check"))
     return checks
