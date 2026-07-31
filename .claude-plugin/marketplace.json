@@ -9,7 +9,7 @@
     {
       "name": "backlog-plugin",
       "source": "./",
-      "version": "1.6.4",
+      "version": "1.6.5",
       "description": "Self-hosted backlog management and workflow enforcement for Claude Code."
     }
   ]
