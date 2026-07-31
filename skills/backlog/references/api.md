@@ -50,7 +50,7 @@ assertion, not cryptographic authentication.
 | `bl.statuses(task_type="story")` | the statuses this project's flow defines |
 | `bl.flow(task_type="story")` | the `Workflow`: `.allows(a,b)`, `.next_from(s)`, `.display(s)`, `.initial`, `.terminal` |
 | `bl.actions(key)` | the `list[Action]` configured for this task's current state |
-| `bl.startable(actor=None, iteration=None)` | actionable Stories and Bugs with no unfinished blockers; the Iteration row is excluded, and an Iteration filter requires an Open Iteration |
+| `bl.startable(actor=None, iteration=None)` | unscoped startable Features, Stories, Bugs, and subtasks with no unfinished blockers; Iteration containers are excluded, and an Iteration filter requires an Open Iteration |
 | `bl.blocked()` | `[(Task, [blocking keys])]` for every blocked open task |
 | `bl.cycles()` | dependency cycles as key lists; empty when sane |
 | `bl.dependencies(key, kind=None)` | all incoming and outgoing edges, including satisfied dependencies, notes and statuses |
@@ -136,9 +136,10 @@ Incomplete. Removing from an Open Iteration does not delete or transition the
 member. Reopening a Closed Iteration rejects retained members that conflict
 with another Open Iteration.
 
-The Iteration row is excluded from unscoped `startable()` results. Passing
+The Iteration row is excluded from unscoped `startable()` results, while
+otherwise-startable Features and subtasks remain available there. Passing
 `iteration="I-001"` requires that Iteration to be Open and returns only its
-member work that is eligible for selection; `task.iterations` and
+eligible Story and Bug members; `task.iterations` and
 `task.iteration_members` provide the corresponding views from either side.
 
 ## Actions and transition hooks

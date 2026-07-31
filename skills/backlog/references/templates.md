@@ -33,8 +33,9 @@ $BL template show software-delivery --type bug
 $BL template show software-delivery --type iteration
 ```
 
-Bugs follow that template's deliverable flow and retain PR/review gates.
-Iterations follow `Planned -> Open -> Closed` with
+Bugs follow that template's Story-shaped deliverable flow and inherit its
+gates: `software-delivery` includes PR/review gates, while `lightweight` has
+no PR or review stage. Iterations follow `Planned -> Open -> Closed` with
 `iteration.opened`, `iteration.closed`, and `iteration.reopened`; closing uses
 `iteration_members_finished` and `iteration_comments_closed`, while reopening
 uses `iteration_members_finished`. The Iteration feedback actions

@@ -170,8 +170,8 @@ Ready → In Progress → In Review → Needs Work → In Progress
 It maps standard actions such as `refinement.accepted`, `work.started`,
 `review.submitted`, `review.approved`, `review.changes_requested`,
 `check.failed`, `pr.created`, `pr.approved`, and `pr.merged` to those
-transitions. Bugs use the same action-driven delivery semantics as Stories but
-remain standalone roots. Iterations use `iteration.opened`,
+transitions. Bugs use the selected template's action-driven delivery semantics
+as Stories but remain standalone roots. Iterations use `iteration.opened`,
 `iteration.closed`, and `iteration.reopened` for `Planned -> Open -> Closed`.
 The Iteration close transition is gated by finished members and closed review
 comments; its review-managed `feedback.posted`, `feedback.reopened`, and

@@ -78,9 +78,10 @@ Created -> Ready -> In Progress -> In Review -> Accepted -> Done
 ```
 
 `statuses --type bug` and `bl.flow(task_type="bug")` expose the Bug statuses.
-The Bug transitions use the same semantic refinement, work, review, PR, child,
-validation, dependency, and delivery actions/gates as a Story. A Bug is still
-a standalone root and cannot have a Feature parent.
+The Bug transitions mirror the selected template's Story actions and gates:
+`software-delivery` includes PR/review gates, while `lightweight` has no PR or
+review stage. A Bug is still a standalone root and cannot have a Feature
+parent.
 
 Iterations have a separate lifecycle:
 

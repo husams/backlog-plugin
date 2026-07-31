@@ -39,7 +39,7 @@ $BL subtask add --story S-001 --title "Add --incremental to cidx index"
 Use a Bug when the defect owns its delivery work and pull request. It has no
 Feature parent, but it supports the same acceptance criteria, subtasks,
 assignments, dependencies, review threads, PR metadata, and delivery gates as a
-Story:
+Story under the selected template:
 
 ```bash
 $BL bug add --title "Recovery link expires too early" --priority P1 \

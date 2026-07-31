@@ -214,9 +214,11 @@ Incomplete. The same operation is available through
 
 ## Why an item is stuck
 
-Every open thread blocks `Accepted`, including `nice_to_have` and `info`.
-Severity still controls Ready invalidation, but it never permits feedback to be
-ignored. A thread stays open until the opening reviewer accepts it:
+Every open `blocker` thread blocks `Accepted` for deliverable tasks.
+`nice_to_have` and `info` threads still require the normal implementer response
+and opening-reviewer decision, but they do not block Story/Bug delivery gates.
+Iteration closure is the explicit all-severity exception described above. A
+thread stays open until the opening reviewer accepts or rejects the response:
 
 ```bash
 $BL review list S-004 --state open --severity blocker

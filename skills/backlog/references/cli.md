@@ -79,7 +79,7 @@ $BL iteration add --title T [--priority P0..P3] [...]
 $BL iteration member-add I-001 S-001
 $BL iteration member-remove I-001 S-001
 $BL subtask  add (--story S-001 | --bug B-001) --title T [...]
-$BL task     add --type feature|story|bug|subtask [--parent KEY] --title T [...]
+$BL task     add --type feature|story|bug|subtask|iteration [--parent KEY] --title T [...]
 
 $BL set KEY [--title|--description|--ac|--priority|--owner|--branch|--parent]
 $BL assign KEY [--to X] [--reviewer Y] [--to-kind human|agent] [--reviewer-kind ...]
@@ -158,9 +158,13 @@ current state.
 pass, `2` blocked, `1` command error. Both read this project's flow — see
 [workflow.md](workflow.md).
 
-For a Bug, inspect the dedicated Bug flow with `statuses --type bug`; its PR,
-review, child-completion, validation, and delivery gates apply to the Bug
-itself. For an Iteration, `statuses --type iteration` shows the dedicated
+For a Bug, inspect the dedicated Bug flow with `statuses --type bug`; it
+mirrors the selected template's Story flow and gates. For example,
+`software-delivery` applies PR/review gates, while `lightweight` has no PR or
+review stage. Story/Bug delivery gates block on open `blocker` threads;
+`nice_to_have` and `info` threads still require the normal response and
+reviewer decision but do not block the Story/Bug delivery gate. For an
+Iteration, `statuses --type iteration` shows the dedicated
 `Planned -> Open -> Closed` flow and its `iteration_members_finished` and
 `iteration_comments_closed` close gates. Iteration review feedback uses the
 same `review open`, `review reply`, inbox, and audit commands as other tasks;
