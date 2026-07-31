@@ -104,6 +104,13 @@ BACKLOG_DB=postgres BACK_LOG_URL=postgresql://db.internal/backlog \
 ```
 
 `import --replace` overwrites the whole target store — check `$BL where` first.
+The dump preserves Bug and Iteration tasks, their dedicated flows, Iteration
+membership, review threads, dependencies, and audit history. Import rejects a
+new Bug or Iteration when the export does not contain its required workflow;
+workflow validation happens before the target is mutated. If the source
+project is older, run `workflow upgrade` in that source project, export again,
+and then import the new dump. Upgrading only the target does not repair an
+export that is missing its Bug or Iteration flow.
 Artifact *files* are not carried by the dump; copy the `artifacts/` directory
 alongside it.
 

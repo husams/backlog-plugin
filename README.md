@@ -226,7 +226,23 @@ backlog story add --feature F-001 --title "Request a recovery link" \
 backlog subtask add --story S-001 --title "Add the recovery endpoint"
 backlog bug add --title "Recovery link expires too early"
 backlog iteration add --title "July delivery slice" --priority P1
+backlog action B-001 refinement.accepted --actor product-manager
+backlog action I-001 iteration.opened --actor product-manager
+backlog iteration member-add I-001 B-001
+backlog next --actor codex --iteration I-001
+# After the member finishes and Iteration comments are resolved:
+backlog action I-001 iteration.closed --actor product-manager
 ```
+
+Task keys identify their type: `F-` Feature, `S-` Story, `B-` standalone Bug,
+`T-` subtask, and `I-` Iteration. Bugs follow the Story-shaped delivery flow
+without a Feature parent. Iterations group Ready Stories and standalone Ready
+Bugs, expose their member work through `--iteration`, and close only after
+members are finished and every Iteration review comment is resolved. See the
+[planning](skills/backlog/references/planning.md),
+[CLI](skills/backlog/references/cli.md), and
+[Python API](skills/backlog/references/api.md) references for the full agent
+interface.
 
 Inspect and submit semantic workflow actions:
 

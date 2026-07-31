@@ -48,6 +48,11 @@ class Action(str, Enum):
     ITEM_REOPENED = "item.reopened"
     ITEM_ARCHIVED = "item.archived"
 
+    # Iteration lifecycle
+    ITERATION_OPENED = "iteration.opened"
+    ITERATION_CLOSED = "iteration.closed"
+    ITERATION_REOPENED = "iteration.reopened"
+
     # Backlog refinement
     REFINEMENT_SUBMITTED = "refinement.submitted"
     REFINEMENT_MARKED_INCOMPLETE = "refinement.marked_incomplete"
@@ -151,8 +156,8 @@ There is no configuration merge. A project file replaces the bundled default
 as one complete workflow, which keeps the active transition table clear and
 predictable.
 
-The bundled workflow provides the default flow for features, stories, and
-subtasks:
+The bundled workflow provides the default deliverable flow for features,
+stories, Bugs, and subtasks, plus the dedicated Iteration flow:
 
 ```text
 Created → Incomplete → Ready
@@ -165,7 +170,13 @@ Ready → In Progress → In Review → Needs Work → In Progress
 It maps standard actions such as `refinement.accepted`, `work.started`,
 `review.submitted`, `review.approved`, `review.changes_requested`,
 `check.failed`, `pr.created`, `pr.approved`, and `pr.merged` to those
-transitions.
+transitions. Bugs use the selected template's action-driven delivery semantics
+as Stories but remain standalone roots. Iterations use `iteration.opened`,
+`iteration.closed`, and `iteration.reopened` for `Planned -> Open -> Closed`.
+The Iteration close transition is gated by finished members and closed review
+comments; its review-managed `feedback.posted`, `feedback.reopened`, and
+`feedback.resolved` actions are lifecycle self-transitions so retrospective
+feedback never changes Iteration state.
 
 A custom workflow uses the same simple primitives:
 

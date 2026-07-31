@@ -11,8 +11,8 @@ many tasks, use `backlog-py` instead — see [api.md](api.md).
 before or after the subcommand.
 
 Keys are per project and case-insensitive: `F-001` features, `S-001` stories,
-`T-001` subtasks, `C-001` review comments. A thread is named by its root
-comment key.
+`B-001` standalone Bugs, `I-001` Iterations, `T-001` subtasks, and `C-001`
+review comments. A thread is named by its root comment key.
 
 ## Store and projects
 
@@ -50,6 +50,7 @@ the PostgreSQL schema. See [store.md](store.md).
 | `$BL workflow apply [--template T] [--type T]` | re-instantiate from a template |
 | `$BL workflow reset [--type T]` | back to this project's template |
 | `$BL workflow copy --from PROJECT [--type T]` | adopt another project's flow |
+| `$BL workflow upgrade` | add missing shipped task-type flows without replacing existing project-specific flows |
 
 See [templates.md](templates.md).
 
@@ -57,15 +58,16 @@ See [templates.md](templates.md).
 
 | Command | Purpose |
 | --- | --- |
-| `$BL board [--all]` | open work grouped by status, in the workflow's order |
-| `$BL next [--actor X]` | everything actionable for X, with blocked work separated |
+| `$BL board [--all] [--iteration I-001]` | open work grouped by status, or eligible member work from one Open Iteration |
+| `$BL next [--actor X] [--iteration I-001]` | everything actionable for X, optionally limited to one Open Iteration |
 | `$BL show KEY` | one task in full |
 | `$BL list [filters]` | every task |
-| `$BL feature list` / `story list` / `subtask list` | one type |
+| `$BL feature list` / `story list` / `bug list` / `iteration list` / `subtask list` | one type |
 | `$BL history KEY` | audit trail |
 
 Filters: `--status S`, `--open`, `--assignee X`, `--reviewer Y`, `--parent KEY`,
-`--type feature|story|bug|subtask|iteration`.
+`--type feature|story|bug|subtask|iteration`. An Iteration is listed in its
+own board section, but it is not generic deliverable work for `next`.
 
 ## Creating and editing
 
@@ -77,23 +79,40 @@ $BL iteration add --title T [--priority P0..P3] [...]
 $BL iteration member-add I-001 S-001
 $BL iteration member-remove I-001 S-001
 $BL subtask  add (--story S-001 | --bug B-001) --title T [...]
-$BL task     add --type feature|story|bug|subtask [--parent KEY] --title T [...]
+$BL task     add --type feature|story|bug|subtask|iteration [--parent KEY] --title T [...]
 
 $BL set KEY [--title|--description|--ac|--priority|--owner|--branch|--parent]
 $BL assign KEY [--to X] [--reviewer Y] [--to-kind human|agent] [--reviewer-kind ...]
 ```
 
-A subtask requires a story or bug; a story may hang off a feature or stand
-alone; features, bugs, and Iterations are roots. Only a Ready Story or standalone
-Bug may be added to an Open Iteration, and it may belong to only one Open
-Iteration. `next --iteration I-001` and `board --iteration I-001` select eligible
-member work from that Open Iteration. `--ac` replaces the acceptance criteria,
-one per line.
+A subtask requires a story or Bug; a Story may hang off a Feature or stand
+alone; Features, Bugs, and Iterations are roots. A Bug cannot have a Feature
+parent. Only a Ready Story or standalone Ready Bug may be added to an Open
+Iteration, and a member may belong to only one Open Iteration. Eligibility is
+checked when adding; later member lifecycle changes do not remove it. A member
+can be removed from an Open Iteration without deleting it or changing its
+status. `next --iteration I-001` and `board --iteration I-001` select only
+eligible member work from that Open Iteration; generic selection remains
+unscoped. `--ac` replaces the acceptance criteria, one per line.
 Assignee and reviewer names are free text — the human/agent kind is guessed
 from the name and shown with a `*` on agents.
 
 There is no agent-facing command that accepts a destination status. Status
 changes only when a semantic action resolves through the configured workflow.
+
+Iteration lifecycle actions are explicit facts:
+
+```bash
+$BL actions I-001
+$BL action I-001 iteration.opened       # Planned -> Open
+$BL action I-001 iteration.closed       # Open -> Closed, after both close gates
+$BL action I-001 iteration.reopened     # Closed -> Open, unless membership conflicts
+```
+
+Closing requires every retained member to be in a finished status and every
+Iteration review thread to be closed. Closing never changes member status.
+Reopening is rejected if a retained member is already in another Open
+Iteration, and the error names each conflict.
 
 ## Task items — criteria, checklists, notes
 
@@ -138,6 +157,18 @@ current state.
 `action` exits `1` on an illegal transition or a failed gate. `gate` exits `0`
 pass, `2` blocked, `1` command error. Both read this project's flow — see
 [workflow.md](workflow.md).
+
+For a Bug, inspect the dedicated Bug flow with `statuses --type bug`; it
+mirrors the selected template's Story flow and gates. For example,
+`software-delivery` applies PR/review gates, while `lightweight` has no PR or
+review stage. Story/Bug delivery gates block on open `blocker` threads;
+`nice_to_have` and `info` threads still require the normal response and
+reviewer decision but do not block the Story/Bug delivery gate. For an
+Iteration, `statuses --type iteration` shows the dedicated
+`Planned -> Open -> Closed` flow and its `iteration_members_finished` and
+`iteration_comments_closed` close gates. Iteration review feedback uses the
+same `review open`, `review reply`, inbox, and audit commands as other tasks;
+all comment severities block Iteration closure.
 
 ## Executable validation
 
@@ -195,6 +226,23 @@ $BL review list KEY [--state open|closed|all] [--severity blocker|nice_to_have|i
 ```
 
 See [review.md](review.md).
+
+Review threads can be opened directly on an Iteration for retrospective
+observations or unexpected behavior:
+
+```bash
+$BL review open I-001 --author reviewer --severity info \
+  --body "The handoff exposed a missing release checklist item."
+$BL review reply C-001 --author developer --action fix \
+  --body "Added the checklist item and linked the follow-up."
+```
+
+Iteration feedback is lifecycle-neutral: `feedback.posted`,
+`feedback.reopened`, and `feedback.resolved` do not open, close, or otherwise
+change the Iteration. The `iteration_comments_closed` gate independently
+requires every open blocker, nice-to-have, and info thread to be resolved
+before `iteration.closed` can succeed. Closed Iterations keep their comments
+visible for retrospective review.
 
 ## Artifacts
 

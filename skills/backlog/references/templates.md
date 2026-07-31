@@ -23,6 +23,26 @@ $BL templates
 They install themselves on first use and are editable and copyable like any
 template you write.
 
+Every shipped template has a dedicated flow for both new task types. Inspect
+the active project or a template directly instead of assuming the Story flow:
+
+```bash
+$BL statuses --type bug
+$BL statuses --type iteration
+$BL template show software-delivery --type bug
+$BL template show software-delivery --type iteration
+```
+
+Bugs follow that template's Story-shaped deliverable flow and inherit its
+gates: `software-delivery` includes PR/review gates, while `lightweight` has
+no PR or review stage. Iterations follow `Planned -> Open -> Closed` with
+`iteration.opened`, `iteration.closed`, and `iteration.reopened`; closing uses
+`iteration_members_finished` and `iteration_comments_closed`, while reopening
+uses `iteration_members_finished`. The Iteration feedback actions
+`feedback.posted`, `feedback.reopened`, and `feedback.resolved` are explicit
+self-transitions in every Iteration state, so retrospective comments do not
+change lifecycle state.
+
 The action-driven workflow also ships a file-based default at
 `assets/default-workflow.yaml`. When a project has no
 `.backlog/workflow.yaml`, the action workflow loader uses that bundled file.

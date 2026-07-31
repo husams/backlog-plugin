@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories, bugs and subtasks in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
+description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories, standalone bugs, subtasks and Iterations in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
 ---
 
 # Backlog

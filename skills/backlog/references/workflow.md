@@ -6,7 +6,7 @@ checks each transition demands. Two projects can run completely different
 flows. Inspect the task's available actions before changing workflow state:
 
 ```bash
-$BL statuses                       # all three task types
+$BL statuses                       # all five task types
 $BL statuses --type story          # one
 $BL workflow show --type story     # the same table
 $BL actions S-001                  # actions valid from this task's current state
@@ -67,6 +67,41 @@ The shipped Iteration flow is `Planned -> Open -> Closed`, driven by
 `iteration.opened`, `iteration.closed`, and `iteration.reopened`. Closing never
 changes member status; reopening is rejected when membership conflicts with
 another Open Iteration.
+
+## Bug and Iteration flows
+
+Bugs use the dedicated Bug flow, which mirrors the Story delivery lifecycle:
+
+```text
+Created -> Ready -> In Progress -> In Review -> Accepted -> Done
+    \-> Incomplete -> Ready       \-> Needs Work -> In Progress
+```
+
+`statuses --type bug` and `bl.flow(task_type="bug")` expose the Bug statuses.
+The Bug transitions mirror the selected template's Story actions and gates:
+`software-delivery` includes PR/review gates, while `lightweight` has no PR or
+review stage. A Bug is still a standalone root and cannot have a Feature
+parent.
+
+Iterations have a separate lifecycle:
+
+| Current | Action | Next | Gates |
+| --- | --- | --- | --- |
+| `Planned` | `iteration.opened` | `Open` | — |
+| `Open` | `iteration.closed` | `Closed` | `iteration_members_finished` + `iteration_comments_closed` |
+| `Closed` | `iteration.reopened` | `Open` | `iteration_members_finished` |
+
+The Iteration row is not deliverable work: it appears in its own board section,
+is included in task-type counts, and is excluded from generic `startable()` and
+`next` results. An explicit Iteration selector returns only eligible member
+work. Multiple Iterations may be Open concurrently.
+
+Iteration review events are intentionally lifecycle-neutral. The review system
+records `feedback.posted`, `feedback.reopened`, and `feedback.resolved` as
+self-transitions in `Planned`, `Open`, and `Closed`; they do not invoke a
+Story-style start gate or change Iteration state. Closure still has its own
+`iteration_comments_closed` gate, which treats every open comment severity as
+blocking and reports the blocking thread keys.
 
 `$BL workflow gates` prints this list live.
 
@@ -137,6 +172,11 @@ or subtask.
 ## Closing the loop
 
 A task is closed only when its action flow says so, and the CLI enforces every step.
-On the shipped flow that means: every review thread closed and accepted, the PR
-approved, the PR merged, and every child finished. Then and only then does
-the completion action resolve to the terminal state and stamp `closed_at`.
+For a Story or Bug on the shipped delivery flow that means: every blocking
+review thread is closed by reviewer acceptance, the PR approved, the PR merged,
+and every child finished.
+For an Iteration, the configured close action additionally requires every
+retained member to be finished and every Iteration review thread of any severity
+to be closed; the member statuses are not changed by closing. Then and only
+then does the completion action resolve to the terminal state and stamp
+`closed_at`.
