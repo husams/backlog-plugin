@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "skill": "backlog-coordinator",
+  "command": "python3 skills/backlog-coordinator/evals/harness.py",
+  "isolated_workspaces": true,
+  "evaluations": [
+    {
+      "id": "feature-decomposition-and-handoff",
+      "prompt": "Coordinate Feature F-100 into independently reviewable Stories with dependencies and distinct implementer/reviewer assignments.",
+      "setup": ["Feature F-100", "two child Stories", "one blocking dependency"],
+      "expected": ["created_by remains immutable", "dependency is recorded through the public API", "refinement actor differs from creator and implementer", "implementer and reviewer are distinct", "coordinator performs no role-owned acceptance"]
+    },
+    {
+      "id": "iteration-membership-and-closure",
+      "prompt": "Open an Iteration, admit eligible members, reject invalid members, monitor all review severities, and close only when configured gates pass.",
+      "setup": ["Open Iteration", "Ready Story", "standalone Ready Bug", "Feature, subtask, Iteration, parented Bug, non-Ready Story", "blocker, nice_to_have, and info roots"],
+      "expected": ["only Ready Story and standalone Ready Bug are admitted", "duplicate Open-Iteration membership is refused", "all severities must be closed", "iteration_members_finished and iteration_comments_closed are required", "Iteration has no PR of its own"]
+    },
+    {
+      "id": "retrospective-action-lifecycle",
+      "prompt": "Create a retrospective action, prevent creator self-acceptance, then coordinate either reasoned rejection or closure against another project's Feature or standalone Bug.",
+      "setup": ["Iteration I-100", "creator facilitator", "independent product-manager", "addressing project with Feature F-200"],
+      "expected": ["creation stores created_by", "creator acceptance is refused", "rejection retains a reason", "closure requires exactly one Feature or Bug and an explicit project"]
+    },
+    {
+      "id": "f-007-cross-skill-forward",
+      "prompt": "After backlog-implementer and backlog-reviewer are available, run Coordinator -> Implementer -> opening Reviewer -> Coordinator from the exact F-007 plan and retain evidence.",
+      "setup": ["F-007 exact plan", "S-024 and S-025 packages available", "distinct codex and claude identities", "Iteration membership and typed review roots"],
+      "expected": ["all-severity implementer responses", "opening-reviewer decision for every response", "refused bypass controls", "configured final actions", "merge gate evidence", "final status evidence"],
+      "requires": ["skills/backlog-implementer/SKILL.md", "skills/backlog-reviewer/SKILL.md"]
+    }
+  ]
+}

@@ -10,6 +10,7 @@ build/
 !.backlog/hooks/
 !.backlog/hooks/*.py
 !.backlog/workflow.yaml
+!.backlog/execution.yaml
 *.sqlite
 *.sqlite3
 *.db

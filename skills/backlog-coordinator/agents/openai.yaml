@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backlog Coordinator"
+  short_description: "Coordinate Features, Iterations, roles, gates"
+  default_prompt: "Use $backlog-coordinator to coordinate a Backlog Feature or Iteration through independent roles and configured gates."
