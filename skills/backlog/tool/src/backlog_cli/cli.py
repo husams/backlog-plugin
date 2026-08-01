@@ -1373,6 +1373,9 @@ def cmd_board(ctx: Ctx, args) -> int:
         iterations = [selected]
         rows = [r for r in rows if r["id"] in member_ids and r["task_type"] in {"story", "bug"}
                 and r["status"] in core.ACTIONABLE_BY_DEV and r["key"] not in blocked]
+    retrospective_actions = retrospective.list_open_actions(
+        conn, ctx.pid, iteration=args.iteration
+    )
     by_status: dict[str, list] = {}
     for r in rows:
         by_status.setdefault(r["status"], []).append(r)
@@ -1403,6 +1406,14 @@ def cmd_board(ctx: Ctx, args) -> int:
             for member in eligible:
                 lines.append(f"    {member['key']:<7} {TASK_KEY_PREFIX[member['task_type']]}  "
                              f"{member['priority']}  {member['title']}")
+    if retrospective_actions:
+        lines.append(f"== Retrospective actions ({len(retrospective_actions)})")
+        for action in retrospective_actions:
+            decision = retrospective.required_decision(action["status"])
+            lines.append(
+                f"  {action['key']:<7} {retrospective.STATUS_DISPLAY[action['status']]:<7} "
+                f"{action['iteration_key']}  {action['title']}  [next: {decision}]"
+            )
     for slug, display, _cat in order:
         group = by_status.pop(slug, [])
         if not group:
@@ -1432,6 +1443,11 @@ def cmd_board(ctx: Ctx, args) -> int:
                          "eligible_members": [row_to_dict(m)
                                               for m in eligible_by_iteration[r["key"]]]}
                         for r in iterations],
+         "retrospective_actions": [
+             {**row_to_dict(action),
+              "required_decision": retrospective.required_decision(action["status"])}
+             for action in retrospective_actions
+         ],
          "open_review_threads": open_by_task, "blocked_by": blocked},
         f"project: {ctx.project['slug']}  ({ctx.project['name']})\n\n"
         + ("\n".join(lines) if lines else "(no open tasks)"),
@@ -1463,6 +1479,9 @@ def cmd_next(ctx: Ctx, args) -> int:
     blocked = deps.blocked_by_map(conn, pid)
     dev_items = [r for r in all_dev if r["key"] not in blocked]
     blocked_items = [r for r in all_dev if r["key"] in blocked]
+    retrospective_actions = retrospective.list_open_actions(
+        conn, pid, iteration=args.iteration
+    )
 
     rev_where = " AND t.status = 'in_review'"
     rev_params: list = []
@@ -1485,6 +1504,18 @@ def cmd_next(ctx: Ctx, args) -> int:
     if threads:
         parts.append(f"REVIEW THREADS WAITING ON YOU ({len(threads)})\n"
                      + "\n\n".join(render_thread(t) for t in threads))
+    if retrospective_actions:
+        lines = []
+        for action in retrospective_actions:
+            decision = retrospective.required_decision(action["status"])
+            lines.append(
+                f"  {action['key']}  {retrospective.STATUS_DISPLAY[action['status']]}  "
+                f"{action['iteration_key']}  {action['title']}  [next: {decision}]"
+            )
+        parts.append(
+            f"RETROSPECTIVE DECISIONS ({len(retrospective_actions)})\n"
+            + "\n".join(lines)
+        )
     if dev_items:
         parts.append("WORK TO DO\n" + tasks_table(dev_items))
     if blocked_items:
@@ -1509,7 +1540,12 @@ def cmd_next(ctx: Ctx, args) -> int:
          "blocked": [{**row_to_dict(r), "blocked_by": blocked[r["key"]]} for r in blocked_items],
          "awaiting_your_review": [row_to_dict(r) for r in rev_items],
          "ready_to_accept": [row_to_dict(r) for r in ready_to_accept],
-         "ready_to_done": [row_to_dict(r) for r in ready_to_done]},
+         "ready_to_done": [row_to_dict(r) for r in ready_to_done],
+         "retrospective_actions": [
+             {**row_to_dict(action),
+              "required_decision": retrospective.required_decision(action["status"])}
+             for action in retrospective_actions
+         ]},
         "\n\n".join(parts) if parts else "(nothing actionable)",
     )
     return 0

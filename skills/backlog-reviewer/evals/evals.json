@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "skill": "backlog-reviewer",
+  "workspace_policy": {
+    "mode": "isolated",
+    "root": "checkout-relative",
+    "validator": "skills/backlog-reviewer/evals/validate.py",
+    "forbidden_external_dependencies": [],
+    "uses_user_home_validator": false
+  },
+  "evaluations": [
+    {
+      "id": "blocker-fixed",
+      "kind": "review-loop",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "prompt": "As the independent reviewer, inspect only new feedback for a blocker that the implementer fixed with concrete evidence.",
+      "expected": [
+        "retain a root-to-LAST_SEEN cursor from one filtered inbox read",
+        "call review_updates for the known root",
+        "accept the implementer response as opening reviewer",
+        "use the configured approval action"
+      ],
+      "must_not": ["re-read the full historical thread", "implement the fix", "merge"]
+    },
+    {
+      "id": "insufficient-response",
+      "kind": "changes-requested",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "prompt": "Review an implementer response that does not address the finding and leave the work needing changes.",
+      "expected": [
+        "reject the response with concrete evidence",
+        "keep the root open for the implementer",
+        "use the configured changes-requested action"
+      ],
+      "must_not": ["accept an insufficient response", "edit implementation", "claim merge readiness"]
+    },
+    {
+      "id": "identity-conflict",
+      "kind": "independence",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "prompt": "The creator or implementer identity is the proposed reviewer.",
+      "expected": ["refuse the review", "report the identity conflict"],
+      "must_not": ["assert a different reviewer identity", "accept a response", "approve work"]
+    },
+    {
+      "id": "accepted-regression",
+      "kind": "reopen",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "prompt": "A later change regresses an accepted finding.",
+      "expected": [
+        "call review_reopen on the original root",
+        "include the causal regression and required correction",
+        "resume per-root incremental updates"
+      ],
+      "must_not": ["open an unlinked replacement root", "silently accept the regression"]
+    },
+    {
+      "id": "iteration-all-severities",
+      "kind": "iteration-review",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "prompt": "An Iteration has blocker, nice_to_have, and info roots; implementer responses exist for all three.",
+      "expected": [
+        "accept or reject every response as opening reviewer",
+        "close every root",
+        "refuse iteration.closed while any root is still open",
+        "allow iteration.closed only after iteration_comments_closed passes"
+      ],
+      "behavioral_assertion": "Dispositioned responses awaiting reviewer decisions do not satisfy iteration_comments_closed.",
+      "must_not": ["treat disposition as closure", "treat feedback events as Iteration state transitions", "merge"]
+    }
+  ],
+  "trigger_routing": [
+    {
+      "id": "explicit-review-selects-reviewer",
+      "request": "Review S-024 independently and decide every response.",
+      "skills_in_context": ["backlog", "backlog-reviewer"],
+      "distractor": "backlog",
+      "expected_skill": "backlog-reviewer",
+      "workspace": "isolated"
+    },
+    {
+      "id": "generic-status-selects-backlog",
+      "request": "Show the generic backlog status, next item, and allowed action for S-024.",
+      "skills_in_context": ["backlog-reviewer", "backlog"],
+      "distractor": "backlog-reviewer",
+      "expected_skill": "backlog",
+      "workspace": "isolated"
+    }
+  ],
+  "forward_tests": [
+    {
+      "id": "forward-cursor",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "with_skill": "Use $backlog-reviewer to review a task with one known root and later incremental feedback.",
+      "without_skill": "Review the same task using only generic backlog guidance.",
+      "with_skill_expected": ["per-root cursor", "review_updates", "complete evidence"],
+      "without_skill_failure_surface": "historical reread or shared task cursor",
+      "without_skill_absent": "Preserve independence"
+    },
+    {
+      "id": "forward-disposition",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "with_skill": "Use $backlog-reviewer to decide blocker, nice_to_have, and info responses.",
+      "without_skill": "Review the same three responses without the reviewer skill.",
+      "with_skill_expected": ["accept/reject every severity", "no response pending"],
+      "without_skill_failure_surface": "advisory response left unanswered",
+      "without_skill_absent": "Every implementer response at every severity"
+    },
+    {
+      "id": "forward-iteration",
+      "workspace": "isolated",
+      "fresh_context": true,
+      "with_skill": "Use $backlog-reviewer to close an Iteration only after all comments are closed.",
+      "without_skill": "Attempt the same Iteration review using generic backlog guidance.",
+      "with_skill_expected": ["iteration_comments_closed", "iteration_members_finished", "disposition is not closure"],
+      "without_skill_failure_surface": "iteration.closed attempted with open roots",
+      "without_skill_absent": "Disposition alone does not close a root"
+    }
+  ],
+  "validation": {
+    "command": "python3 skills/backlog-reviewer/evals/validate.py",
+    "ci": true,
+    "owner": "repository"
+  }
+}

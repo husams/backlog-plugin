@@ -22,6 +22,16 @@ STATUS_DISPLAY = {
     "done": "Done",
     "rejected": "Rejected",
 }
+OPEN_STATUSES = {"created", "ready"}
+REQUIRED_DECISIONS = {
+    "created": "accept_or_reject",
+    "ready": "close_or_reject",
+}
+
+
+def required_decision(status: str) -> str | None:
+    """The decision that advances an open retrospective action."""
+    return REQUIRED_DECISIONS.get(normalize_status(status))
 
 
 def normalize_status(value: str) -> str:
@@ -89,6 +99,16 @@ def list_actions(
         _SELECT + "WHERE " + " AND ".join(clauses) + " ORDER BY a.key",
         params,
     ).fetchall()
+
+
+def list_open_actions(
+    conn: Conn, project_id: int, *, iteration: str | None = None
+) -> list[Row]:
+    """Created and Ready actions, ordered by their project-local key."""
+    return [
+        row for row in list_actions(conn, project_id, iteration=iteration)
+        if row["status"] in OPEN_STATUSES
+    ]
 
 
 def create_action(

@@ -335,6 +335,7 @@ class ExecutionReportingTest(unittest.TestCase):
             (self.project["id"],),
         ).fetchone()
         self.assertIn("iteration_comments_closed", iteration_close["gates"])
+        self.assertIn("iteration_retrospective_actions_clear", iteration_close["gates"])
 
     def test_current_export_import_preserves_actor_history_and_waivers(self):
         item = self.shell_item(expected=4)

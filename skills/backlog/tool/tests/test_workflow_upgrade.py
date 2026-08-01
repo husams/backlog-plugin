@@ -55,7 +55,8 @@ class BugIterationWorkflowUpgradeTest(unittest.TestCase):
     def test_every_shipped_template_exposes_dedicated_bug_and_iteration_flows(self):
         expected_gates = {
             "dependencies_clear", "children_complete", "review_threads_closed",
-            "iteration_comments_closed", "pr_recorded", "pr_approved", "pr_merged",
+            "iteration_comments_closed", "iteration_retrospective_actions_clear",
+            "pr_recorded", "pr_approved", "pr_merged",
             "required_validations_pass", "iteration_members_finished",
         }
         rendered = self.cli("workflow", "gates")

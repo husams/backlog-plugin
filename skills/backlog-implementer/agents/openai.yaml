@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backlog Implementer"
+  short_description: "Implement assigned Backlog work safely"
+  default_prompt: "Use $backlog-implementer to deliver the assigned Backlog Story or Bug through documented APIs, validation, and independent review."

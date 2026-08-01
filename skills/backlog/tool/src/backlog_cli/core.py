@@ -710,6 +710,18 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                 "no Iteration comments open" if not opens
                 else f"{len(opens)} open: " + ", ".join(t["root_key"] for t in opens),
             ))
+        elif name == "iteration_retrospective_actions_clear":
+            created = conn.execute(
+                "SELECT key FROM retrospective_action "
+                "WHERE project_id=? AND iteration_id=? AND status='created' ORDER BY key",
+                (project_id, task["id"]),
+            ).fetchall()
+            checks.append(Check(
+                name, not created,
+                "no Created retrospective actions" if not created
+                else "Created retrospective actions: "
+                + ", ".join(row["key"] for row in created),
+            ))
         elif name == "pr_recorded":
             if not bears_pr:
                 checks.append(Check(name, True, f"not applicable to a {task['task_type']}"))
