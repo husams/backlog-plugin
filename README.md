@@ -37,8 +37,10 @@ If a reviewer opens a new blocker or reopens an accepted blocker with a reply,
 the shipped workflow invalidates readiness and transitions `Ready` back to
 `Incomplete`. The Python API exposes this as `review_reopen(...)`.
 
-The skill is self-contained under `skills/backlog/`. It includes its launchers,
-Python API, predefined scripts, documentation, and database tooling.
+The generic skill is self-contained under `skills/backlog/`. Independent review
+work is handled by the companion `skills/backlog-reviewer/` skill, which owns
+incremental review decisions and merge-readiness handoff while the generic
+skill remains responsible for ordinary backlog operations.
 
 ## Documentation
 
@@ -346,6 +348,7 @@ or access internal connection attributes.
 | `.claude-plugin/marketplace.json` | Local Claude Code marketplace |
 | `docs/` | User prompts, integrations, and transition-hook documentation |
 | `skills/backlog/SKILL.md` | Core agent rules and documentation routing |
+| `skills/backlog-reviewer/SKILL.md` | Independent reviewer workflow and decision guardrails |
 | `skills/backlog/bin/install.sh` | Optional direct-install helper for Codex and Claude Code |
 | `skills/backlog/references/` | Task-specific documentation |
 | `skills/backlog/scripts/` | Predefined operational scripts |
