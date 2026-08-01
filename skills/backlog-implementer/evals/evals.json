@@ -24,19 +24,22 @@
       "id": "ready-story-success",
       "prompt": "I am assigned S-101 as implementer; implement it, validate it, and hand it to the independent reviewer.",
       "workspace": "isolated",
-      "expected": ["inspect task metadata", "check actions and dependencies", "start only with work.started", "run required executable validation", "record a task note", "return for independent review"]
+      "expected": ["inspect task metadata", "check actions and dependencies", "start only with work.started", "run required executable validation", "record a task note", "return for independent review"],
+      "baseline": ["start without checking actions", "skip required validation", "merge without independent review"]
     },
     {
       "id": "blocked-story-refusal",
       "prompt": "Implement the assigned story, but its dependency is still In Progress.",
       "workspace": "isolated",
-      "expected": ["inspect task metadata", "check actions and dependencies", "refuse to start", "report the exact blocker", "preserve task state"]
+      "expected": ["inspect task metadata", "check actions and dependencies", "refuse to start", "report the exact blocker", "preserve task state"],
+      "baseline": ["start despite dependency", "overwrite the task state"]
     },
     {
       "id": "all-severity-review",
       "prompt": "A reviewer posts blocker, nice_to_have, and info roots. Respond and return the work for review.",
       "workspace": "isolated",
-      "expected": ["retain root to LAST_SEEN", "read known roots incrementally", "answer blocker", "answer nice_to_have", "answer info", "discover unseen roots once", "never accept own response"]
+      "expected": ["retain root to LAST_SEEN", "read known roots incrementally", "answer blocker", "answer nice_to_have", "answer info", "discover unseen roots once", "never accept own response"],
+      "baseline": ["answer blocker only", "reuse one global cursor", "accept own response"]
     },
     {
       "id": "bidirectional-routing",

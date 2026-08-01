@@ -99,12 +99,12 @@ class SkillContractTest(unittest.TestCase):
                 with tempfile.TemporaryDirectory() as directory:
                     isolated = Path(directory)
                     fixture = isolated / "fixture.json"
-                    fixture.write_text(json.dumps({"id": case["id"], "prompt": case["prompt"]}), encoding="utf-8")
+                    fixture.write_text(json.dumps({"id": case["id"], "prompt": case["prompt"], "baseline": case["baseline"]}), encoding="utf-8")
                     with_skill = self.skill
                     for reference in ("delivery-api.md", "review-response.md", "validation-and-gates.md"):
                         with_skill += "\n" + (PACKAGE / "references" / reference).read_text(encoding="utf-8")
                     with_trace = self.forward_trace(case["id"], with_skill, fixture)
-                    baseline_trace = self.baseline_trace(case["id"], fixture)
+                    baseline_trace = self.baseline_trace(fixture)
                     expected = set(case["expected"])
                     self.assertTrue(expected.issubset(with_trace), (case["id"], with_trace))
                     self.assertTrue(expected.isdisjoint(baseline_trace), (case["id"], baseline_trace))
@@ -151,13 +151,8 @@ class SkillContractTest(unittest.TestCase):
         return trace
 
     @staticmethod
-    def baseline_trace(case_id, fixture):
-        fixture.read_text(encoding="utf-8")
-        return {
-            "ready-story-success": ["start without checking actions"],
-            "blocked-story-refusal": ["start despite dependency"],
-            "all-severity-review": ["answer blocker only"],
-        }[case_id]
+    def baseline_trace(fixture):
+        return json.loads(fixture.read_text(encoding="utf-8"))["baseline"]
 
 
 class BacklogBehaviorTest(unittest.TestCase):
