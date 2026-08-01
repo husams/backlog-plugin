@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories, standalone bugs, subtasks and Iterations in one table), their acceptance criteria and checklists, dependencies between them, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
+description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories, standalone bugs, subtasks and Iterations in one table) with acceptance criteria and checklists, retrospective improvement actions, dependencies between tasks, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, retrospective actions, workflow improvements, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
 ---
 
 # Backlog
@@ -54,6 +54,10 @@ template ──copied at project creation──> project ──> task ──┬�
 `task` is **one table** for features, stories, bugs, subtasks and Iterations, told apart by
 `task_type` and nested through `parent_id`. A feature holds stories; a story
 holds subtasks.
+
+Retrospective improvement actions are separate `R-` records. Each references
+an Iteration and follows the fixed Created → Ready → Done/Rejected lifecycle;
+see [references/retrospectives.md](references/retrospectives.md).
 
 ## The rules are enforced by the tool, not by you
 
@@ -243,6 +247,7 @@ If no store exists: `$BL init .` from the repository root, then commit
 | Open, answer, accept or reject review comments | [references/review.md](references/review.md) |
 | Look up an exact command, flag or exit code | [references/cli.md](references/cli.md) |
 | Plan work: create features/stories/subtasks, criteria, checklists, assign | [references/planning.md](references/planning.md) |
+| Record, accept, reject, close, or query retrospective workflow improvements | [references/retrospectives.md](references/retrospectives.md) |
 | Put the store somewhere else: central file, shared PostgreSQL | [references/store.md](references/store.md) |
 | Attach a design doc, spec, log or report to a task | [references/artifacts.md](references/artifacts.md) |
 | A command failed, or the store looks wrong | [references/troubleshooting.md](references/troubleshooting.md) |
@@ -253,12 +258,12 @@ If no store exists: `$BL init .` from the repository root, then commit
 
 ```bash
 $BL statuses --type story                         # what this project's flow allows
-$BL story add --title "Cache resolved symbols" --feature F-001 \
+$BL story add --title "Cache resolved symbols" --feature F-001 --actor product-manager \
     --ac "Given a cold cache, when resolve runs, entries are written."
 $BL dep add S-004 --blocked-by S-002 --note "needs the session table"
 $BL assign S-004 --to claude --reviewer husam     # agent vs human is recorded
 $BL actions S-004
-$BL action S-004 refinement.accepted --actor product-manager
+$BL action S-004 refinement.accepted --actor business-analyst
 $BL dep check S-004                               # exit 0 => safe to start
 $BL actions S-004
 $BL action S-004 work.started --actor developer
@@ -276,6 +281,11 @@ $BL gate S-004 --for merge                        # exit 0 => merging is allowed
 # ...merge the PR...
 $BL pr set S-004 --state merged
 ```
+
+Task and retrospective-action creation must include `--actor NAME` so the
+record stores `created_by`. The creator must never submit
+`refinement.accepted` or accept its own retrospective action; use an independent
+actor. The tool refuses creator self-acceptance and omitted acceptance actors.
 
 `pr set` emits `pr.created`, `pr.approved`, or `pr.merged`; those are semantic
 actions too. Every resulting status comes from this project's action workflow,

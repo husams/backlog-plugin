@@ -100,6 +100,42 @@ def normalize_item_kind(value: str) -> str:
     return k
 
 
+def require_actor(actor: str | None, operation: str) -> str:
+    """Require an attributable identity before creating accountable work."""
+    if not isinstance(actor, str) or not actor.strip():
+        raise BacklogError(
+            f"{operation} requires an actor; pass --actor NAME or "
+            "open the Python API with actor=NAME"
+        )
+    return actor.strip()
+
+
+def require_independent_actor(
+    key: str,
+    creator: str | None,
+    actor: str | None,
+    operation: str,
+) -> str | None:
+    """Prevent attributed work from being promoted by its own creator.
+
+    A NULL creator is tolerated only for historical rows whose original
+    creation event had no actor and therefore cannot be backfilled.
+    """
+    if not creator:
+        return actor.strip() if isinstance(actor, str) and actor.strip() else None
+    if not isinstance(actor, str) or not actor.strip():
+        raise BacklogError(
+            f"{key} was created by {creator}; {operation} requires an independent actor"
+        )
+    identity = actor.strip()
+    if identity.casefold() == creator.strip().casefold():
+        raise BacklogError(
+            f"{identity} created {key} and cannot perform {operation} on work it created; "
+            "use an independent reviewer"
+        )
+    return identity
+
+
 # --------------------------------------------------------------------------- #
 # lookups
 # --------------------------------------------------------------------------- #
@@ -269,17 +305,18 @@ def add_task(
     elif task_type == "subtask":
         raise BacklogError("a subtask requires a parent story or bug (--parent <KEY>)")
 
+    actor = require_actor(actor, "task creation")
     key = next_key(conn, project_id, TASK_KEY_PREFIX[task_type])
     initial = workflow.get(conn, project_id, task_type).initial
     ts = utcnow()
     conn.execute(
         "INSERT INTO task(project_id, key, task_type, parent_id, title, description, "
         "status, priority, owner, assignee, assignee_kind, reviewer, reviewer_kind, "
-        "branch, created_at, updated_at) "
-        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "branch, created_by, created_at, updated_at) "
+        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (project_id, key, task_type, parent_id, title, description, initial,
          normalize_priority(priority), owner, assignee, actor_kind(assignee),
-         reviewer, actor_kind(reviewer), branch, ts, ts),
+         reviewer, actor_kind(reviewer), branch, actor, ts, ts),
     )
     row = get_task(conn, project_id, key)
     log_event(conn, "created", project_id, row["id"], key, actor,
@@ -955,6 +992,10 @@ def trigger_action(
 
     task = get_task(conn, project_id, key)
     action = hooks.normalize_action(action)
+    if action is hooks.Action.REFINEMENT_ACCEPTED:
+        actor = require_independent_actor(
+            task["key"], task["created_by"], actor, "refinement.accepted"
+        )
     trigger = {
         "operation": operation,
         "actor": actor,

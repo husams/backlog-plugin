@@ -516,14 +516,18 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
 
     v1/v2 (feature + item)  -> v3 (project + task)
     v3                      -> v4 (workflows as data)
+    v14                     -> v15 (retrospective improvement actions)
+    v15                     -> v16 (task creator attribution and separation)
     """
     notes: list[str] = []
     if from_version >= SCHEMA_VERSION:
         return notes
 
     if from_version >= 3 or not conn.table_exists("feature"):
+        _add_column(conn, "task", "created_by", "TEXT")
         if from_version < 13:
             notes += _upgrade_bug_task_constraint(conn)
+        notes += _backfill_task_creators(conn)
         _add_column(conn, "project", "template_id", "INTEGER")
         _add_column(
             conn,
@@ -628,12 +632,24 @@ CREATE TABLE task_v13 (
     pr_review_state TEXT NOT NULL DEFAULT 'none'
         CHECK (pr_review_state IN ('none','pending','changes_requested','approved')),
     pr_waived INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     closed_at TEXT,
     UNIQUE (project_id, key)
 );
-INSERT INTO task_v13 SELECT * FROM task;
+INSERT INTO task_v13(
+    id, project_id, key, task_type, parent_id, title, description, status,
+    priority, owner, assignee, assignee_kind, reviewer, reviewer_kind, branch,
+    pr_url, pr_number, pr_repo, pr_state, pr_review_state, pr_waived,
+    created_by, created_at, updated_at, closed_at
+)
+SELECT
+    id, project_id, key, task_type, parent_id, title, description, status,
+    priority, owner, assignee, assignee_kind, reviewer, reviewer_kind, branch,
+    pr_url, pr_number, pr_repo, pr_state, pr_review_state, pr_waived,
+    created_by, created_at, updated_at, closed_at
+FROM task;
 DROP TABLE task;
 ALTER TABLE task_v13 RENAME TO task;
 CREATE INDEX idx_task_project ON task(project_id, status);
@@ -759,6 +775,31 @@ def _add_column(conn: Conn, table: str, column: str, decl: str) -> None:
         conn.commit()
     except Exception:
         conn.rollback()  # already there
+
+
+def _backfill_task_creators(conn: Conn) -> list[str]:
+    """Recover task creator attribution from the original creation event."""
+    updated = 0
+    tasks = conn.execute(
+        "SELECT id FROM task WHERE created_by IS NULL OR created_by = ''"
+    ).fetchall()
+    for task in tasks:
+        event = conn.execute(
+            "SELECT actor FROM event "
+            "WHERE task_id = ? AND kind = 'created' "
+            "AND actor IS NOT NULL AND actor <> '' "
+            "ORDER BY id LIMIT 1",
+            (task["id"],),
+        ).fetchone()
+        if event is None:
+            continue
+        conn.execute(
+            "UPDATE task SET created_by = ? WHERE id = ?",
+            (event["actor"], task["id"]),
+        )
+        updated += 1
+    conn.commit()
+    return [f"attributed creators for {updated} task(s)"] if updated else []
 
 
 def _adopt_default_template(conn: Conn) -> list[str]:
@@ -1110,7 +1151,8 @@ def list_projects(conn: Conn) -> list[Row]:
 
 _SERIAL_TABLES = ["template", "template_workflow", "template_status",
                   "template_transition", "project", "workflow", "workflow_status",
-                  "workflow_transition", "task", "task_item", "execution_result",
+                  "workflow_transition", "task", "retrospective_action", "task_item",
+                  "execution_result",
                   "validation_waiver", "dependency", "artifact",
                   "review_thread", "review_comment", "event"]
 

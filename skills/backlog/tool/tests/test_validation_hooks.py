@@ -25,7 +25,8 @@ class ValidationHookTest(unittest.TestCase):
         self.conn = db.connect(spec=spec, create=True)
         self.project = db.get_or_create_project(self.conn, "sample", spec)
         self.task = core.add_task(
-            self.conn, self.project["id"], "story", "Hook validation"
+            self.conn, self.project["id"], "story", "Hook validation",
+            actor="fixture-creator",
         )
         self.item = core.add_item(
             self.conn, self.project["id"], self.task["key"],

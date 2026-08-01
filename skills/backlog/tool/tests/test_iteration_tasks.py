@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backlog_cli import api
+from _support import attributed_cli_args
 
 
 class IterationTaskIntegrationTest(unittest.TestCase):
@@ -35,7 +36,7 @@ class IterationTaskIntegrationTest(unittest.TestCase):
         )
 
     def cli(self, *args, json_output=False):
-        command = list(args)
+        command = attributed_cli_args(args)
         if json_output:
             command.insert(0, "--json")
         result = self.raw(*command)

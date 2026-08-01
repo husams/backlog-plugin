@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from backlog_cli import hooks
 from backlog_cli.schema import ReviewSeverity
+from _support import attributed_cli_args
 
 
 class ActionHookIntegrationTest(unittest.TestCase):
@@ -99,6 +100,7 @@ def post_transition(
         self.tmp.cleanup()
 
     def run_cli(self, *args, json_output=False):
+        args = attributed_cli_args(args)
         command = [sys.executable, "-m", "backlog_cli.cli"]
         if json_output:
             command.append("--json")

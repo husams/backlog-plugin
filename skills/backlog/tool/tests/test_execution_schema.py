@@ -10,6 +10,7 @@ from pathlib import Path
 
 from backlog_cli import db, execution
 from backlog_cli.db import BacklogError
+from backlog_cli.schema import SCHEMA_VERSION
 
 
 class ExecutionContractTest(unittest.TestCase):
@@ -24,7 +25,9 @@ class ExecutionContractTest(unittest.TestCase):
         self.conn = db.connect(spec=spec, create=True)
         project = db.get_or_create_project(self.conn, "sample", spec)
         from backlog_cli import core
-        self.task = core.add_task(self.conn, project["id"], "story", "Executable")
+        self.task = core.add_task(
+            self.conn, project["id"], "story", "Executable", actor="fixture-creator"
+        )
         self.item = core.add_item(
             self.conn, project["id"], self.task["key"], "acceptance_criteria", "It works"
         )
@@ -227,7 +230,7 @@ allowed_hooks: ["tests.run"]
         )
         self.assertEqual(
             self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], "14",
+            .fetchone()["value"], str(SCHEMA_VERSION),
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
@@ -260,7 +263,7 @@ allowed_hooks: ["tests.run"]
             self.conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()["value"],
-            "14",
+            str(SCHEMA_VERSION),
         )
 
     def test_dirty_source_fingerprint_excludes_ignored_files(self):

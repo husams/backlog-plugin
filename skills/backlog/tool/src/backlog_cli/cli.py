@@ -8,7 +8,9 @@ import os
 import sys
 from pathlib import Path
 
-from . import __version__, core, deps, execution, hooks, review, templates, workflow
+from . import (
+    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
+)
 from .db import (
     BacklogError,
     Conn,
@@ -218,7 +220,7 @@ def cmd_doctor(ctx: Ctx, args) -> int:
     )
     for tbl in ("template", "template_workflow", "template_status", "template_transition",
                 "project", "workflow", "workflow_status", "workflow_transition",
-                "task", "task_item", "executable_item", "execution_result",
+                "task", "retrospective_action", "task_item", "executable_item", "execution_result",
                 "validation_waiver",
                 "dependency", "review_comment",
                 "review_thread", "artifact", "event"):
@@ -244,6 +246,26 @@ def cmd_doctor(ctx: Ctx, args) -> int:
         "SELECT key FROM task WHERE task_type = 'subtask' AND parent_id IS NULL"
     ).fetchall()
     problems += [f"subtask {r['key']} has no parent story" for r in orphan_sub]
+
+    bad_retrospective_iterations = conn.execute(
+        "SELECT a.key,i.key AS iteration_key,i.task_type,i.project_id "
+        "FROM retrospective_action a JOIN task i ON i.id=a.iteration_id "
+        "WHERE i.task_type!='iteration' OR i.project_id!=a.project_id"
+    ).fetchall()
+    problems += [
+        f"retrospective action {r['key']} points at invalid Iteration {r['iteration_key']}"
+        for r in bad_retrospective_iterations
+    ]
+    bad_retrospective_resolutions = conn.execute(
+        "SELECT a.key,t.key AS task_key,t.task_type,t.project_id "
+        "FROM retrospective_action a JOIN task t ON t.id=a.resolution_task_id "
+        "WHERE t.task_type NOT IN ('feature','bug') "
+        "OR t.project_id!=a.resolution_project_id"
+    ).fetchall()
+    problems += [
+        f"retrospective action {r['key']} has invalid resolution {r['task_key']}"
+        for r in bad_retrospective_resolutions
+    ]
 
     # A status is legal if the task's own workflow declares it — the compiled-in
     # vocabulary is not the authority any more.
@@ -480,6 +502,111 @@ def cmd_iteration_member_remove(ctx: Ctx, args) -> int:
     )
     ctx.emit({"iteration": args.iteration.upper(), "member": args.member.upper()},
              f"removed {args.member.upper()} from {args.iteration.upper()}")
+    return 0
+
+
+def _retrospective_text(row) -> str:
+    lines = [
+        f"{row['key']}  [{retrospective.STATUS_DISPLAY[row['status']]}]  {row['title']}",
+        f"project: {row['project_slug']}",
+        f"iteration: {row['iteration_key']}",
+        f"repeated issue: {row['repeated_issue']}",
+        f"proposed solution: {row['proposed_solution']}",
+    ]
+    if row["rejection_reason"]:
+        lines.append(f"rejection reason: {row['rejection_reason']}")
+    if row["resolution_task_key"]:
+        lines.append(
+            "resolution: "
+            f"{row['resolution_project_slug']}:{row['resolution_task_key']} "
+            f"({row['resolution_task_type']})"
+        )
+    return "\n".join(lines)
+
+
+def cmd_retrospective_add(ctx: Ctx, args) -> int:
+    row = retrospective.create_action(
+        ctx.conn,
+        ctx.pid,
+        iteration=args.iteration,
+        repeated_issue=args.issue,
+        proposed_solution=args.solution,
+        title=args.title,
+        actor=args.actor,
+    )
+    ctx.emit(row_to_dict(row), _retrospective_text(row))
+    return 0
+
+
+def cmd_retrospective_list(ctx: Ctx, args) -> int:
+    rows = retrospective.list_actions(
+        ctx.conn, ctx.pid, status=args.status, iteration=args.iteration
+    )
+    text = table(
+        ["KEY", "STATUS", "ITERATION", "TITLE", "RESOLUTION"],
+        [[
+            row["key"],
+            retrospective.STATUS_DISPLAY[row["status"]],
+            row["iteration_key"],
+            row["title"],
+            (
+                f"{row['resolution_project_slug']}:{row['resolution_task_key']}"
+                if row["resolution_task_key"] else ""
+            ),
+        ] for row in rows],
+    )
+    ctx.emit([row_to_dict(row) for row in rows], text)
+    return 0
+
+
+def cmd_retrospective_show(ctx: Ctx, args) -> int:
+    row = retrospective.get_action(ctx.conn, ctx.pid, args.key)
+    ctx.emit(row_to_dict(row), _retrospective_text(row))
+    return 0
+
+
+def cmd_retrospective_accept(ctx: Ctx, args) -> int:
+    row = retrospective.accept_action(ctx.conn, ctx.pid, args.key, actor=args.actor)
+    ctx.emit(row_to_dict(row), _retrospective_text(row))
+    return 0
+
+
+def cmd_retrospective_reject(ctx: Ctx, args) -> int:
+    row = retrospective.reject_action(
+        ctx.conn, ctx.pid, args.key, reason=args.reason, actor=args.actor
+    )
+    ctx.emit(row_to_dict(row), _retrospective_text(row))
+    return 0
+
+
+def cmd_retrospective_close(ctx: Ctx, args) -> int:
+    resolution_task = args.feature or args.bug
+    expected_type = "feature" if args.feature else "bug"
+    row = retrospective.close_action(
+        ctx.conn,
+        ctx.pid,
+        args.key,
+        resolution_project=args.resolution_project,
+        resolution_task=resolution_task,
+        expected_task_type=expected_type,
+        actor=args.actor,
+    )
+    ctx.emit(row_to_dict(row), _retrospective_text(row))
+    return 0
+
+
+def cmd_retrospective_history(ctx: Ctx, args) -> int:
+    rows = retrospective.history(ctx.conn, ctx.pid, args.key)
+    ctx.emit(
+        [row_to_dict(row) for row in rows],
+        table(
+            ["TS", "KIND", "ACTOR", "FROM", "TO", "DETAIL"],
+            [[
+                row["ts"], row["kind"], row["actor"] or "-",
+                row["from_value"] or "", row["to_value"] or "", row["detail"],
+            ] for row in rows],
+        ),
+    )
     return 0
 
 
@@ -1417,6 +1544,7 @@ _EXPORT_TABLES: list[tuple[str, str]] = [
     ("key_counter", "project_id"),
     ("task", "id"),
     ("iteration_member", "iteration_id, member_id"),
+    ("retrospective_action", "id"),
     ("task_item", "id"),
     ("executable_item", "item_id"),
     ("execution_result", "id"),
@@ -1473,6 +1601,7 @@ def cmd_import(ctx: Ctx, args) -> int:
     if not args.replace:
         raise BacklogError("import rewrites the whole store; pass --replace to confirm")
     _validate_import_tasks(data["tables"].get("task", []))
+    _validate_import_retrospectives(data["tables"])
     _validate_import_workflows(data["tables"])
     if not conn.is_postgres:
         conn.execute("PRAGMA foreign_keys = OFF")
@@ -1542,6 +1671,44 @@ def _validate_import_workflows(tables: dict[str, list[dict]]) -> None:
             f"in project {projects.get(project_id) or project_id}; run "
             "`backlog workflow upgrade` in the source project and export again"
         )
+
+
+def _validate_import_retrospectives(tables: dict[str, list[dict]]) -> None:
+    """Reject cross-project or incorrectly typed retrospective references."""
+    tasks = {row.get("id"): row for row in tables.get("task", [])}
+    projects = {row.get("id"): row for row in tables.get("project", [])}
+    for row in tables.get("retrospective_action", []):
+        key = row.get("key") or "<unknown>"
+        project_id = row.get("project_id")
+        if project_id not in projects:
+            raise BacklogError(
+                f"import rejected: retrospective action {key} has no owning project"
+            )
+        iteration = tasks.get(row.get("iteration_id"))
+        if (
+            iteration is None
+            or iteration.get("task_type") != "iteration"
+            or iteration.get("project_id") != project_id
+        ):
+            raise BacklogError(
+                f"import rejected: retrospective action {key} requires an Iteration "
+                "in its owning project"
+            )
+        resolution_project_id = row.get("resolution_project_id")
+        resolution_task_id = row.get("resolution_task_id")
+        if resolution_project_id is None and resolution_task_id is None:
+            continue
+        target = tasks.get(resolution_task_id)
+        if (
+            resolution_project_id not in projects
+            or target is None
+            or target.get("project_id") != resolution_project_id
+            or target.get("task_type") not in {"feature", "bug"}
+        ):
+            raise BacklogError(
+                f"import rejected: retrospective action {key} requires a Feature or Bug "
+                "in its resolution project"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -1834,6 +2001,46 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("iteration")
     sp.add_argument("member")
     sp.set_defaults(func=cmd_iteration_member_remove)
+
+    rap = sub.group(
+        "retrospective",
+        help="workflow-improvement actions discovered during Iterations",
+    )
+    sp = rap.add_parser("add", help="record a repeated issue and proposed solution")
+    sp.add_argument("--iteration", required=True)
+    sp.add_argument("--issue", required=True, help="the repeated workflow issue")
+    sp.add_argument("--solution", required=True, help="the proposed improvement")
+    sp.add_argument("--title", help="short label; defaults to the issue's first line")
+    sp.set_defaults(func=cmd_retrospective_add)
+    sp = rap.add_parser("list", help="list retrospective actions in this project")
+    sp.add_argument("--status", choices=retrospective.STATUSES)
+    sp.add_argument("--iteration")
+    sp.set_defaults(func=cmd_retrospective_list)
+    sp = rap.add_parser("show", help="show one retrospective action")
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_retrospective_show)
+    sp = rap.add_parser("accept", help="accept a Created action and make it Ready")
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_retrospective_accept)
+    sp = rap.add_parser("reject", help="reject a Created or Ready action with a reason")
+    sp.add_argument("key")
+    sp.add_argument("--reason", required=True)
+    sp.set_defaults(func=cmd_retrospective_reject)
+    sp = rap.add_parser(
+        "close", help="close a Ready action against a Feature or Bug"
+    )
+    sp.add_argument("key")
+    sp.add_argument(
+        "--resolution-project", required=True,
+        help="project containing the Feature or Bug (may differ from the owning project)",
+    )
+    resolution = sp.add_mutually_exclusive_group(required=True)
+    resolution.add_argument("--feature")
+    resolution.add_argument("--bug")
+    sp.set_defaults(func=cmd_retrospective_close)
+    sp = rap.add_parser("history", help="audit trail for one retrospective action")
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_retrospective_history)
 
     sbp = sub.group("subtask", help="subtasks of a story or bug")
     sp = sbp.add_parser("add")

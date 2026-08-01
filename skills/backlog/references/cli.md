@@ -12,7 +12,8 @@ before or after the subcommand.
 
 Keys are per project and case-insensitive: `F-001` features, `S-001` stories,
 `B-001` standalone Bugs, `I-001` Iterations, `T-001` subtasks, and `C-001`
-review comments. A thread is named by its root comment key.
+review comments. Retrospective improvement actions use `R-001`. A thread is
+named by its root comment key.
 
 ## Store and projects
 
@@ -72,14 +73,14 @@ own board section, but it is not generic deliverable work for `next`.
 ## Creating and editing
 
 ```bash
-$BL feature  add --title T [--description D] [--ac "..."] [--priority P0..P3] [--owner X]
-$BL story    add --title T [--feature F-001] [--branch B] [...]
-$BL bug      add --title T [--branch B] [...]
-$BL iteration add --title T [--priority P0..P3] [...]
+$BL feature  add --title T --actor NAME [--description D] [--ac "..."] [--priority P0..P3] [--owner X]
+$BL story    add --title T --actor NAME [--feature F-001] [--branch B] [...]
+$BL bug      add --title T --actor NAME [--branch B] [...]
+$BL iteration add --title T --actor NAME [--priority P0..P3] [...]
 $BL iteration member-add I-001 S-001
 $BL iteration member-remove I-001 S-001
-$BL subtask  add (--story S-001 | --bug B-001) --title T [...]
-$BL task     add --type feature|story|bug|subtask|iteration [--parent KEY] --title T [...]
+$BL subtask  add (--story S-001 | --bug B-001) --title T --actor NAME [...]
+$BL task     add --type feature|story|bug|subtask|iteration [--parent KEY] --title T --actor NAME [...]
 
 $BL set KEY [--title|--description|--ac|--priority|--owner|--branch|--parent]
 $BL assign KEY [--to X] [--reviewer Y] [--to-kind human|agent] [--reviewer-kind ...]
@@ -113,6 +114,30 @@ Closing requires every retained member to be in a finished status and every
 Iteration review thread to be closed. Closing never changes member status.
 Reopening is rejected if a retained member is already in another Open
 Iteration, and the error names each conflict.
+
+## Retrospective improvement actions
+
+```bash
+$BL retrospective add --iteration I-001 --issue "Repeated problem" \
+  --solution "Proposed workflow improvement" [--title "Short label"] --actor facilitator
+$BL retrospective list [--status created|ready|done|rejected] [--iteration I-001]
+$BL retrospective show R-001
+$BL retrospective accept R-001 --actor product-manager
+$BL retrospective reject R-001 --reason "Why it will not be pursued"
+$BL retrospective close R-001 --resolution-project PROJECT \
+  (--feature F-001 | --bug B-001)
+$BL retrospective history R-001
+```
+
+An action belongs to the selected project and must reference one of that
+project's Iterations. Accept moves Created to Ready. Reject is available from
+Created or Ready and retains the required reason. Close is available only from
+Ready and retains the target project plus Feature or Bug; that target may be in
+another project in the store. See [retrospectives.md](retrospectives.md).
+
+All new task and retrospective-action creation commands require `--actor`.
+The recorded creator cannot perform the corresponding acceptance, and an
+attributed record cannot be accepted without an actor.
 
 ## Task items — criteria, checklists, notes
 
