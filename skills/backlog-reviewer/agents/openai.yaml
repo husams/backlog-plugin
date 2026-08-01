@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backlog Reviewer"
+  short_description: "Independently review Backlog work"
+  default_prompt: "Use $backlog-reviewer to independently review this Backlog task and decide every response."

@@ -1,0 +1,22 @@
+name: Validate Backlog Reviewer skill
+
+on:
+  push:
+    paths:
+      - "skills/backlog-reviewer/**"
+      - ".github/workflows/backlog-reviewer.yml"
+  pull_request:
+    paths:
+      - "skills/backlog-reviewer/**"
+      - ".github/workflows/backlog-reviewer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate package and evaluator manifest
+        run: python3 skills/backlog-reviewer/evals/validate.py
