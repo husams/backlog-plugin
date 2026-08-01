@@ -1,0 +1,27 @@
+name: Validate Backlog Coordinator skill
+
+on:
+  push:
+    paths:
+      - "skills/backlog-coordinator/**"
+      - "skills/backlog-implementer/**"
+      - "skills/backlog-reviewer/**"
+      - ".github/workflows/backlog-coordinator.yml"
+  pull_request:
+    paths:
+      - "skills/backlog-coordinator/**"
+      - "skills/backlog-implementer/**"
+      - "skills/backlog-reviewer/**"
+      - ".github/workflows/backlog-coordinator.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coordinator-evals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run repository-owned coordinator evaluations
+        run: python3 skills/backlog-coordinator/evals/harness.py
