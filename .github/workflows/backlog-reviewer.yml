@@ -4,10 +4,12 @@ on:
   push:
     paths:
       - "skills/backlog-reviewer/**"
+      - "skills/backlog/references/**"
       - ".github/workflows/backlog-reviewer.yml"
   pull_request:
     paths:
       - "skills/backlog-reviewer/**"
+      - "skills/backlog/references/**"
       - ".github/workflows/backlog-reviewer.yml"
 
 permissions:
@@ -18,5 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
       - name: Validate package and evaluator manifest
         run: python3 skills/backlog-reviewer/evals/validate.py

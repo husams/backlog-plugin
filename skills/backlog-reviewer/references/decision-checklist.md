@@ -18,7 +18,7 @@ Use this checklist before handing a reviewed task back:
 - [ ] No root remains ambiguously open and the configured approval or
       changes-requested action was used.
 - [ ] For an Iteration, all severity roots are closed and
-      `iteration_comments_closed` passes; disposition alone was not counted as
-      closure.
+      `iteration_comments_closed` passes; `iteration_members_finished` also
+      passes; disposition alone was not counted as closure.
 - [ ] Merge readiness is green through `bl.can(..., target="merge")` or the
       documented gate command; the reviewer did not merge.

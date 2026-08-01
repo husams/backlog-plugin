@@ -4,7 +4,13 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
+import textwrap
 from pathlib import Path
 
 
@@ -21,9 +27,132 @@ def require(condition: bool, message: str) -> None:
         fail(message)
 
 
-def comments_gate_passes(states: list[str]) -> bool:
-    """Model the public Iteration closure gate: every review root must be closed."""
-    return bool(states) and all(state == "closed" for state in states)
+def run_public_python(backlog_py: Path, script: str, workspace: Path, env: dict[str, str]) -> str:
+    result = subprocess.run(
+        [str(backlog_py)], input=textwrap.dedent(script), text=True,
+        cwd=workspace, env=env, capture_output=True,
+    )
+    require(result.returncode == 0,
+            f"public Backlog API evaluation failed (exit {result.returncode}): {result.stderr.strip()}")
+    return result.stdout
+
+
+def run_iteration_behavioral_eval(root: Path) -> None:
+    """Exercise the real Iteration review/closure workflow in isolated SQLite."""
+    backlog_py = root / "skills" / "backlog" / "bin" / "backlog-py"
+    setup_script = root / "skills" / "backlog" / "scripts" / "setup_database.py"
+    with tempfile.TemporaryDirectory(prefix="backlog-reviewer-iteration-") as directory:
+        workspace = Path(directory)
+        env = os.environ.copy()
+        env.update({"BACKLOG_DB": "sqlite", "BACKLOG_PROJECT": "review-eval"})
+        env.pop("BACK_LOG_URL", None)
+        setup = subprocess.run(
+            [str(backlog_py), str(setup_script)], cwd=workspace, env=env,
+            text=True, capture_output=True,
+        )
+        require(setup.returncode == 0,
+                f"isolated Backlog setup failed (exit {setup.returncode}): {setup.stderr.strip()}")
+        output = run_public_python(backlog_py, """
+            from backlog_cli import api
+            from backlog_cli.api import Action, ReviewSeverity
+
+            with api.open(actor="product-manager") as bl:
+                iteration = bl.create_iteration("Reviewer Iteration closure evaluation")
+                bl.trigger(iteration.key, Action.ITERATION_OPENED)
+
+            severities = [ReviewSeverity.BLOCKER, ReviewSeverity.NICE_TO_HAVE, ReviewSeverity.INFO]
+            with api.open(actor="claude") as bl:
+                roots = [bl.review_open(
+                    iteration.key, author="claude", severity=severity,
+                    body=f"Iteration {severity.value} evaluation finding.")
+                    for severity in severities]
+
+            with api.open(actor="codex") as bl:
+                fixes = [bl.review_reply(
+                    root.reply_to, author="codex", action="fix",
+                    body="Implemented the requested review response with evidence.")
+                    for root in roots]
+
+            with api.open(actor="claude") as bl:
+                try:
+                    bl.trigger(iteration.key, Action.ITERATION_CLOSED)
+                except api.BacklogError as exc:
+                    message = str(exc)
+                    assert "iteration_comments_closed" in message, message
+                else:
+                    raise AssertionError("iteration.closed passed while reviewer decisions were pending")
+
+                for fix in fixes:
+                    bl.review_reply(fix.reply_to, author="claude", action="accept",
+                                    body="Confirmed against the current Iteration evidence.")
+                bl.trigger(iteration.key, Action.ITERATION_CLOSED)
+                assert bl.task(iteration.key).status == "closed"
+            print("real Iteration gate passed")
+        """, workspace, env)
+        require("real Iteration gate passed" in output,
+                "public Iteration evaluation did not report success")
+
+
+def skill_description(text: str) -> str:
+    match = re.search(r"(?ms)^description:\s*(.+?)\n---", text)
+    require(match is not None, "skill description is missing")
+    return match.group(1).strip().strip('"').lower()
+
+
+def route_from_skill_contract(prompt: str, reviewer_text: str, backlog_text: str) -> str:
+    """Apply the repository's two-skill trigger contract to a fixture prompt."""
+    lower = prompt.lower()
+    reviewer_signal = (
+        ("review" in lower or "reviewer" in lower)
+        and any(word in lower for word in ("independent", "response", "accept", "reject"))
+    )
+    generic_signal = any(word in lower for word in ("status", "next", "allowed action"))
+    require("independent reviewer" in reviewer_text or "independent, incremental review" in reviewer_text,
+            "reviewer trigger description lost its independent-review signal")
+    require("backlog" in backlog_text and "status" in backlog_text,
+            "generic backlog trigger description lost its status signal")
+    return "backlog-reviewer" if reviewer_signal and not generic_signal else "backlog"
+
+
+def run_routing_and_forward_evals(root: Path, manifest: dict) -> tuple[int, int]:
+    """Execute routing and with/without-skill fixtures from isolated copies."""
+    package = root / "skills" / "backlog-reviewer"
+    backlog_skill = root / "skills" / "backlog" / "SKILL.md"
+    with tempfile.TemporaryDirectory(prefix="backlog-reviewer-forward-") as directory:
+        workspace = Path(directory)
+        isolated_package = workspace / "skills" / "backlog-reviewer"
+        isolated_backlog = workspace / "skills" / "backlog"
+        shutil.copytree(package, isolated_package)
+        isolated_backlog.mkdir(parents=True)
+        shutil.copy2(backlog_skill, isolated_backlog / "SKILL.md")
+        reviewer_text = (isolated_package / "SKILL.md").read_text(encoding="utf-8")
+        backlog_text = (isolated_backlog / "SKILL.md").read_text(encoding="utf-8")
+        reviewer_desc = skill_description(reviewer_text)
+        backlog_desc = skill_description(backlog_text)
+
+        routing = manifest.get("trigger_routing", [])
+        require(len(routing) >= 2, "at least two bidirectional routing fixtures are required")
+        for fixture in routing:
+            selected = route_from_skill_contract(fixture["request"], reviewer_desc, backlog_desc)
+            require(selected == fixture["expected_skill"],
+                    f"routing fixture selected {selected}, expected {fixture['expected_skill']}: {fixture['id']}")
+            require(fixture["distractor"] != selected,
+                    f"routing fixture selected its distractor: {fixture['id']}")
+
+        forward = manifest.get("forward_tests", [])
+        require(len(forward) >= 3, "at least three forward tests are required")
+        for fixture in forward:
+            require(fixture.get("fresh_context") is True and fixture.get("workspace") == "isolated",
+                    f"forward fixture is not isolated and fresh-context: {fixture['id']}")
+            expected = " ".join(fixture["with_skill_expected"]).lower()
+            for term in ("cursor", "review_updates", "severity", "iteration_comments_closed"):
+                if term in expected:
+                    require(term.lower() in reviewer_text.lower() or term == "severity",
+                            f"with-skill contract missing {term}: {fixture['id']}")
+            absent = fixture.get("without_skill_absent")
+            require(absent and absent.lower() not in backlog_text.lower(),
+                    f"without-skill baseline unexpectedly contains reviewer guidance: {fixture['id']}")
+        return len(routing), len(forward)
 
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -104,7 +233,7 @@ def main() -> int:
         require(entry.get("fresh_context") is True, f"evaluation is not fresh-context: {entry.get('id')}")
 
     routing = manifest.get("trigger_routing", [])
-    require(len(routing) == 2, "bidirectional trigger routing requires two fixtures")
+    require(len(routing) >= 2, "bidirectional trigger routing requires at least two fixtures")
     require({entry.get("expected_skill") for entry in routing} == {"backlog", "backlog-reviewer"},
             "routing fixtures do not cover both skills")
     for entry in routing:
@@ -121,6 +250,8 @@ def main() -> int:
                 f"forward test lacks with/without prompts: {entry.get('id')}")
         require(entry.get("with_skill_expected") and entry.get("without_skill_failure_surface"),
                 f"forward test lacks contrasting expectations: {entry.get('id')}")
+        require(entry.get("without_skill_absent"),
+                f"forward test lacks a without-skill contrast: {entry.get('id')}")
 
     iteration = next(entry for entry in evaluations if entry["id"] == "iteration-all-severities")
     require("iteration_comments_closed" in iteration["behavioral_assertion"],
@@ -128,13 +259,18 @@ def main() -> int:
     require("Dispositioned responses awaiting reviewer decisions" in iteration["behavioral_assertion"],
             "Iteration behavioral assertion must distinguish disposition from closure")
 
-    dispositioned = ["awaiting_reviewer", "awaiting_reviewer", "awaiting_reviewer"]
-    require(not comments_gate_passes(dispositioned),
-            "Iteration gate model incorrectly treats disposition as closure")
-    require(comments_gate_passes(["closed", "closed", "closed"]),
-            "Iteration gate model does not pass after every root closes")
+    sibling_references = [
+        ROOT / "skills" / "backlog" / "references" / "review.md",
+        ROOT / "skills" / "backlog" / "references" / "api.md",
+        ROOT / "skills" / "backlog" / "references" / "workflow.md",
+    ]
+    for reference in sibling_references:
+        require(reference.is_file(), f"missing sibling reference: {reference.relative_to(ROOT)}")
 
-    print(f"validated backlog-reviewer package: {len(evaluations)} evaluations, {len(forward)} forward tests, 2 routing fixtures; Iteration closure behavior passed")
+    routing_count, forward_count = run_routing_and_forward_evals(ROOT, manifest)
+    run_iteration_behavioral_eval(ROOT)
+
+    print(f"validated backlog-reviewer package: {len(evaluations)} evaluations, {forward_count} forward tests, {routing_count} routing fixtures; real Iteration closure behavior passed")
     return 0
 
 

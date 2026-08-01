@@ -100,7 +100,8 @@
       "with_skill": "Use $backlog-reviewer to review a task with one known root and later incremental feedback.",
       "without_skill": "Review the same task using only generic backlog guidance.",
       "with_skill_expected": ["per-root cursor", "review_updates", "complete evidence"],
-      "without_skill_failure_surface": "historical reread or shared task cursor"
+      "without_skill_failure_surface": "historical reread or shared task cursor",
+      "without_skill_absent": "Preserve independence"
     },
     {
       "id": "forward-disposition",
@@ -109,7 +110,8 @@
       "with_skill": "Use $backlog-reviewer to decide blocker, nice_to_have, and info responses.",
       "without_skill": "Review the same three responses without the reviewer skill.",
       "with_skill_expected": ["accept/reject every severity", "no response pending"],
-      "without_skill_failure_surface": "advisory response left unanswered"
+      "without_skill_failure_surface": "advisory response left unanswered",
+      "without_skill_absent": "Every implementer response at every severity"
     },
     {
       "id": "forward-iteration",
@@ -118,7 +120,8 @@
       "with_skill": "Use $backlog-reviewer to close an Iteration only after all comments are closed.",
       "without_skill": "Attempt the same Iteration review using generic backlog guidance.",
       "with_skill_expected": ["iteration_comments_closed", "disposition is not closure"],
-      "without_skill_failure_surface": "iteration.closed attempted with open roots"
+      "without_skill_failure_surface": "iteration.closed attempted with open roots",
+      "without_skill_absent": "iteration_members_finished"
     }
   ],
   "validation": {

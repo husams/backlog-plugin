@@ -71,10 +71,9 @@ response and an opening-reviewer `accept` or `reject`. Disposition alone does
 not close a root. Verify every root is closed before allowing
 `iteration.closed`; the closure gate is `iteration_comments_closed`, which
 blocks on any open severity. Feedback events on an Iteration are lifecycle
-no-ops. Also check the member-finished gate and use only the currently allowed
-`iteration.closed` action. A behavioral evaluation must prove that three
-dispositioned-but-awaiting-reviewer responses still refuse closure until all
-three reviewer decisions close their roots.
+no-ops. Also check the `iteration_members_finished` gate and use only the
+currently allowed `iteration.closed` action. The repository-owned evaluation
+under `evals/` exercises this behavior through the public API.
 
 ## Merge handoff
 
