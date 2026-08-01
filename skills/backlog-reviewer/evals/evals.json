@@ -119,9 +119,9 @@
       "fresh_context": true,
       "with_skill": "Use $backlog-reviewer to close an Iteration only after all comments are closed.",
       "without_skill": "Attempt the same Iteration review using generic backlog guidance.",
-      "with_skill_expected": ["iteration_comments_closed", "disposition is not closure"],
+      "with_skill_expected": ["iteration_comments_closed", "iteration_members_finished", "disposition is not closure"],
       "without_skill_failure_surface": "iteration.closed attempted with open roots",
-      "without_skill_absent": "iteration_members_finished"
+      "without_skill_absent": "Disposition alone does not close a root"
     }
   ],
   "validation": {

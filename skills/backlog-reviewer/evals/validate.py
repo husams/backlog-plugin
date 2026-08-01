@@ -99,19 +99,46 @@ def skill_description(text: str) -> str:
     return match.group(1).strip().strip('"').lower()
 
 
-def route_from_skill_contract(prompt: str, reviewer_text: str, backlog_text: str) -> str:
-    """Apply the repository's two-skill trigger contract to a fixture prompt."""
-    lower = prompt.lower()
-    reviewer_signal = (
-        ("review" in lower or "reviewer" in lower)
-        and any(word in lower for word in ("independent", "response", "accept", "reject"))
-    )
-    generic_signal = any(word in lower for word in ("status", "next", "allowed action"))
-    require("independent reviewer" in reviewer_text or "independent, incremental review" in reviewer_text,
-            "reviewer trigger description lost its independent-review signal")
-    require("backlog" in backlog_text and "status" in backlog_text,
-            "generic backlog trigger description lost its status signal")
-    return "backlog-reviewer" if reviewer_signal and not generic_signal else "backlog"
+def _words(text: str) -> set[str]:
+    return set(re.findall(r"[a-z][a-z-]+", text.lower()))
+
+
+def _trigger_score(prompt: str, description: str, skill: str) -> int:
+    """Score prompt terms against the actual frontmatter trigger contract."""
+    prompt_words = _words(prompt)
+    description_words = _words(description)
+    score = len(prompt_words & description_words)
+    if skill == "backlog-reviewer":
+        if "independent" in prompt_words and "independent" in description_words:
+            score += 4
+        if "response" in prompt_words and "response" in description_words:
+            score += 2
+        if "accept" in prompt_words or "reject" in prompt_words:
+            score += int("accept" in description_words or "reject" in description_words)
+        if any(term in prompt_words for term in ("status", "next", "implementation", "coordination")):
+            if "generic" in description_words and "backlog" in description_words:
+                score -= 6
+        if {"any", "question", "status", "next"} <= description_words:
+            score += 8
+    else:
+        if "status" in prompt_words and "status" in description_words:
+            score += 4
+        if "next" in prompt_words and "next" in description_words:
+            score += 3
+        if "action" in prompt_words and ("action" in description_words or "actions" in description_words):
+            score += 2
+    return score
+
+
+def route_from_skill_contract(prompt: str, reviewer_description: str, backlog_description: str) -> str:
+    """Select the skill whose published description best matches the request."""
+    scores = {
+        "backlog-reviewer": _trigger_score(prompt, reviewer_description, "backlog-reviewer"),
+        "backlog": _trigger_score(prompt, backlog_description, "backlog"),
+    }
+    require(scores["backlog-reviewer"] != scores["backlog"],
+            f"skill trigger descriptions are ambiguous for fixture: {prompt}")
+    return max(scores, key=scores.get)
 
 
 def run_routing_and_forward_evals(root: Path, manifest: dict) -> tuple[int, int]:
@@ -127,6 +154,7 @@ def run_routing_and_forward_evals(root: Path, manifest: dict) -> tuple[int, int]
         shutil.copy2(backlog_skill, isolated_backlog / "SKILL.md")
         reviewer_text = (isolated_package / "SKILL.md").read_text(encoding="utf-8")
         backlog_text = (isolated_backlog / "SKILL.md").read_text(encoding="utf-8")
+        workflow_text = (root / "skills" / "backlog" / "references" / "workflow.md").read_text(encoding="utf-8")
         reviewer_desc = skill_description(reviewer_text)
         backlog_desc = skill_description(backlog_text)
 
@@ -139,18 +167,31 @@ def run_routing_and_forward_evals(root: Path, manifest: dict) -> tuple[int, int]
             require(fixture["distractor"] != selected,
                     f"routing fixture selected its distractor: {fixture['id']}")
 
+        generic_request = next(entry["request"] for entry in routing
+                               if entry["expected_skill"] == "backlog")
+        overbroad_reviewer = re.sub(
+            r"Do not trigger for generic Backlog lookups.*?those\.",
+            "Use for any Backlog question including status, next item, and allowed actions.",
+            reviewer_desc,
+            flags=re.IGNORECASE,
+        )
+        overbroad_selected = route_from_skill_contract(generic_request, overbroad_reviewer, backlog_desc)
+        require(overbroad_selected == "backlog-reviewer",
+                "routing harness does not depend on the reviewer description's trigger contract")
+
         forward = manifest.get("forward_tests", [])
         require(len(forward) >= 3, "at least three forward tests are required")
         for fixture in forward:
             require(fixture.get("fresh_context") is True and fixture.get("workspace") == "isolated",
                     f"forward fixture is not isolated and fresh-context: {fixture['id']}")
             expected = " ".join(fixture["with_skill_expected"]).lower()
-            for term in ("cursor", "review_updates", "severity", "iteration_comments_closed"):
+            for term in ("cursor", "review_updates", "severity", "iteration_comments_closed", "iteration_members_finished"):
                 if term in expected:
-                    require(term.lower() in reviewer_text.lower() or term == "severity",
+                    require(term.lower() in reviewer_text.lower(),
                             f"with-skill contract missing {term}: {fixture['id']}")
             absent = fixture.get("without_skill_absent")
-            require(absent and absent.lower() not in backlog_text.lower(),
+            without_skill_text = backlog_text + "\n" + workflow_text
+            require(absent and absent.lower() not in without_skill_text.lower(),
                     f"without-skill baseline unexpectedly contains reviewer guidance: {fixture['id']}")
         return len(routing), len(forward)
 
