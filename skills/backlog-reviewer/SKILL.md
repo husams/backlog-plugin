@@ -17,6 +17,13 @@ the source of truth. Read references progressively:
 - Use `references/decision-checklist.md` before a verdict and
   `references/failure-modes.md` when a guardrail is at risk.
 
+## Use Backlog evidence safely
+
+Use the documented Python API for multi-step or computed work. Reserve the CLI
+for one simple documented command. Never build shell workflows or scratch
+files. Filter before reducing. Never decide from truncated, incomplete, or
+arbitrarily limited evidence.
+
 ## Preserve independence
 
 1. Open every API session with the real reviewer identity.

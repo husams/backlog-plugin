@@ -204,6 +204,15 @@ def package_contract() -> None:
     assert "iteration_members_finished" in skill and "iteration_comments_closed" in skill
     assert "bl.review_updates" in skill and "child Stories/Bugs" in skill
     assert "refinement.accepted" in skill and "created_by" in skill
+    compact_skill = " ".join(skill.split())
+    for phrase in (
+        "Use the documented Python API for multi-step or computed work",
+        "Reserve the CLI for one simple documented command",
+        "Never build shell workflows or scratch files",
+        "Filter before reducing",
+        "Never decide from truncated, incomplete, or arbitrarily limited evidence",
+    ):
+        assert phrase in compact_skill
     assert not re.search(r"\brefiner\s*[:=]", skill, re.IGNORECASE)
     forbidden = ("sqlite3", "psql", "status =", "status=", "cursor.execute")
     assert not any(token in skill.lower() for token in forbidden)
@@ -353,6 +362,15 @@ def trigger_routing_eval() -> None:
         "backlog": _description(ROOT / "skills" / "backlog" / "SKILL.md"),
         "backlog-reviewer": "independently review feedback and decide implementer responses",
     }
+    for phrase in (
+        "generic backlog lookups",
+        "one-off commands",
+        "backlog-coordinator",
+        "backlog-implementer",
+        "backlog-reviewer",
+        "sustained role-specific delivery",
+    ):
+        assert phrase in descriptions["backlog"]
     assert select_skill(
         "Coordinate Feature F-100 decomposition into independently reviewable Stories", descriptions
     ) == "backlog-coordinator"

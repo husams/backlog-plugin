@@ -14,6 +14,13 @@ workflow authority. Read references progressively:
 - `../backlog/references/review.md` for review handoffs and disposition;
 - `../backlog/references/retrospectives.md` for retrospective-action lifecycle.
 
+## Use Backlog evidence safely
+
+Use the documented Python API for multi-step or computed work. Reserve the CLI
+for one simple documented command. Never build shell workflows or scratch
+files. Filter before reducing. Never decide from truncated, incomplete, or
+arbitrarily limited evidence.
+
 ## Preserve role separation
 
 - Open every API session with the real coordinator identity.

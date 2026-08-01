@@ -1,6 +1,6 @@
 ---
 name: backlog
-description: "Track the active development backlog of a project in a `.backlog/` SQLite store, a central file, or a shared PostgreSQL server: projects, tasks (features, stories, standalone bugs, subtasks and Iterations in one table) with acceptance criteria and checklists, retrospective improvement actions, dependencies between tasks, per-project workflows built from templates, assignment to humans or agents, threaded review comments, PR links and artifacts. Use whenever the user asks about the backlog, retrospective actions, workflow improvements, what to work on next, task status, what is blocking what, review comments or feedback, whether something is ready to merge, or asks to plan, groom, assign, review, accept or close work, or to change a project's status flow."
+description: "Query and update a project's Backlog through documented public APIs. Use for generic Backlog lookups and one-off commands such as status, what to work on next, blockers, allowed actions, workflow inspection, and task, Iteration, or retrospective records. For sustained role-specific delivery, use backlog-coordinator for Feature or Iteration decomposition and handoffs, backlog-implementer for implementing a refined Story or Bug, and backlog-reviewer for independent review and merge-readiness decisions. Do not trigger for those explicit role workflows."
 ---
 
 # Backlog
