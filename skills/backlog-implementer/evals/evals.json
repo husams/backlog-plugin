@@ -24,19 +24,19 @@
       "id": "ready-story-success",
       "prompt": "I am assigned S-101 as implementer; implement it, validate it, and hand it to the independent reviewer.",
       "workspace": "isolated",
-      "expected": ["checks actions and dependencies", "starts with work.started", "records current validation evidence", "does not self-approve"]
+      "expected": ["inspect task metadata", "check actions and dependencies", "start only with work.started", "run required executable validation", "record a task note", "return for independent review"]
     },
     {
       "id": "blocked-story-refusal",
       "prompt": "Implement the assigned story, but its dependency is still In Progress.",
       "workspace": "isolated",
-      "expected": ["refuses to start", "reports the blocking dependency", "preserves the task state"]
+      "expected": ["inspect task metadata", "check actions and dependencies", "refuse to start", "report the exact blocker", "preserve task state"]
     },
     {
       "id": "all-severity-review",
       "prompt": "A reviewer posts blocker, nice_to_have, and info roots. Respond and return the work for review.",
       "workspace": "isolated",
-      "expected": ["retains root to LAST_SEEN", "answers all three severities", "uses concrete evidence", "does not accept its own response"]
+      "expected": ["retain root to LAST_SEEN", "read known roots incrementally", "answer blocker", "answer nice_to_have", "answer info", "discover unseen roots once", "never accept own response"]
     },
     {
       "id": "bidirectional-routing",
