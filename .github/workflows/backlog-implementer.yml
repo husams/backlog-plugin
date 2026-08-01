@@ -1,0 +1,37 @@
+name: Backlog Implementer Validation
+
+on:
+  push:
+    paths:
+      - "skills/backlog-implementer/**"
+      - "skills/backlog/**"
+      - ".github/workflows/backlog-implementer.yml"
+  pull_request:
+    paths:
+      - "skills/backlog-implementer/**"
+      - "skills/backlog/**"
+      - ".github/workflows/backlog-implementer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install the repository Backlog runtime
+        run: uv sync --project skills/backlog/tool --locked
+
+      - name: Run the repository-owned evaluator
+        run: python3 -m unittest discover -s skills/backlog-implementer/evals -p 'test_*.py'
