@@ -74,7 +74,10 @@ transitions:
     from: open
     action: iteration.closed
     to: closed
-    gates: [iteration_members_finished, iteration_comments_closed]
+    gates:
+      - iteration_members_finished
+      - iteration_comments_closed
+      - iteration_retrospective_actions_clear
 
   - task_types: [iteration]
     from: closed

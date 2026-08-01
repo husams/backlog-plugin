@@ -65,6 +65,88 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
             json_output=True,
         )
 
+    def standup(self, *args):
+        script = Path(__file__).resolve().parents[2] / "scripts" / "standup.py"
+        return subprocess.run(
+            [sys.executable, str(script), *args],
+            cwd=self.root,
+            env=self.env,
+            text=True,
+            capture_output=True,
+        )
+
+    def test_created_action_blocks_iteration_close_but_ready_done_and_rejected_do_not(self):
+        self.cli("action", "I-001", "iteration.opened")
+        created = self.add_action()
+
+        refused = self.raw("action", "I-001", "iteration.closed")
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("iteration_retrospective_actions_clear", refused.stderr)
+        self.assertIn(created["key"], refused.stderr)
+
+        self.cli(
+            "--actor", "product-manager", "retrospective", "accept", created["key"]
+        )
+        self.cli("action", "I-001", "iteration.closed")
+
+        self.cli("action", "I-001", "iteration.reopened")
+        rejected = self.add_action(actor="facilitator-two")
+        self.cli(
+            "--actor", "product-manager", "retrospective", "reject", rejected["key"],
+            "--reason", "Not worth carrying forward",
+        )
+        self.cli("action", "I-001", "iteration.closed")
+
+        self.cli("action", "I-001", "iteration.reopened")
+        done = self.add_action(actor="facilitator-three")
+        self.cli("--actor", "product-manager", "retrospective", "accept", done["key"])
+        self.cli(
+            "--actor", "product-manager", "feature", "add",
+            "--title", "Retrospective resolution",
+        )
+        self.cli(
+            "--actor", "product-manager", "retrospective", "close", done["key"],
+            "--resolution-project", self.project_slug, "--feature", "F-001",
+        )
+        self.cli("action", "I-001", "iteration.closed")
+
+    def test_board_next_and_standup_surface_open_actions_without_task_counting(self):
+        before = self.standup()
+        self.assertEqual(before.returncode, 0, before.stderr)
+        before_board = next(line for line in before.stdout.splitlines() if line.startswith("board"))
+
+        created = self.add_action()
+        board = self.cli("board")
+        next_work = self.cli("next", "--actor", "product-manager")
+        self.assertIn("Retrospective actions (1)", board)
+        self.assertIn(created["key"], board)
+        self.assertIn("accept_or_reject", board)
+        self.assertIn("RETROSPECTIVE DECISIONS (1)", next_work)
+        self.assertIn("accept_or_reject", next_work)
+
+        board_json = self.cli("board", json_output=True)
+        next_json = self.cli("next", "--actor", "product-manager", json_output=True)
+        for payload in (board_json, next_json):
+            self.assertEqual(
+                [(row["key"], row["status"], row["iteration_key"],
+                  row["required_decision"])
+                 for row in payload["retrospective_actions"]],
+                [(created["key"], "created", "I-001", "accept_or_reject")],
+            )
+
+        self.cli(
+            "--actor", "product-manager", "retrospective", "accept", created["key"]
+        )
+        ready_json = self.cli("next", json_output=True)["retrospective_actions"]
+        self.assertEqual(ready_json[0]["required_decision"], "close_or_reject")
+
+        after = self.standup("--actor", "product-manager")
+        self.assertEqual(after.returncode, 0, after.stderr)
+        self.assertIn("open retrospective actions", after.stdout)
+        self.assertIn("close_or_reject", after.stdout)
+        after_board = next(line for line in after.stdout.splitlines() if line.startswith("board"))
+        self.assertEqual(after_board, before_board)
+
     def test_cli_create_accept_and_close_against_local_feature(self):
         created = self.add_action()
         self.assertEqual(
