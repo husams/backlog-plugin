@@ -109,7 +109,11 @@ class PublicBacklogModel:
         item = self.tasks[member]
         if it.task_type != "iteration" or it.status != "Open":
             raise Refused("membership requires an Open Iteration")
-        if item.task_type not in {"story", "bug"} or item.parent is not None or item.status != "Ready":
+        if (item.task_type not in {"story", "bug"}
+                or (item.task_type == "bug" and item.parent is not None)
+                or (item.task_type == "story" and item.parent is not None
+                    and self.tasks[item.parent].task_type != "feature")
+                or item.status != "Ready"):
             raise Refused("only Ready Story or standalone Ready Bug may be admitted")
         if any(member in members for other, members in self.iteration_members.items()
                if other != iteration and self.tasks[other].status == "Open"):
@@ -439,14 +443,20 @@ def cross_skill_prerequisite_eval() -> str:
     roles = [ROOT / "skills" / "backlog-implementer" / "SKILL.md", ROOT / "skills" / "backlog-reviewer" / "SKILL.md"]
     if not all(path.is_file() for path in roles):
         return "pending: role packages are not yet available"
-    for path in roles:
-        text = _read(path)
-        assert "created_by" in text and "review" in text.lower()
+    implementer_text = _read(roles[0]).lower()
+    reviewer_text = _read(roles[1]).lower()
+    assert {"refinement.accepted", "review", "actor"} <= set(
+        word.strip("`'\"(),.:;") for word in implementer_text.split()
+    )
+    reviewer_words = {word.strip("`'\"(),.:;") for word in reviewer_text.split()}
+    assert "reviewer" in reviewer_words and "accept" in reviewer_words
+    assert any(word.startswith("bl.review_updates") for word in reviewer_words)
     bl = PublicBacklogModel()
     feature = bl.create("feature", "product-manager")
     story = bl.create("story", "business-analyst", parent=feature.key)
     bl.assign(story.key, to="codex", reviewer="claude")
     bl.refinement_accept(story.key, "product-manager")
+    bl.tasks[story.key].status = "Ready"
     iteration = bl.create("iteration", "product-manager", status="Created")
     bl.open_iteration(iteration.key)
     bl.add_member(iteration.key, story.key)
