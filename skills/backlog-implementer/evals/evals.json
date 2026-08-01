@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "skill": "backlog-implementer",
+  "runner": {
+    "command": "python3 -m unittest discover -s skills/backlog-implementer/evals -p 'test_*.py'",
+    "cwd": "checkout",
+    "network": false,
+    "user_home_dependencies": false
+  },
+  "routing": [
+    {
+      "prompt": "I am assigned S-101 as implementer; implement, validate, and hand it to the independent reviewer.",
+      "select": "backlog-implementer",
+      "distractor": "backlog"
+    },
+    {
+      "prompt": "What should I work on next, and what actions are allowed for S-101?",
+      "select": "backlog",
+      "distractor": "backlog-implementer"
+    }
+  ],
+  "cases": [
+    {
+      "id": "ready-story-success",
+      "prompt": "I am assigned S-101 as implementer; implement it, validate it, and hand it to the independent reviewer.",
+      "workspace": "isolated",
+      "expected": ["checks actions and dependencies", "starts with work.started", "records current validation evidence", "does not self-approve"]
+    },
+    {
+      "id": "blocked-story-refusal",
+      "prompt": "Implement the assigned story, but its dependency is still In Progress.",
+      "workspace": "isolated",
+      "expected": ["refuses to start", "reports the blocking dependency", "preserves the task state"]
+    },
+    {
+      "id": "all-severity-review",
+      "prompt": "A reviewer posts blocker, nice_to_have, and info roots. Respond and return the work for review.",
+      "workspace": "isolated",
+      "expected": ["retains root to LAST_SEEN", "answers all three severities", "uses concrete evidence", "does not accept its own response"]
+    },
+    {
+      "id": "bidirectional-routing",
+      "prompt": "Route assigned implementation to the implementer skill and generic status/next/action queries to the backlog skill.",
+      "workspace": "isolated",
+      "expected": ["implementation -> backlog-implementer", "generic backlog query -> backlog", "each direction has the other skill as distractor"]
+    }
+  ]
+}

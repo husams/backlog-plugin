@@ -1,0 +1,9 @@
+shell_enabled: true
+allowed_commands:
+  - python3
+allowed_working_directories:
+  - "."
+max_timeout_seconds: 120
+max_output_bytes: 1048576
+max_batch_seconds: 600
+allowed_hooks: []
