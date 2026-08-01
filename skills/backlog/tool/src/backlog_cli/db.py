@@ -518,6 +518,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     v3                      -> v4 (workflows as data)
     v14                     -> v15 (retrospective improvement actions)
     v15                     -> v16 (task creator attribution and separation)
+    v16                     -> v17 (Iteration retrospective-action closure gate)
     """
     notes: list[str] = []
     if from_version >= SCHEMA_VERSION:
@@ -564,6 +565,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += _upgrade_iteration_template_workflows(conn)
         notes += _seed_missing_workflows(conn)
         notes += _upgrade_iteration_feedback_flow(conn)
+        notes += _upgrade_iteration_retrospective_action_gate(conn)
         notes += _upgrade_feature_review_flow(conn)
         notes += _upgrade_required_validation_gates(conn)
         resync_sequences(conn)
@@ -728,7 +730,14 @@ def _upgrade_iteration_template_workflows(conn: Conn) -> list[str]:
             "VALUES(?,?,?,?,?)",
             [
                 (wf_id, "planned", "open", "", "iteration.opened"),
-                (wf_id, "open", "closed", "iteration_members_finished,iteration_comments_closed", "iteration.closed"),
+                (
+                    wf_id,
+                    "open",
+                    "closed",
+                    "iteration_members_finished,iteration_comments_closed,"
+                    "iteration_retrospective_actions_clear",
+                    "iteration.closed",
+                ),
                 (wf_id, "closed", "open", "iteration_members_finished", "iteration.reopened"),
             ],
         )
@@ -765,6 +774,39 @@ def _upgrade_iteration_feedback_flow(conn: Conn) -> list[str]:
                     changed += 1
     conn.commit()
     return [f"gated Iteration closure in {changed} transition(s)"] if changed else []
+
+
+def _upgrade_iteration_retrospective_action_gate(conn: Conn) -> list[str]:
+    """Require every Created retrospective action to be triaged before closure."""
+    changed = 0
+    gate = "iteration_retrospective_actions_clear"
+    for workflow_table, transition_table, fk in (
+        ("template_workflow", "template_transition", "template_workflow_id"),
+        ("workflow", "workflow_transition", "workflow_id"),
+    ):
+        workflows = conn.execute(
+            f"SELECT id FROM {workflow_table} WHERE task_type = 'iteration'"
+        ).fetchall()
+        for workflow_row in workflows:
+            close = conn.execute(
+                f"SELECT id, gates FROM {transition_table} "
+                f"WHERE {fk} = ? AND from_status = 'open' AND to_status = 'closed'",
+                (workflow_row["id"],),
+            ).fetchone()
+            if close is None:
+                continue
+            gates = [g.strip() for g in (close["gates"] or "").split(",") if g.strip()]
+            if gate in gates:
+                continue
+            gates.append(gate)
+            conn.execute(
+                f"UPDATE {transition_table} SET gates = ? WHERE id = ?",
+                (",".join(gates), close["id"]),
+            )
+            changed += 1
+    conn.commit()
+    return [f"added retrospective action gate to {changed} Iteration transition(s)"] \
+        if changed else []
 
 
 def _add_column(conn: Conn, table: str, column: str, decl: str) -> None:

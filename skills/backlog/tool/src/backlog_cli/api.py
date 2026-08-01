@@ -250,6 +250,10 @@ class RetrospectiveAction:
         return _age_days(self._row["updated_at"])
 
     @property
+    def required_decision(self) -> str | None:
+        return retrospective.required_decision(self._row["status"])
+
+    @property
     def is_open(self) -> bool:
         return self._row["closed_at"] is None
 

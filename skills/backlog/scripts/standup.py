@@ -22,6 +22,11 @@ def main() -> int:
         open_n = sum(n for s, n in counts.items() if s not in ("done", "dropped"))
         done_n = counts.get("done", 0)
         blocked = bl.blocked()
+        retrospective_actions = sorted(
+            bl.retrospective_actions(status=api.RetrospectiveStatus.CREATED)
+            + bl.retrospective_actions(status=api.RetrospectiveStatus.READY),
+            key=lambda action: action.key,
+        )
 
         print(f"store   {bl.store}")
         print(f"board   {open_n} open / {len(blocked)} blocked / {done_n} done"
@@ -44,6 +49,15 @@ def main() -> int:
                 for th in waiting:
                     print(f"  {th.root_key} on {th.task_key}  "
                           f"{th.opened_by}, {th.age_days:.0f}d  {th.body}")
+
+        if retrospective_actions:
+            print()
+            print("open retrospective actions")
+            for action in retrospective_actions:
+                print(
+                    f"  {action.key}  {action.status}  {action.iteration_key}  "
+                    f"{action.title}  [next: {action.required_decision}]"
+                )
 
         if blocked:
             print()
