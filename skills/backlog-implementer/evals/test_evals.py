@@ -41,12 +41,29 @@ class SkillContractTest(unittest.TestCase):
         self.assertIn("nice_to_have", self.skill)
         self.assertIn("info", self.skill)
         self.assertIn("current `pass`", self.skill)
+        for phrase in (
+            "Use the documented Python API for multi-step or computed work",
+            "Reserve the CLI for one simple documented command",
+            "Never build shell workflows or scratch files",
+            "Filter before reducing",
+            "Never decide from truncated, incomplete, or arbitrarily limited evidence",
+        ):
+            self.assertIn(phrase, " ".join(self.skill.split()))
 
         skills = {
             "backlog-implementer": PACKAGE / "SKILL.md",
             "backlog": REPOSITORY / "skills" / "backlog" / "SKILL.md",
         }
         descriptions = {name: self.frontmatter_description(path) for name, path in skills.items()}
+        for phrase in (
+            "generic Backlog lookups",
+            "one-off commands",
+            "backlog-coordinator",
+            "backlog-implementer",
+            "backlog-reviewer",
+            "sustained role-specific delivery",
+        ):
+            self.assertIn(phrase, descriptions["backlog"])
         implementation_prompt = self.evals["routing"][0]["prompt"]
         generic_prompt = self.evals["routing"][1]["prompt"]
         routing_case = next(case for case in self.evals["cases"] if case["id"] == "bidirectional-routing")

@@ -107,7 +107,16 @@ def _trigger_score(prompt: str, description: str, skill: str) -> int:
     """Score prompt terms against the actual frontmatter trigger contract."""
     prompt_words = _words(prompt)
     description_words = _words(description)
+    description_lower = description.lower()
     score = len(prompt_words & description_words)
+    generic_request = any(term in prompt_words for term in ("status", "next", "action"))
+    if generic_request:
+        if "use for generic backlog lookups" in description_lower:
+            score += 8
+        if "do not trigger for generic backlog lookups" in description_lower:
+            score -= 8
+        if "use for any backlog question" in description_lower:
+            score += 12
     if skill == "backlog-reviewer":
         if "independent" in prompt_words and "independent" in description_words:
             score += 4
@@ -115,11 +124,6 @@ def _trigger_score(prompt: str, description: str, skill: str) -> int:
             score += 2
         if "accept" in prompt_words or "reject" in prompt_words:
             score += int("accept" in description_words or "reject" in description_words)
-        if any(term in prompt_words for term in ("status", "next", "implementation", "coordination")):
-            if "generic" in description_words and "backlog" in description_words:
-                score -= 6
-        if {"any", "question", "status", "next"} <= description_words:
-            score += 8
     else:
         if "status" in prompt_words and "status" in description_words:
             score += 4
@@ -171,7 +175,8 @@ def run_routing_and_forward_evals(root: Path, manifest: dict) -> tuple[int, int]
                                if entry["expected_skill"] == "backlog")
         overbroad_reviewer = re.sub(
             r"Do not trigger for generic Backlog lookups.*?those\.",
-            "Use for any Backlog question including status, next item, and allowed actions.",
+            "Use for generic Backlog lookups and one-off commands; use for any Backlog "
+            "question including status, next item, and allowed actions.",
             reviewer_desc,
             flags=re.IGNORECASE,
         )
@@ -231,6 +236,11 @@ def main() -> int:
 
     searchable_skill = " ".join(skill.split())
     required_phrases = [
+        "Use the documented Python API for multi-step or computed work",
+        "Reserve the CLI for one simple documented command",
+        "Never build shell workflows or scratch files",
+        "Filter before reducing",
+        "Never decide from truncated, incomplete, or arbitrarily limited evidence",
         "bl.review_updates(root, after=LAST_SEEN)",
         "root -> LAST_SEEN",
         "final semantically filtered discovery",
@@ -246,6 +256,13 @@ def main() -> int:
     ]
     for phrase in required_phrases:
         require(phrase in searchable_skill, f"SKILL.md omits required guardrail: {phrase}")
+
+    generic_skill = (ROOT / "skills" / "backlog" / "SKILL.md").read_text(encoding="utf-8")
+    generic_description = skill_description(generic_skill).lower()
+    for phrase in ["generic backlog lookups", "one-off commands", "backlog-coordinator",
+                   "backlog-implementer", "backlog-reviewer", "sustained role-specific delivery"]:
+        require(phrase in generic_description,
+                f"generic backlog description omits reciprocal routing contract: {phrase}")
 
     agent_yaml = (PACKAGE / "agents" / "openai.yaml").read_text(encoding="utf-8")
     for phrase in ["display_name:", "short_description:", "default_prompt:", "$backlog-reviewer"]:

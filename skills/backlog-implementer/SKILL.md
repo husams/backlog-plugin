@@ -10,6 +10,13 @@ independently refined contract through review handoff. Use the sibling
 `backlog` skill and its public `backlog_cli` API as the source of truth; do not
 duplicate lifecycle rules in this skill.
 
+## Use Backlog evidence safely
+
+Use the documented Python API for multi-step or computed work. Reserve the CLI
+for one simple documented command. Never build shell workflows or scratch
+files. Filter before reducing. Never decide from truncated, incomplete, or
+arbitrarily limited evidence.
+
 ## Boundaries and routing
 
 - Trigger only when the request identifies an assigned implementation task and
