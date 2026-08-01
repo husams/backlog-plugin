@@ -22,16 +22,17 @@ a parallel grouping, not a parent task.
 
 ```bash
 $BL feature add --title "Incremental reindex" --priority P1 --owner architect \
-  --description "Reindex only translation units whose inputs changed."
+  --description "Reindex only translation units whose inputs changed." --actor product-manager
 
 $BL story add --feature F-001 --title "Detect stale translation units" --priority P1 \
   --description "Compare recorded input hashes against the working tree." \
+  --actor business-analyst \
   --ac "Given an unchanged TU, when reindex runs, it is skipped.
 Given a changed header, when reindex runs, every dependent TU is rebuilt.
 cidx index --incremental exits 0 and reports the skipped count."
 
-$BL subtask add --story S-001 --title "Record per-TU input hashes at index time"
-$BL subtask add --story S-001 --title "Add --incremental to cidx index"
+$BL subtask add --story S-001 --title "Record per-TU input hashes at index time" --actor codex
+$BL subtask add --story S-001 --title "Add --incremental to cidx index" --actor codex
 ```
 
 ## Filing a standalone Bug
@@ -44,8 +45,8 @@ Story under the selected template:
 ```bash
 $BL bug add --title "Recovery link expires too early" --priority P1 \
   --description "A link issued near the token boundary expires immediately." \
-  --ac "A valid link remains usable until its configured expiry."
-$BL subtask add --bug B-001 --title "Add a boundary-time regression test"
+  --ac "A valid link remains usable until its configured expiry." --actor business-analyst
+$BL subtask add --bug B-001 --title "Add a boundary-time regression test" --actor codex
 $BL assign B-001 --to codex --reviewer husam
 ```
 
@@ -60,7 +61,7 @@ each member's own lifecycle and pull request unchanged. Multiple Iterations can
 be Open at once, and their priority orders the Iteration summaries:
 
 ```bash
-$BL iteration add --title "July delivery slice" --priority P1
+$BL iteration add --title "July delivery slice" --priority P1 --actor product-manager
 $BL action I-001 iteration.opened --actor product-manager
 
 # Add only Ready Stories or standalone Ready Bugs to an Open Iteration.
@@ -143,6 +144,12 @@ $BL action S-002 refinement.marked_incomplete --actor business-analyst \
 $BL item set S-002 --kind acceptance_criteria --content "..."
 $BL action S-002 refinement.accepted --actor business-analyst
 ```
+
+Every new task requires `--actor` and stores that identity as `created_by`.
+The creator cannot submit `refinement.accepted`, and omitting the acceptance
+actor is refused; an independent product manager, business analyst, or reviewer
+must accept it. Only migrated legacy rows with no attributable creation event
+may retain a NULL creator.
 
 Write the criteria before a task leaves the backlog. If an action is refused,
 the message names the failed transition or gate.

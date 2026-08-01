@@ -186,6 +186,7 @@ def render_task(conn: Conn, row: Row) -> str:
         out.append("  pr         : none (waived with --no-pr)")
     else:
         out.append("  pr         : -")
+    out.append(f"  creator    : {row['created_by'] or '-'}")
     out.append(f"  created    : {row['created_at']}")
     out.append(f"  updated    : {row['updated_at']}")
     if row["closed_at"]:

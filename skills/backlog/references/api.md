@@ -60,6 +60,8 @@ assertion, not cryptographic authentication.
 | `bl.projects()` | every project slug in the store |
 | `bl.task(key)` | one `Task`; raises `BacklogError` if absent |
 | `bl.find(key)` | one `Task` or `None` |
+| `bl.retrospective_action(key)` | one `RetrospectiveAction`; raises `BacklogError` if absent |
+| `bl.retrospective_actions(status=, iteration=)` | filtered `list[RetrospectiveAction]`; status is a `RetrospectiveStatus` enum |
 | `bl.tasks(status=, task_type=, assignee=, reviewer=, parent=, open_only=)` | filtered `list[Task]`, priority then key |
 | `bl.counts()` | `{status: n}` across the project |
 | `bl.statuses(task_type="story")` | the statuses this project's flow defines |
@@ -83,6 +85,10 @@ assertion, not cryptographic authentication.
 | `bl.review_set_severity(root, severity=ReviewSeverity.*, author=)` | auditably reclassify a review thread |
 | `bl.assign(key, to=None, reviewer=None)` | reassign |
 | `bl.create_feature(...)` / `bl.create_story(...)` / `bl.create_bug(...)` / `bl.create_iteration(...)` | create with optional plain/executable `acceptance_criteria`; Bugs and Iterations are standalone |
+| `bl.create_retrospective_action(iteration=, repeated_issue=, proposed_solution=, title=None)` | create a project-owned `R-` action in Created |
+| `bl.accept_retrospective_action(key)` | move a Created action to Ready |
+| `bl.reject_retrospective_action(key, reason=)` | reject a Created or Ready action with a retained reason |
+| `bl.close_retrospective_action(key, resolution_project=, feature=...\|bug=...)` | close a Ready action against exactly one Feature or Bug, including in another project |
 | `task.iteration_members` / `task.iterations` | view Iteration membership from either side: an Iteration exposes its member Tasks, while a Story or Bug exposes its Iterations |
 | `bl.add_iteration_member(iteration, member)` / `bl.remove_iteration_member(iteration, member)` | auditably manage Ready Story/Bug membership on an Open Iteration; actor comes from `api.open(actor=...)` |
 | `bl.startable(actor, iteration="I-001")` | request unblocked deliverable work from one explicit Iteration; Iteration rows are excluded |
@@ -103,6 +109,43 @@ from the explicit project checkout. The default batch behavior runs
 everything; `fail_fast=True` stops after the first fail, error, or item
 timeout. Required-item aggregate success means current pass (waivers satisfy
 the acceptance gate but are not reported as execution passes).
+
+## Retrospective action lifecycle
+
+Retrospective actions use project-local `R-` keys and always reference an
+Iteration in their owning project. Their fixed lifecycle is
+`Created -> Ready -> Done`, with `Rejected` as a terminal alternative from
+Created or Ready. Rejection requires a non-empty reason. Done requires a
+resolution project and exactly one Feature or Bug in that project.
+
+```python
+from backlog_cli import api
+
+with api.open(actor="facilitator") as bl:
+    action = bl.create_retrospective_action(
+        iteration="I-007",
+        repeated_issue="Release validation was skipped repeatedly.",
+        proposed_solution="Add a release-validation skill and CI check.",
+    )
+    action_key = action.key
+
+with api.open(actor="product-manager") as bl:
+    bl.accept_retrospective_action(action_key)
+    bl.close_retrospective_action(
+        action_key,
+        resolution_project="agent-tooling",
+        feature="F-003",
+    )
+
+    ready = bl.retrospective_actions(status=api.RetrospectiveStatus.READY)
+```
+
+`RetrospectiveAction` exposes stored columns and joined reference fields,
+including `key`, `project_slug`, `iteration_key`, `repeated_issue`,
+`proposed_solution`, `status`, `rejection_reason`,
+`resolution_project_slug`, `resolution_task_key`, and
+`resolution_task_type`. It also provides `age_days`, `idle_days`, and
+`is_open`. See [retrospectives.md](retrospectives.md).
 
 ## Bug and Iteration lifecycle
 
@@ -230,8 +273,13 @@ it is Closed.
 ## Task
 
 Any column is an attribute: `key`, `title`, `status`, `task_type`, `priority`,
-`assignee`, `reviewer`, `parent_key`, `pr_url`, `pr_review_state`, `created_at`,
-`updated_at`, `closed_at`. Plus:
+`assignee`, `reviewer`, `parent_key`, `pr_url`, `pr_review_state`, `created_by`,
+`created_at`, `updated_at`, `closed_at`. Plus:
+
+Every new task requires an actor and stores it as `created_by`.
+`refinement.accepted` requires a different named actor. The check runs before
+hooks and audit logging. Migrated legacy tasks whose creation event had no
+actor remain unattributed and operable.
 
 | | |
 | --- | --- |

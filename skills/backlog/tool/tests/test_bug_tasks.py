@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from backlog_cli import api
 from backlog_cli.db import BacklogError
+from _support import attributed_cli_args
 
 
 class BugTaskIntegrationTest(unittest.TestCase):
@@ -38,7 +39,7 @@ class BugTaskIntegrationTest(unittest.TestCase):
         )
 
     def cli(self, *args, json_output=False):
-        command = list(args)
+        command = attributed_cli_args(args)
         if json_output:
             command.insert(0, "--json")
         result = self.raw(*command)

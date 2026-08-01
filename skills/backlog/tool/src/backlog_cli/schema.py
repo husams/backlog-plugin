@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 16
 
 # --------------------------------------------------------------------------- #
 # tasks
@@ -567,6 +567,7 @@ CREATE TABLE IF NOT EXISTS task (
     pr_review_state     TEXT NOT NULL DEFAULT 'none'
                         CHECK (pr_review_state IN ('none','pending','changes_requested','approved')),
     pr_waived           INTEGER NOT NULL DEFAULT 0,
+    created_by          TEXT,
     created_at          TEXT NOT NULL,
     updated_at          TEXT NOT NULL,
     closed_at           TEXT,
@@ -585,6 +586,57 @@ CREATE TABLE IF NOT EXISTS iteration_member (
     CHECK (iteration_id != member_id)
 );
 CREATE INDEX IF NOT EXISTS idx_iteration_member_member ON iteration_member(member_id);
+
+-- Improvement work discovered during an Iteration retrospective. These are
+-- deliberately separate from delivery tasks: their small lifecycle is fixed,
+-- while task workflows remain project-configurable. A completed action points
+-- at the Feature or Bug opened to deliver the improvement, which may live in a
+-- different project in the same store.
+CREATE TABLE IF NOT EXISTS retrospective_action (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id            INTEGER NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    iteration_id          INTEGER NOT NULL REFERENCES task(id),
+    key                   TEXT NOT NULL,
+    title                 TEXT NOT NULL,
+    repeated_issue        TEXT NOT NULL,
+    proposed_solution     TEXT NOT NULL,
+    status                TEXT NOT NULL DEFAULT 'created'
+                          CHECK (status IN ('created','ready','done','rejected')),
+    rejection_reason      TEXT,
+    resolution_project_id INTEGER REFERENCES project(id),
+    resolution_task_id    INTEGER REFERENCES task(id),
+    created_by            TEXT,
+    accepted_by           TEXT,
+    rejected_by           TEXT,
+    closed_by             TEXT,
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL,
+    accepted_at           TEXT,
+    rejected_at           TEXT,
+    closed_at             TEXT,
+    UNIQUE (project_id, key),
+    CHECK (
+        (status IN ('created','ready') AND rejection_reason IS NULL
+         AND resolution_project_id IS NULL AND resolution_task_id IS NULL
+         AND closed_at IS NULL)
+        OR
+        (status = 'rejected' AND rejection_reason IS NOT NULL
+         AND TRIM(rejection_reason) <> ''
+         AND resolution_project_id IS NULL AND resolution_task_id IS NULL
+         AND closed_at IS NOT NULL)
+        OR
+        (status = 'done' AND rejection_reason IS NULL
+         AND resolution_project_id IS NOT NULL AND resolution_task_id IS NOT NULL
+         AND closed_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrospective_project
+    ON retrospective_action(project_id, status, key);
+CREATE INDEX IF NOT EXISTS idx_retrospective_iteration
+    ON retrospective_action(iteration_id, key);
+CREATE INDEX IF NOT EXISTS idx_retrospective_resolution
+    ON retrospective_action(resolution_project_id, resolution_task_id);
 
 -- Sections of a task: acceptance criteria, checklist entries, loose notes.
 CREATE TABLE IF NOT EXISTS task_item (

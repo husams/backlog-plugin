@@ -95,7 +95,8 @@ set `BACKLOG_DB=sqlite` and unset `BACK_LOG_URL` for a fast local fallback.
 ## Moving between backends
 
 `export` / `import` is the transport, and it carries everything: features,
-stories, subtasks, dependencies, review threads, artifact metadata, and history.
+stories, subtasks, retrospective actions, dependencies, review threads,
+artifact metadata, and history.
 
 ```bash
 $BL export --out /tmp/widgets.json                      # from the old store
@@ -106,6 +107,8 @@ BACKLOG_DB=postgres BACK_LOG_URL=postgresql://db.internal/backlog \
 `import --replace` overwrites the whole target store — check `$BL where` first.
 The dump preserves Bug and Iteration tasks, their dedicated flows, Iteration
 membership, review threads, dependencies, and audit history. Import rejects a
+retrospective action whose Iteration is outside its owning project or whose
+resolution is not a Feature or Bug in the referenced project. It also rejects a
 new Bug or Iteration when the export does not contain its required workflow;
 workflow validation happens before the target is mutated. If the source
 project is older, run `workflow upgrade` in that source project, export again,

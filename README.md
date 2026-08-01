@@ -7,12 +7,13 @@ through project-defined delivery flows.
 The plugin manages:
 
 - features, stories, standalone bugs, subtasks, and parallel Iterations;
+- retrospective actions for repeated workflow issues and proposed improvements;
 - acceptance criteria, checklists, notes, priorities, and assignments;
 - dependencies and blocked work;
 - review threads with fixed blocker, nice-to-have, or informational severity,
   pull request state, and attached artifacts;
 - custom statuses, transitions, gates, and reusable workflow templates;
-- audit history for changes made by humans and agents.
+- audit history for changes made by humans and agents;
 - optional typed shell/hook validation declarations governed by trusted local
   project policy.
 
@@ -45,6 +46,7 @@ Python API, predefined scripts, documentation, and database tooling.
 - [GitHub Actions integration example](docs/github-actions.md)
 - [Python transition hooks and action workflow](docs/python-extensions.md)
 - [Executable item schema and local policy](docs/executable-items.md)
+- [Retrospective improvement actions](skills/backlog/references/retrospectives.md)
 
 ## Requirements
 
@@ -220,12 +222,13 @@ backlog statuses --type story
 Create a feature, story, and subtask:
 
 ```bash
-backlog feature add --title "Account recovery"
+backlog feature add --title "Account recovery" --actor product-manager
 backlog story add --feature F-001 --title "Request a recovery link" \
-  --ac "A valid account can request a time-limited recovery link."
-backlog subtask add --story S-001 --title "Add the recovery endpoint"
-backlog bug add --title "Recovery link expires too early"
-backlog iteration add --title "July delivery slice" --priority P1
+  --ac "A valid account can request a time-limited recovery link." \
+  --actor business-analyst
+backlog subtask add --story S-001 --title "Add the recovery endpoint" --actor codex
+backlog bug add --title "Recovery link expires too early" --actor business-analyst
+backlog iteration add --title "July delivery slice" --priority P1 --actor product-manager
 backlog action B-001 refinement.accepted --actor product-manager
 backlog action I-001 iteration.opened --actor product-manager
 backlog iteration member-add I-001 B-001
@@ -233,6 +236,26 @@ backlog next --actor codex --iteration I-001
 # After the member finishes and Iteration comments are resolved:
 backlog action I-001 iteration.closed --actor product-manager
 ```
+
+Every new task requires `--actor NAME` and records that identity as
+`created_by`; the same actor cannot submit `refinement.accepted`, and actor-less
+acceptance is refused. Ready therefore requires an independent product manager,
+business analyst, or reviewer. Only migrated legacy rows whose creation event
+had no actor remain unattributed.
+
+Record and resolve a workflow improvement discovered during the Iteration:
+
+```bash
+backlog retrospective add --iteration I-001 --actor facilitator \
+  --issue "Release checks were skipped repeatedly" \
+  --solution "Add a release-check skill and CI gate"
+backlog retrospective accept R-001 --actor product-manager
+backlog retrospective close R-001 --resolution-project agent-tooling \
+  --feature F-003 --actor product-manager
+```
+
+New retrospective actions also require a creator identity. Their creator
+cannot accept them, and acceptance without an actor is refused.
 
 Task keys identify their type: `F-` Feature, `S-` Story, `B-` standalone Bug,
 `T-` subtask, and `I-` Iteration. Bugs follow the Story-shaped delivery flow
@@ -242,7 +265,9 @@ members are finished and every Iteration review comment is resolved. See the
 [planning](skills/backlog/references/planning.md),
 [CLI](skills/backlog/references/cli.md), and
 [Python API](skills/backlog/references/api.md) references for the full agent
-interface.
+interface. Retrospective actions use project-local `R-` keys and follow the
+fixed Created → Ready → Done/Rejected lifecycle documented in the
+[retrospective guide](skills/backlog/references/retrospectives.md).
 
 Inspect and submit semantic workflow actions:
 
@@ -303,6 +328,11 @@ with api.open() as backlog:
     print(f"{len(active)} tasks in progress")
 PY
 ```
+
+The same API exposes `create_retrospective_action`,
+`accept_retrospective_action`, `reject_retrospective_action`, and
+`close_retrospective_action`. Closing requires a target project and exactly one
+Feature or Bug, which may live in another project in the shared store.
 
 Use only the documented public API. Do not query database tables, execute SQL,
 or access internal connection attributes.

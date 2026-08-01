@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from backlog_cli import db
+from _support import attributed_cli_args
 
 
 class BugIterationWorkflowUpgradeTest(unittest.TestCase):
@@ -36,7 +37,7 @@ class BugIterationWorkflowUpgradeTest(unittest.TestCase):
         )
 
     def cli(self, *args, json_output=False):
-        command = list(args)
+        command = attributed_cli_args(args)
         if json_output:
             command.insert(0, "--json")
         result = self.raw(*command)

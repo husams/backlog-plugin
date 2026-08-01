@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from backlog_cli import api, core, db, execution
+from backlog_cli.schema import SCHEMA_VERSION
 
 
 class ExecutionReportingTest(unittest.TestCase):
@@ -27,6 +28,7 @@ class ExecutionReportingTest(unittest.TestCase):
         self.project = db.get_or_create_project(self.conn, "sample", self.store)
         self.task = core.add_task(
             self.conn, self.project["id"], "story", "Reporting",
+            actor="fixture-creator",
         )
         self.bl = api.Backlog(self.conn, self.project, self.store, actor="S-010")
         self.policy = execution.ExecutionPolicy(
@@ -311,12 +313,15 @@ class ExecutionReportingTest(unittest.TestCase):
         version = self.conn.execute(
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()["value"]
-        self.assertEqual(version, "14")
+        self.assertEqual(version, str(SCHEMA_VERSION))
         actor = self.conn.execute(
             "SELECT actor FROM execution_result WHERE item_id=?", (item["id"],)
         ).fetchone()["actor"]
         self.assertEqual(actor, "unknown")
-        bug = core.add_task(self.conn, self.project["id"], "bug", "Migrated defect")
+        bug = core.add_task(
+            self.conn, self.project["id"], "bug", "Migrated defect",
+            actor="fixture-creator",
+        )
         self.assertEqual((bug["key"], bug["task_type"]), ("B-001", "bug"))
         self.assertIsNotNone(self.conn.execute(
             "SELECT id FROM workflow WHERE project_id=? AND task_type='bug'",
@@ -339,7 +344,7 @@ class ExecutionReportingTest(unittest.TestCase):
         exported = self.cli("export", "--out", str(export_path))
         self.assertEqual(exported.returncode, 0, exported.stderr)
         payload = json.loads(export_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["schema_version"], 14)
+        self.assertEqual(payload["schema_version"], SCHEMA_VERSION)
         self.assertEqual(
             payload["tables"]["execution_result"][0]["actor"], "S-010"
         )

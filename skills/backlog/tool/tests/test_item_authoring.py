@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from backlog_cli import api
 from backlog_cli.db import BacklogError
+from _support import attributed_cli_args
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
 
@@ -40,7 +41,7 @@ class ItemAuthoringCliTest(unittest.TestCase):
         )
 
     def run_cli(self, *args, json_output=False):
-        result = self.raw(*args, json_output=json_output)
+        result = self.raw(*attributed_cli_args(args), json_output=json_output)
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         return json.loads(result.stdout) if json_output else result.stdout
 
@@ -275,7 +276,7 @@ class ItemAuthoringApiTest(unittest.TestCase):
             self.assertEqual([item["executor"] for item in replaced], ["plain", "shell"])
 
     def test_invalid_api_spec_does_not_create_item(self):
-        with api.open() as backlog:
+        with api.open(actor="fixture-creator") as backlog:
             story = backlog.create_story("Safe")
             with self.assertRaises(BacklogError):
                 backlog.add_item(

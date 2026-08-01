@@ -1,7 +1,7 @@
 {
   "name": "backlog-plugin",
-  "version": "1.6.5+codex.20260731211919",
-  "description": "Track project backlogs, dependencies, workflows, reviews, and pull request gates.",
+  "version": "1.7.1+codex.20260801101500",
+  "description": "Track project backlogs, retrospective improvements, workflows, reviews, and pull request gates.",
   "author": {
     "name": "Husam Senussi",
     "email": "husamsenussi@gmail.com"
@@ -12,13 +12,14 @@
     "tasks",
     "stories",
     "workflow",
+    "retrospective",
     "review"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Backlog",
     "shortDescription": "Track project work from planning through merge.",
-    "longDescription": "Manage features, stories, subtasks, acceptance criteria, dependencies, workflow transitions, review threads, and pull request gates.",
+    "longDescription": "Manage delivery tasks, retrospective improvement actions, acceptance criteria, dependencies, workflow transitions, review threads, and pull request gates.",
     "developerName": "Husam Senussi",
     "category": "Productivity",
     "capabilities": [

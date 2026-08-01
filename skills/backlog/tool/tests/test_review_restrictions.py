@@ -12,6 +12,7 @@ from unittest.mock import patch
 from backlog_cli import api
 from backlog_cli.db import BacklogError
 from backlog_cli.schema import ReviewSeverity
+from _support import attributed_cli_args
 
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
@@ -33,6 +34,7 @@ class ReviewRestrictionTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def run_cli(self, *args, json_output=False):
+        args = attributed_cli_args(args)
         command = [sys.executable, "-m", "backlog_cli.cli"]
         if json_output:
             command.append("--json")

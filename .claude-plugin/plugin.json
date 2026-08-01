@@ -1,8 +1,8 @@
 {
   "name": "backlog-plugin",
   "displayName": "Backlog",
-  "version": "1.6.5",
-  "description": "Self-hosted backlog management for features, stories, subtasks, dependencies, reviews, and enforced custom workflows using SQLite or PostgreSQL.",
+  "version": "1.7.1",
+  "description": "Self-hosted backlog management for delivery work, retrospective improvements, reviews, and enforced custom workflows using SQLite or PostgreSQL.",
   "author": {
     "name": "Husam Senussi",
     "email": "husamsenussi@gmail.com"
@@ -13,6 +13,7 @@
     "tasks",
     "stories",
     "workflow",
+    "retrospective",
     "review"
   ],
   "skills": "./skills/"

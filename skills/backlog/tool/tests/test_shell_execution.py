@@ -27,7 +27,8 @@ class ShellExecutionTest(unittest.TestCase):
         self.conn = db.connect(spec=self.store, create=True)
         self.project = db.get_or_create_project(self.conn, "sample", self.store)
         self.task = core.add_task(
-            self.conn, self.project["id"], "story", "Shell validation"
+            self.conn, self.project["id"], "story", "Shell validation",
+            actor="fixture-creator",
         )
         self.bl = api.Backlog(self.conn, self.project, self.store, actor="runner")
 
