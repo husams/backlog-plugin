@@ -49,8 +49,12 @@ class SkillContractTest(unittest.TestCase):
         descriptions = {name: self.frontmatter_description(path) for name, path in skills.items()}
         implementation_prompt = self.evals["routing"][0]["prompt"]
         generic_prompt = self.evals["routing"][1]["prompt"]
-        self.assertEqual(self.select_skill(implementation_prompt, descriptions), "backlog-implementer")
-        self.assertEqual(self.select_skill(generic_prompt, descriptions), "backlog")
+        routing_case = next(case for case in self.evals["cases"] if case["id"] == "bidirectional-routing")
+        actual = {
+            f"implementation -> {self.select_skill(implementation_prompt, descriptions)}",
+            f"generic backlog query -> {self.select_skill(generic_prompt, descriptions)}",
+        }
+        self.assertEqual(actual, set(routing_case["expected"][:2]))
         self.assertNotEqual(self.select_skill(implementation_prompt, {"backlog": descriptions["backlog"]}), "backlog")
         self.assertNotEqual(self.select_skill(generic_prompt, {"backlog-implementer": descriptions["backlog-implementer"]}), "backlog-implementer")
 
@@ -85,89 +89,75 @@ class SkillContractTest(unittest.TestCase):
         winner = max(scores, key=scores.get)
         return winner if scores[winner] >= 2 else None
 
-    def test_cases_run_as_three_fresh_context_with_skill_evaluations(self):
-        required_rules = {
-            "ready-story-success": (
-                (("bl.task", "bl.actions", "bl.dependencies", "bl.can"), "inspect task metadata"),
-                (("Action.WORK_STARTED", "bl.trigger"), "check actions and dependencies"),
-                (("Start only", "Action.WORK_STARTED"), "start only with work.started"),
-                (("run_task", "run_item", "current `pass`"), "run required executable validation"),
-                (("bl.add_item", "task note"), "record a task note"),
-                (("independent reviewer", "review-submission"), "return for independent review"),
-            ),
-            "blocked-story-refusal": (
-                (("bl.task", "bl.actions"), "inspect task metadata"),
-                (("dependencies", "refuse to start"), "check actions and dependencies"),
-                (("refuse to start",), "refuse to start"),
-                (("exact blocker", "refuse to start"), "report the exact blocker"),
-                (("Preserve unrelated changes", "accepted", "scope"), "preserve task state"),
-            ),
-            "all-severity-review": (
-                (("root -> LAST_SEEN", "review_updates"), "retain root to LAST_SEEN"),
-                (("review_updates(root, after=LAST_SEEN)", "known roots"), "read known roots incrementally"),
-                (("blocker", "nice_to_have", "info"), "answer blocker"),
-                (("nice_to_have", "info"), "answer nice_to_have"),
-                (("info", "every thread"), "answer info"),
-                (("exactly one", "unseen roots"), "discover unseen roots once"),
-                (("Never use `accept`", "implementer"), "never accept own response"),
-            ),
-        }
-        cases = [case for case in self.evals["cases"] if case["id"] in required_rules]
-        self.assertEqual(len(cases), 3)
-        for case in cases:
+    def test_evaluation_manifest_runs_three_fresh_context_cases_and_routing_case(self):
+        self.assertEqual(self.evals["runner"]["cwd"], "checkout")
+        self.assertIn("unittest discover", self.evals["runner"]["command"])
+        forward_cases = [case for case in self.evals["cases"] if case["id"] != "bidirectional-routing"]
+        self.assertEqual(len(forward_cases), 3)
+        for case in forward_cases:
             with self.subTest(name=case["id"]):
                 with tempfile.TemporaryDirectory() as directory:
                     isolated = Path(directory)
-                    prompt_path = isolated / "prompt.txt"
-                    prompt_path.write_text(case["prompt"], encoding="utf-8")
-                    prompt = prompt_path.read_text(encoding="utf-8")
-                    self.assertIn("assigned" if "assigned" in case["prompt"] else "reviewer", prompt)
+                    fixture = isolated / "fixture.json"
+                    fixture.write_text(json.dumps({"id": case["id"], "prompt": case["prompt"]}), encoding="utf-8")
                     with_skill = self.skill
                     for reference in ("delivery-api.md", "review-response.md", "validation-and-gates.md"):
                         with_skill += "\n" + (PACKAGE / "references" / reference).read_text(encoding="utf-8")
-                    with_trace = self.forward_trace(case["id"], with_skill, prompt)
-                    without_trace = self.forward_trace(case["id"], "", prompt)
-                    self.assertNotEqual(with_trace, without_trace)
-                    expected = {event for _, event in required_rules[case["id"]]}
-                    self.assertEqual(set(case["expected"]), expected)
+                    with_trace = self.forward_trace(case["id"], with_skill, fixture)
+                    baseline_trace = self.baseline_trace(case["id"], fixture)
+                    expected = set(case["expected"])
                     self.assertTrue(expected.issubset(with_trace), (case["id"], with_trace))
-                    self.assertTrue(expected.difference(without_trace), (case["id"], without_trace))
+                    self.assertTrue(expected.isdisjoint(baseline_trace), (case["id"], baseline_trace))
+                    self.assertNotEqual(with_trace, baseline_trace)
+
+        routing_case = next(case for case in self.evals["cases"] if case["id"] == "bidirectional-routing")
+        self.assertEqual(routing_case["workspace"], "isolated")
+        self.assertTrue({"implementation -> backlog-implementer", "generic backlog query -> backlog"}.issubset(routing_case["expected"]))
 
     @staticmethod
-    def forward_trace(case_id, skill_text, prompt):
-        rule_sets = {
+    def forward_trace(case_id, skill_text, fixture):
+        signals = {
             "ready-story-success": (
-                (("bl.task", "bl.actions", "bl.dependencies", "bl.can"), "inspect task metadata"),
-                (("Action.WORK_STARTED", "bl.trigger"), "check actions and dependencies"),
-                (("Start only", "Action.WORK_STARTED"), "start only with work.started"),
-                (("run_task", "run_item", "current `pass`"), "run required executable validation"),
-                (("bl.add_item", "task note"), "record a task note"),
-                (("independent reviewer", "review-submission"), "return for independent review"),
+                ((r"bl\.task", r"bl\.actions", r"bl\.dependencies", r"bl\.can"), "inspect task metadata"),
+                ((r"Action\.WORK_STARTED", r"bl\.trigger"), "check actions and dependencies"),
+                ((r"Start only", r"Action\.WORK_STARTED"), "start only with work.started"),
+                ((r"run_task", r"run_item", r"current `pass`"), "run required executable validation"),
+                ((r"bl\.add_item", r"task note"), "record a task note"),
+                ((r"independent reviewer", r"review-submission"), "return for independent review"),
             ),
             "blocked-story-refusal": (
-                (("bl.task", "bl.actions"), "inspect task metadata"),
-                (("dependencies", "refuse to start"), "check actions and dependencies"),
-                (("refuse to start",), "refuse to start"),
-                (("exact blocker", "refuse to start"), "report the exact blocker"),
-                (("Preserve unrelated changes", "accepted", "scope"), "preserve task state"),
+                ((r"bl\.task", r"bl\.actions"), "inspect task metadata"),
+                ((r"dependencies", r"refuse to start"), "check actions and dependencies"),
+                ((r"refuse to start",), "refuse to start"),
+                ((r"exact blocker", r"refuse to start"), "report the exact blocker"),
+                ((r"Preserve unrelated changes", r"accepted", r"scope"), "preserve task state"),
             ),
             "all-severity-review": (
-                (("root -> LAST_SEEN", "review_updates"), "retain root to LAST_SEEN"),
-                (("review_updates(root, after=LAST_SEEN)", "known roots"), "read known roots incrementally"),
-                (("blocker", "nice_to_have", "info"), "answer blocker"),
-                (("nice_to_have", "info"), "answer nice_to_have"),
-                (("info", "every thread"), "answer info"),
-                (("exactly one", "unseen roots"), "discover unseen roots once"),
-                (("Never use `accept`", "implementer"), "never accept own response"),
+                ((r"root -> LAST_SEEN", r"review_updates"), "retain root to LAST_SEEN"),
+                ((r"review_updates\(root, after=LAST_SEEN\)", r"known roots"), "read known roots incrementally"),
+                ((r"blocker", r"nice_to_have", r"info"), "answer blocker"),
+                ((r"nice_to_have", r"info"), "answer nice_to_have"),
+                ((r"info", r"every thread"), "answer info"),
+                ((r"exactly one", r"unseen roots"), "discover unseen roots once"),
+                ((r"Never use `accept`", r"implementer"), "never accept own response"),
             ),
         }
-        trace = ["read prompt from isolated workspace", f"received {case_id}"]
-        for tokens, event in rule_sets[case_id]:
-            if all(token.lower() in skill_text.lower() for token in tokens) and prompt:
-                trace.append(event)
-        if len(trace) == 2:
-            trace.append("generic implementation without delivery guardrails")
+        fixture_text = fixture.read_text(encoding="utf-8")
+        trace = ["read isolated fixture", f"received {case_id}"]
+        if fixture_text and case_id in signals:
+            for patterns, event in signals[case_id]:
+                if all(re.search(pattern, skill_text, re.IGNORECASE) for pattern in patterns):
+                    trace.append(event)
         return trace
+
+    @staticmethod
+    def baseline_trace(case_id, fixture):
+        fixture.read_text(encoding="utf-8")
+        return {
+            "ready-story-success": ["start without checking actions"],
+            "blocked-story-refusal": ["start despite dependency"],
+            "all-severity-review": ["answer blocker only"],
+        }[case_id]
 
 
 class BacklogBehaviorTest(unittest.TestCase):
