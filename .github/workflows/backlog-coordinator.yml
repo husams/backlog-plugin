@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - "skills/backlog-coordinator/**"
+      - "skills/backlog-implementer/**"
+      - "skills/backlog-reviewer/**"
       - ".github/workflows/backlog-coordinator.yml"
   pull_request:
     paths:
       - "skills/backlog-coordinator/**"
+      - "skills/backlog-implementer/**"
+      - "skills/backlog-reviewer/**"
       - ".github/workflows/backlog-coordinator.yml"
   workflow_dispatch:
 
