@@ -18,3 +18,11 @@ Feature: Administrative end-to-end workflows
   Scenario: The public Python API manages a complete session
     When the public Python API session is exercised
     Then the public API reports the active project
+
+  Scenario: Task authoring, filtering, items, gates, and planning are exercised
+    When all task authoring and planning operations are exercised
+    Then the administrative commands succeed
+
+  Scenario: Repository and central SQLite store resolution is exercised
+    When repository and central store configurations are exercised
+    Then the administrative commands succeed

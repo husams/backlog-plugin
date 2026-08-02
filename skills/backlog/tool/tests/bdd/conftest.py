@@ -17,7 +17,7 @@ SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src"
 @dataclass
 class World:
     root: Path
-    env: dict[str, str]
+    env: dict[str, str] = field(repr=False)
     current_key: str | None = None
     current_type: str | None = None
     keys: dict[str, str] = field(default_factory=dict)

@@ -20,6 +20,18 @@ Feature: Retrospective action state machine
     Then the retrospective status is "rejected"
     And the retrospective rejection reason is retained
 
+  Scenario: A ready action can be rejected with a reason
+    When a facilitator creates a retrospective action
+    And a product manager accepts the retrospective action
+    And a product manager rejects the retrospective action
+    Then the retrospective status is "rejected"
+
+  Scenario: An accepted action is closed against a bug
+    When a facilitator creates a retrospective action
+    And a product manager accepts the retrospective action
+    And the action is closed against a resolution bug
+    Then the retrospective status is "done"
+
   Scenario: The creator cannot accept their own action
     When a facilitator creates a retrospective action
     And the facilitator tries to accept the retrospective action

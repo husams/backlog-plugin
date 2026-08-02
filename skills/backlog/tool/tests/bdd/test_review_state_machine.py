@@ -114,6 +114,89 @@ def reviewer_impersonates_developer(world: World) -> None:
     )
 
 
+@when("review discovery and severity commands are exercised")
+def exercise_review_discovery(world: World) -> None:
+    thread = world.run(
+        "review",
+        "open",
+        world.require_key(),
+        "--author",
+        "reviewer",
+        "--severity",
+        "nice_to_have",
+        "--title",
+        "Polish",
+        "--file",
+        "src/example.py",
+        "--line",
+        "8",
+        "--body",
+        "Optional improvement",
+        actor="reviewer",
+    )
+    world.review_root = thread["root"]
+    world.review_comment = thread["reply_to"]
+    world.run("review", "thread", world.review_root)
+    world.run("review", "audit", world.review_root)
+    world.run("review", "list", world.require_key())
+    world.run("review", "list", world.require_key(), "--state", "all")
+    world.run(
+        "review",
+        "list",
+        world.require_key(),
+        "--severity",
+        "nice_to_have",
+    )
+    world.run("review", "inbox", actor="developer")
+    world.run("review", "inbox", "--role", "developer", actor="developer")
+    world.run(
+        "review",
+        "inbox",
+        "--item",
+        world.require_key(),
+        "--severity",
+        "nice_to_have",
+        actor="developer",
+    )
+    changed = world.run(
+        "review",
+        "severity",
+        world.review_root,
+        "--severity",
+        "info",
+        "--author",
+        "reviewer",
+        actor="reviewer",
+    )
+    assert changed["severity"] == "info"
+    commented = world.run(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "developer",
+        "--action",
+        "comment",
+        "--body",
+        "Acknowledged",
+        actor="developer",
+    )
+    world.run(
+        "review",
+        "reply",
+        commented["reply_to"],
+        "--author",
+        "reviewer",
+        "--action",
+        "accept",
+        "--body",
+        "Accepted",
+        actor="reviewer",
+    )
+    world.run("review", "list", world.require_key(), "--state", "closed")
+    world.last_json = {"root": world.review_root}
+
+
 @then("the review command is rejected")
 def review_rejected(world: World) -> None:
     assert world.last_result is not None
@@ -138,6 +221,11 @@ def review_is_closed(world: World) -> None:
 @then('the review resolution is "accepted_by_reviewer"')
 def review_is_accepted(world: World) -> None:
     _assert_review_field(world, "resolution", "accepted_by_reviewer")
+
+
+@then("review discovery reports the complete thread")
+def review_discovery_complete(world: World) -> None:
+    assert world.last_json == {"root": world.review_root}
 
 
 def _assert_review_field(world: World, field: str, value: str) -> None:

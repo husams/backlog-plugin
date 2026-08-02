@@ -33,6 +33,9 @@ def create_retrospective(world: World) -> None:
         actor="facilitator",
     )
     world.retrospective_key = row["key"]
+    world.run("retrospective", "list")
+    world.run("retrospective", "list", "--status", "created")
+    world.run("retrospective", "list", "--iteration", world.iteration_key)
 
 
 @when("a product manager accepts the retrospective action")
@@ -81,6 +84,23 @@ def close_against_feature(world: World) -> None:
         "bdd-project",
         "--feature",
         feature["key"],
+        actor="product-manager",
+    )
+
+
+@when("the action is closed against a resolution bug")
+def close_against_bug(world: World) -> None:
+    bug = world.run(
+        "bug", "add", "--title", "Resolution bug", actor="product-manager"
+    )
+    world.run(
+        "retrospective",
+        "close",
+        world.retrospective_key,
+        "--resolution-project",
+        "bdd-project",
+        "--bug",
+        bug["key"],
         actor="product-manager",
     )
 

@@ -36,3 +36,7 @@ Feature: Review state machine
     And the opening reviewer replies as the developer
     Then the review command is rejected
     And the review state is "awaiting_developer"
+
+  Scenario: Review discovery, severity, audit, and non-blocking comments are available
+    When review discovery and severity commands are exercised
+    Then review discovery reports the complete thread

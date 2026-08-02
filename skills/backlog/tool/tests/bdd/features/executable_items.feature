@@ -42,3 +42,11 @@ Feature: Executable items
     And the executable item is run
     And action "review.approved" is submitted by "reviewer"
     Then the task status is "accepted"
+
+  Scenario: Shell execution reports runtime, matcher, environment, and output limits
+    When shell execution edge cases are exercised
+    Then executable edge cases are reported
+
+  Scenario: Hook execution reports installation, contract, failure, and timeout errors
+    When hook execution edge cases are exercised
+    Then executable edge cases are reported
