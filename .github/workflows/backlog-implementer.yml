@@ -39,9 +39,9 @@ jobs:
 
   e2e-coverage:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: backlog-plugin-runner
     env:
-      BACKLOG_DB: ${{ secrets.BACK_LOG_URL }}
+      BACKLOG_DB: ${{ secrets.BACK_LOG_URL_CLUSTER }}
       BACK_LOG_URL: ""
       GH_TOKEN: ${{ github.token }}
     defaults:
@@ -51,10 +51,24 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install ARC runner prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y gh
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Make Python available to sandboxed validations
+        shell: bash
+        run: |
+          set -euo pipefail
+          libpython="$Python_ROOT_DIR/lib/libpython3.12.so.1.0"
+          test -f "$libpython"
+          sudo install -m 0644 "$libpython" /usr/local/lib/libpython3.12.so.1.0
+          sudo ldconfig
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
