@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from backlog_cli import api, core, db, execution
+from backlog_cli.execution import hook_runner
 
 
 class ValidationHookTest(unittest.TestCase):
@@ -153,7 +154,7 @@ class ValidationHookTest(unittest.TestCase):
 
         callback = Callable()
         callback.__backlog_validation_version__ = "v1"
-        with patch.object(execution.inspect, "getsource", side_effect=TypeError):
+        with patch.object(hook_runner.inspect, "getsource", side_effect=TypeError):
             self.assertEqual(
                 execution.hook_implementation_identity(callback), "version:v1"
             )
@@ -171,7 +172,7 @@ class ValidationHookTest(unittest.TestCase):
         ]
         identities = []
         for source in samples:
-            with patch.object(execution.inspect, "getsource", return_value=source):
+            with patch.object(hook_runner.inspect, "getsource", return_value=source):
                 identities.append(execution.hook_implementation_identity(callback))
         self.assertEqual(identities[0], identities[1])
 
@@ -212,7 +213,7 @@ class ValidationHookTest(unittest.TestCase):
             """
         )
         with patch.object(
-            execution, "_timeout_constraint", return_value="sigalrm_unavailable"
+            hook_runner, "_timeout_constraint", return_value="sigalrm_unavailable"
         ):
             result = self.bl.run_hook_validation(
                 self.item["id"], project_root=self.root
@@ -227,7 +228,7 @@ class ValidationHookTest(unittest.TestCase):
         observed = []
 
         def inspect_constraint():
-            observed.append(execution._timeout_constraint())
+            observed.append(hook_runner._timeout_constraint())
 
         thread = threading.Thread(target=inspect_constraint)
         thread.start()
