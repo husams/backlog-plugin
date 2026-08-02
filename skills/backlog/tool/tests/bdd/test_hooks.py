@@ -87,6 +87,45 @@ def request_block(world: World) -> None:
     )
 
 
+@given("the story is accepted")
+def accepted_story(world: World) -> None:
+    world.run(
+        "action", world.require_key(), "refinement.accepted", actor="reviewer"
+    )
+    world.run("action", world.require_key(), "work.started", actor="developer")
+    world.run(
+        "pr",
+        "set",
+        world.require_key(),
+        "--url",
+        "https://github.com/example/project/pull/1",
+        "--state",
+        "open",
+        actor="developer",
+    )
+    world.run(
+        "pr",
+        "set",
+        world.require_key(),
+        "--review-state",
+        "approved",
+        actor="reviewer",
+    )
+    assert world.task()["status"] == "accepted"
+
+
+@when("delivery completion requests a block")
+def block_delivery_completion(world: World) -> None:
+    world.run(
+        "action",
+        world.require_key(),
+        "pr.merged",
+        "--parameter",
+        "block=yes",
+        actor="merge-bot",
+    )
+
+
 @when("invalid transition hook contracts are exercised")
 def invalid_transition_hooks(world: World) -> None:
     def rejected(source: str, message: str) -> None:
@@ -300,6 +339,12 @@ def post_hook_not_called(world: World) -> None:
     assert (world.root / "hooks.log").read_text(encoding="utf-8").splitlines() == [
         "pre"
     ]
+
+
+@then(parsers.parse('the last hook call is "{entry}"'))
+def last_hook_call(world: World, entry: str) -> None:
+    calls = (world.root / "hooks.log").read_text(encoding="utf-8").splitlines()
+    assert calls[-1] == entry
 
 
 @then("hook configuration errors are reported")

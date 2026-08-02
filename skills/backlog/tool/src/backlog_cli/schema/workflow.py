@@ -69,7 +69,7 @@ DEFAULT_TRANSITIONS = {
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
         ("accepted", "needs_work", ""),
-        ("accepted", "done", "pr_merged"),
+        ("accepted", "done", "required_validations_pass,pr_merged"),
     ],
     # Features use the same delivery states but carry no pull request gates.
     "feature": [
@@ -86,7 +86,7 @@ DEFAULT_TRANSITIONS = {
             "review_threads_closed,children_complete,required_validations_pass",
         ),
         ("accepted", "needs_work", ""),
-        ("accepted", "done", "children_complete"),
+        ("accepted", "done", "children_complete,required_validations_pass"),
     ],
 }
 DEFAULT_TRANSITIONS["subtask"] = DEFAULT_TRANSITIONS["story"]

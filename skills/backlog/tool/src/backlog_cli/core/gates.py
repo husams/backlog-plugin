@@ -55,7 +55,7 @@ def gate(
             )
         )
 
-    if target in ("accepted", "merge"):
+    if target in ("accepted", "done", "merge"):
         from ..execution import required_validations_pass
 
         validations_ok, pending_or_failed = required_validations_pass(conn, task["id"])

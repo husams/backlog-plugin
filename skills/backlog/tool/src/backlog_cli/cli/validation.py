@@ -52,6 +52,8 @@ def _execution_payload(result) -> dict:
         "stderr": "",
         "duration_ms": int(record["duration_ms"]),
         "diagnostic": result.detail or result.reason,
+        "reason": result.reason,
+        "detail": result.detail,
         "hook_name": result.hook_name,
         "implementation_identity": result.implementation_identity,
     }
