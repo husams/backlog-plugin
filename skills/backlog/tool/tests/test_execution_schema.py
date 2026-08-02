@@ -8,7 +8,8 @@ import sys
 import unittest
 from pathlib import Path
 
-from backlog_cli import db, execution
+from backlog_cli import db
+from backlog_cli.api import execution
 from backlog_cli.db import BacklogError
 from backlog_cli.schema import SCHEMA_VERSION
 

@@ -9,7 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from backlog_cli import api, core, db, execution
+from backlog_cli import api, core, db
+from backlog_cli.api import execution
 from backlog_cli.schema import SCHEMA_VERSION
 
 

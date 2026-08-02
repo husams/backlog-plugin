@@ -10,7 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backlog_cli import api, core, db, execution
+from backlog_cli import api, core, db
+from backlog_cli.api import execution
 
 
 class ShellExecutionTest(unittest.TestCase):
@@ -175,7 +176,7 @@ class ShellExecutionTest(unittest.TestCase):
 
     def test_policy_denial_starts_no_process_and_emits_no_action(self):
         item = self.add_shell(self.python("raise SystemExit('must not run')"))
-        with patch("backlog_cli.execution.subprocess.Popen") as popen:
+        with patch("backlog_cli.api.execution.runner.subprocess.Popen") as popen:
             result = self.bl.run_item(
                 item["id"], self.root, policy=execution.ExecutionPolicy()
             )
@@ -226,7 +227,7 @@ class ShellExecutionTest(unittest.TestCase):
     def test_batch_budget_skips_current_and_remaining_without_actions(self):
         first = self.add_shell(self.python("print('first')"), timeout=2)
         second = self.add_shell(self.python("print('second')"), timeout=2)
-        with patch("backlog_cli.execution.subprocess.Popen") as popen:
+        with patch("backlog_cli.api.execution.runner.subprocess.Popen") as popen:
             results = self.bl.run_task(
                 self.task["key"], self.root,
                 policy=self.policy(max_batch_seconds=1),
