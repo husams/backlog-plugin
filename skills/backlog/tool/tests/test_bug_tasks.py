@@ -60,7 +60,9 @@ class BugTaskIntegrationTest(unittest.TestCase):
         env, cwd = self.open_api()
         with env, cwd, api.open(actor="codex") as bl:
             bug = bl.create_bug("API defect", acceptance_criteria=["It is fixed"])
-            self.assertEqual((bug.key, bug.task_type, bug.parent), ("B-002", "bug", None))
+            self.assertEqual(
+                (bug.key, bug.task_type, bug.parent), ("B-002", "bug", None)
+            )
             self.assertEqual(bug.items("acceptance_criteria"), ["It is fixed"])
 
         shown = self.cli("show", "B-001")
@@ -96,19 +98,25 @@ class BugTaskIntegrationTest(unittest.TestCase):
 
         env, cwd = self.open_api()
         with env, cwd, api.open() as bl:
-            with self.assertRaisesRegex(BacklogError, "a bug cannot sit under a feature"):
+            with self.assertRaisesRegex(
+                BacklogError, "a bug cannot sit under a feature"
+            ):
                 bl.create_task("bug", "API bad", parent="F-001")
 
         exported = self.root / "export.json"
         self.cli("export", "--out", str(exported))
         payload = json.loads(exported.read_text())
-        feature = next(row for row in payload["tables"]["task"] if row["key"] == "F-001")
+        feature = next(
+            row for row in payload["tables"]["task"] if row["key"] == "F-001"
+        )
         bug = next(row for row in payload["tables"]["task"] if row["key"] == "B-001")
         bug["parent_id"] = feature["id"]
         exported.write_text(json.dumps(payload))
         imported = self.raw("import", str(exported), "--replace")
         self.assertNotEqual(imported.returncode, 0)
-        self.assertIn("import rejected: a bug cannot sit under a feature", imported.stderr)
+        self.assertIn(
+            "import rejected: a bug cannot sit under a feature", imported.stderr
+        )
         self.assertIn("B-001", self.cli("show", "B-001"))
 
     def test_bug_supports_subtasks_delivery_metadata_and_history(self):
@@ -124,12 +132,24 @@ class BugTaskIntegrationTest(unittest.TestCase):
         self.cli("action", "B-001", "refinement.accepted")
         self.cli("action", "B-001", "work.started")
         self.cli(
-            "pr", "set", "B-001", "--url",
-            "https://gitlab.example/group/project/-/merge_requests/1", "--state", "open",
+            "pr",
+            "set",
+            "B-001",
+            "--url",
+            "https://gitlab.example/group/project/-/merge_requests/1",
+            "--state",
+            "open",
         )
         self.cli(
-            "review", "open", "B-001", "--author", "claude", "--severity", "info",
-            "--body", "Delivery trace",
+            "review",
+            "open",
+            "B-001",
+            "--author",
+            "claude",
+            "--severity",
+            "info",
+            "--body",
+            "Delivery trace",
         )
         detail = self.cli("show", "B-001")
         history = self.cli("history", "B-001")

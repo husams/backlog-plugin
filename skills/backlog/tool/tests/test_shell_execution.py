@@ -20,14 +20,20 @@ class ShellExecutionTest(unittest.TestCase):
         self.backlog_dir = self.root / ".backlog"
         self.backlog_dir.mkdir()
         self.store = db.StoreSpec(
-            dialect="sqlite", scope="repo", project="sample",
+            dialect="sqlite",
+            scope="repo",
+            project="sample",
             artifacts_dir=self.backlog_dir / "artifacts",
-            db_path=self.root / "backlog.db", backlog_dir=self.backlog_dir,
+            db_path=self.root / "backlog.db",
+            backlog_dir=self.backlog_dir,
         )
         self.conn = db.connect(spec=self.store, create=True)
         self.project = db.get_or_create_project(self.conn, "sample", self.store)
         self.task = core.add_task(
-            self.conn, self.project["id"], "story", "Shell validation",
+            self.conn,
+            self.project["id"],
+            "story",
+            "Shell validation",
             actor="fixture-creator",
         )
         self.bl = api.Backlog(self.conn, self.project, self.store, actor="runner")
@@ -36,11 +42,22 @@ class ShellExecutionTest(unittest.TestCase):
         self.conn.close()
         self.temp.cleanup()
 
-    def add_shell(self, command: str, *, timeout: int = 5, exit_code: int = 0,
-                  stdout=None, stderr=None, environment=None):
+    def add_shell(
+        self,
+        command: str,
+        *,
+        timeout: int = 5,
+        exit_code: int = 0,
+        stdout=None,
+        stderr=None,
+        environment=None,
+    ):
         item = core.add_item(
-            self.conn, self.project["id"], self.task["key"],
-            "acceptance_criteria", f"execute {command}",
+            self.conn,
+            self.project["id"],
+            self.task["key"],
+            "acceptance_criteria",
+            f"execute {command}",
         )
         spec = {
             "executor": "shell",
@@ -73,7 +90,8 @@ class ShellExecutionTest(unittest.TestCase):
 
     def actions(self):
         return [
-            row["to_value"] for row in self.conn.execute(
+            row["to_value"]
+            for row in self.conn.execute(
                 "SELECT to_value FROM event WHERE task_id=? AND kind='action' ORDER BY id",
                 (self.task["id"],),
             ).fetchall()
@@ -112,13 +130,9 @@ class ShellExecutionTest(unittest.TestCase):
             self.python("import os; print(os.environ['VALIDATION_TOKEN'])"),
             environment=["VALIDATION_TOKEN"],
         )
-        policy = self.policy(
-            allowed_environment_variables=("VALIDATION_TOKEN",)
-        )
+        policy = self.policy(allowed_environment_variables=("VALIDATION_TOKEN",))
         with patch.dict(os.environ, {"VALIDATION_TOKEN": secret}):
-            result = self.bl.run_item(
-                item["id"], self.root, policy=policy
-            )
+            result = self.bl.run_item(item["id"], self.root, policy=policy)
         self.assertEqual(result.status, "pass")
         self.assertEqual(result.stdout, "[REDACTED]\n")
         executable = execution.executable_item(self.conn, item["id"])
@@ -135,10 +149,12 @@ class ShellExecutionTest(unittest.TestCase):
         surfaces = [
             json.dumps(executable, default=str),
             json.dumps(result.as_dict(), default=str),
-            json.dumps({key: result_row[key] for key in result_row.keys()}, default=str),
-            json.dumps([
-                {key: row[key] for key in row.keys()} for row in events
-            ], default=str),
+            json.dumps(
+                {key: result_row[key] for key in result_row.keys()}, default=str
+            ),
+            json.dumps(
+                [{key: row[key] for key in row.keys()} for row in events], default=str
+            ),
         ]
         self.assertTrue(all(secret not in surface for surface in surfaces))
 
@@ -154,11 +170,11 @@ class ShellExecutionTest(unittest.TestCase):
             self.python("print('actual')"), stdout={"equals": "expected\n"}
         )
         failed = self.bl.run_item(mismatch["id"], self.root, policy=self.policy())
-        self.assertEqual((failed.status, failed.diagnostic), ("fail", "stdout_mismatch"))
-
-        timed = self.add_shell(
-            self.python("import time; time.sleep(2)"), timeout=1
+        self.assertEqual(
+            (failed.status, failed.diagnostic), ("fail", "stdout_mismatch")
         )
+
+        timed = self.add_shell(self.python("import time; time.sleep(2)"), timeout=1)
         timeout = self.bl.run_item(timed["id"], self.root, policy=self.policy())
         self.assertEqual((timeout.status, timeout.diagnostic), ("error", "timed_out"))
         self.assertEqual(
@@ -170,25 +186,31 @@ class ShellExecutionTest(unittest.TestCase):
         item = self.add_shell("command-that-cannot-exist-anywhere")
         result = self.bl.run_item(item["id"], self.root, policy=self.policy())
         self.assertEqual(result.status, "error")
-        self.assertEqual(result.diagnostic, "command_unavailable:command-that-cannot-exist-anywhere")
+        self.assertEqual(
+            result.diagnostic, "command_unavailable:command-that-cannot-exist-anywhere"
+        )
         self.assertEqual(self.actions(), ["check.failed"])
 
     def test_policy_denial_starts_no_process_and_emits_no_action(self):
         item = self.add_shell(self.python("raise SystemExit('must not run')"))
-        with patch("backlog_cli.execution.subprocess.Popen") as popen:
+        with patch("backlog_cli.execution.shell.subprocess.Popen") as popen:
             result = self.bl.run_item(
                 item["id"], self.root, policy=execution.ExecutionPolicy()
             )
         popen.assert_not_called()
-        self.assertEqual((result.status, result.diagnostic),
-                         ("skipped", "policy_denied:shell_disabled"))
+        self.assertEqual(
+            (result.status, result.diagnostic),
+            ("skipped", "policy_denied:shell_disabled"),
+        )
         self.assertEqual(self.actions(), [])
         row = self.conn.execute(
             "SELECT status,reason,LENGTH(stdout) AS n FROM execution_result "
-            "WHERE item_id=?", (item["id"],),
+            "WHERE item_id=?",
+            (item["id"],),
         ).fetchone()
-        self.assertEqual((row["status"], row["reason"], row["n"]),
-                         ("skipped", "policy_denied", 0))
+        self.assertEqual(
+            (row["status"], row["reason"], row["n"]), ("skipped", "policy_denied", 0)
+        )
 
     def test_policy_can_deny_command_and_requested_output_limit(self):
         item = self.add_shell(self.python("print('denied')"))
@@ -226,9 +248,10 @@ class ShellExecutionTest(unittest.TestCase):
     def test_batch_budget_skips_current_and_remaining_without_actions(self):
         first = self.add_shell(self.python("print('first')"), timeout=2)
         second = self.add_shell(self.python("print('second')"), timeout=2)
-        with patch("backlog_cli.execution.subprocess.Popen") as popen:
+        with patch("backlog_cli.execution.shell.subprocess.Popen") as popen:
             results = self.bl.run_task(
-                self.task["key"], self.root,
+                self.task["key"],
+                self.root,
                 policy=self.policy(max_batch_seconds=1),
             )
         popen.assert_not_called()
@@ -238,9 +261,7 @@ class ShellExecutionTest(unittest.TestCase):
         self.assertEqual(self.actions(), [])
 
     def test_batch_defaults_to_run_everything_and_fail_fast_is_explicit(self):
-        first = self.add_shell(
-            self.python("print('bad')"), stdout={"equals": "good\n"}
-        )
+        first = self.add_shell(self.python("print('bad')"), stdout={"equals": "good\n"})
         second = self.add_shell(self.python("print('good')"))
         all_results = self.bl.run_task(
             self.task["key"], self.root, policy=self.policy()
@@ -251,8 +272,9 @@ class ShellExecutionTest(unittest.TestCase):
         fast_results = self.bl.run_task(
             self.task["key"], self.root, fail_fast=True, policy=self.policy()
         )
-        self.assertEqual([(r.item_id, r.status) for r in fast_results],
-                         [(first["id"], "fail")])
+        self.assertEqual(
+            [(r.item_id, r.status) for r in fast_results], [(first["id"], "fail")]
+        )
 
     def test_cli_run_uses_same_structured_contract(self):
         item = self.add_shell(self.python("print('cli')"))
@@ -270,11 +292,22 @@ class ShellExecutionTest(unittest.TestCase):
         }
         result = subprocess.run(
             [
-                sys.executable, "-m", "backlog_cli.cli", "--json",
-                "validation", "run", str(item["id"]),
-                "--project-root", str(self.root), "--actor", "cli-runner",
+                sys.executable,
+                "-m",
+                "backlog_cli.cli",
+                "--json",
+                "validation",
+                "run",
+                str(item["id"]),
+                "--project-root",
+                str(self.root),
+                "--actor",
+                "cli-runner",
             ],
-            cwd=self.root, env=env, text=True, capture_output=True,
+            cwd=self.root,
+            env=env,
+            text=True,
+            capture_output=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)

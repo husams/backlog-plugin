@@ -18,18 +18,26 @@ class ExecutionContractTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         spec = db.StoreSpec(
-            dialect="sqlite", scope="repo", project="sample",
+            dialect="sqlite",
+            scope="repo",
+            project="sample",
             artifacts_dir=self.root / ".backlog" / "artifacts",
-            db_path=self.root / "backlog.db", backlog_dir=self.root / ".backlog",
+            db_path=self.root / "backlog.db",
+            backlog_dir=self.root / ".backlog",
         )
         self.conn = db.connect(spec=spec, create=True)
         project = db.get_or_create_project(self.conn, "sample", spec)
         from backlog_cli import core
+
         self.task = core.add_task(
             self.conn, project["id"], "story", "Executable", actor="fixture-creator"
         )
         self.item = core.add_item(
-            self.conn, project["id"], self.task["key"], "acceptance_criteria", "It works"
+            self.conn,
+            project["id"],
+            self.task["key"],
+            "acceptance_criteria",
+            "It works",
         )
 
     def tearDown(self):
@@ -52,23 +60,35 @@ class ExecutionContractTest(unittest.TestCase):
 
     def test_plain_items_are_unchanged_and_executable_is_exactly_one_kind(self):
         self.assertEqual(
-            self.conn.execute("SELECT COUNT(*) AS n FROM executable_item").fetchone()["n"], 0
+            self.conn.execute("SELECT COUNT(*) AS n FROM executable_item").fetchone()[
+                "n"
+            ],
+            0,
         )
         with self.assertRaises(BacklogError):
-            execution.parse_spec({
-                **self.shell(),
-                "hook": {"name": "tests.run", "arguments": {}, "expected_result": True},
-            })
+            execution.parse_spec(
+                {
+                    **self.shell(),
+                    "hook": {
+                        "name": "tests.run",
+                        "arguments": {},
+                        "expected_result": True,
+                    },
+                }
+            )
         row = execution.set_executable(self.conn, self.item["id"], self.shell())
         self.assertEqual(row["executor"], "shell")
         self.assertEqual(row["requirement"], "required")
         self.assertTrue(row["spec_fingerprint"].startswith("sha256:"))
         from backlog_cli import core
+
         project = db.require_project(self.conn, "sample")
         note = core.add_item(
             self.conn, project["id"], self.task["key"], "note", "Remember this"
         )
-        with self.assertRaisesRegex(BacklogError, "only acceptance criteria and checklist"):
+        with self.assertRaisesRegex(
+            BacklogError, "only acceptance criteria and checklist"
+        ):
             execution.set_executable(self.conn, note["id"], self.shell())
         self.assertIsNone(
             self.conn.execute(
@@ -78,7 +98,9 @@ class ExecutionContractTest(unittest.TestCase):
 
     def test_fingerprint_ignores_task_metadata_and_changes_with_spec(self):
         first = execution.set_executable(self.conn, self.item["id"], self.shell())
-        self.conn.execute("UPDATE task SET title='Renamed' WHERE id=?", (self.task["id"],))
+        self.conn.execute(
+            "UPDATE task SET title='Renamed' WHERE id=?", (self.task["id"],)
+        )
         same = execution.set_executable(self.conn, self.item["id"], self.shell())
         changed = self.shell()
         changed["shell"]["timeout_seconds"] = 31
@@ -100,7 +122,9 @@ class ExecutionContractTest(unittest.TestCase):
         self.assertEqual(
             execution.required_validations_pass(self.conn, self.task["id"]), (True, [])
         )
-        advisory = execution.set_executable(self.conn, self.item["id"], self.shell("advisory"))
+        advisory = execution.set_executable(
+            self.conn, self.item["id"], self.shell("advisory")
+        )
         self.assertEqual(execution.item_state(self.conn, self.item["id"]), "pending")
         self.assertEqual(
             execution.required_validations_pass(self.conn, self.task["id"]), (True, [])
@@ -116,19 +140,30 @@ class ExecutionContractTest(unittest.TestCase):
             self.assertEqual(result["status"], status)
         with self.assertRaises(BacklogError):
             execution.record_result(
-                self.conn, self.item["id"], row["spec_fingerprint"], "skipped",
+                self.conn,
+                self.item["id"],
+                row["spec_fingerprint"],
+                "skipped",
                 reason="timeout",
             )
         result = execution.record_result(
-            self.conn, self.item["id"], row["spec_fingerprint"], "skipped",
+            self.conn,
+            self.item["id"],
+            row["spec_fingerprint"],
+            "skipped",
             reason="policy_denied",
         )
-        self.assertEqual((result["status"], result["reason"]), ("skipped", "policy_denied"))
+        self.assertEqual(
+            (result["status"], result["reason"]), ("skipped", "policy_denied")
+        )
 
     def test_unavailable_source_is_persisted_reported_and_superseded(self):
         row = execution.set_executable(self.conn, self.item["id"], self.shell())
         first = execution.record_result(
-            self.conn, self.item["id"], row["spec_fingerprint"], "pass",
+            self.conn,
+            self.item["id"],
+            row["spec_fingerprint"],
+            "pass",
             source=execution.SourceIdentity(unavailable=True),
         )
         self.assertEqual(first["source_revision_unavailable"], 1)
@@ -146,16 +181,23 @@ class ExecutionContractTest(unittest.TestCase):
                 "BACKLOG_PROJECT": "sample",
                 "BACKLOG_DIR": str(self.root / ".backlog"),
             },
-            text=True, capture_output=True, check=True,
+            text=True,
+            capture_output=True,
+            check=True,
         )
         report = json.loads(doctor.stdout)
         self.assertEqual(
             report["diagnostics"],
-            [f"source_revision_unavailable: latest fresh result for item "
-             f"#{self.item['id']} has no VCS source identity"],
+            [
+                f"source_revision_unavailable: latest fresh result for item "
+                f"#{self.item['id']} has no VCS source identity"
+            ],
         )
         second = execution.record_result(
-            self.conn, self.item["id"], row["spec_fingerprint"], "pass",
+            self.conn,
+            self.item["id"],
+            row["spec_fingerprint"],
+            "pass",
             source=execution.SourceIdentity(revision="abc123"),
         )
         self.assertEqual(second["source_revision_unavailable"], 0)
@@ -171,7 +213,9 @@ class ExecutionContractTest(unittest.TestCase):
                 "BACKLOG_PROJECT": "sample",
                 "BACKLOG_DIR": str(self.root / ".backlog"),
             },
-            text=True, capture_output=True, check=True,
+            text=True,
+            capture_output=True,
+            check=True,
         )
         self.assertEqual(json.loads(cleared.stdout)["diagnostics"], [])
 
@@ -189,27 +233,32 @@ allowed_environment_variables: ["CI"]
 max_timeout_seconds: 60
 max_output_bytes: 4096
 allowed_hooks: ["tests.run"]
-""".lstrip(), encoding="utf-8"
+""".lstrip(),
+            encoding="utf-8",
         )
         policy = execution.load_policy(self.root)
         self.assertIsNone(policy.denial_reason(spec))
 
     def test_hook_json_contract_and_non_vcs_source_identity(self):
-        spec = execution.parse_spec({
-            "executor": "hook",
-            "hook": {
-                "name": "tests.run",
-                "arguments": {"suite": ["unit"]},
-                "timeout_seconds": 10,
-                "expected_result": {"passed": True},
-            },
-        })
+        spec = execution.parse_spec(
+            {
+                "executor": "hook",
+                "hook": {
+                    "name": "tests.run",
+                    "arguments": {"suite": ["unit"]},
+                    "timeout_seconds": 10,
+                    "expected_result": {"passed": True},
+                },
+            }
+        )
         self.assertEqual(spec.hook.name, "tests.run")
         with self.assertRaises(BacklogError):
-            execution.parse_spec({
-                "executor": "hook",
-                "hook": {"name": "bad hook", "arguments": object()},
-            })
+            execution.parse_spec(
+                {
+                    "executor": "hook",
+                    "hook": {"name": "bad hook", "arguments": object()},
+                }
+            )
         source = execution.source_identity(self.root)
         self.assertTrue(source.unavailable)
         self.assertIsNone(source.revision)
@@ -224,13 +273,16 @@ allowed_hooks: ["tests.run"]
         self.conn.close()
         self.conn = db.connect(spec=spec)
         self.assertEqual(
-            self.conn.execute("SELECT content FROM task_item WHERE id=?",
-                              (self.item["id"],)).fetchone()["content"],
+            self.conn.execute(
+                "SELECT content FROM task_item WHERE id=?", (self.item["id"],)
+            ).fetchone()["content"],
             content,
         )
         self.assertEqual(
-            self.conn.execute("SELECT value FROM meta WHERE key='schema_version'")
-            .fetchone()["value"], str(SCHEMA_VERSION),
+            self.conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()["value"],
+            str(SCHEMA_VERSION),
         )
         gates = self.conn.execute(
             "SELECT gates FROM workflow_transition WHERE to_status='accepted' LIMIT 1"
@@ -239,9 +291,7 @@ allowed_hooks: ["tests.run"]
 
     def test_s009_v9_store_migrates_through_current_schema(self):
         for column in ("actual_exit_code", "stdout", "stderr", "duration_ms"):
-            self.conn.execute(
-                f"ALTER TABLE execution_result DROP COLUMN {column}"
-            )
+            self.conn.execute(f"ALTER TABLE execution_result DROP COLUMN {column}")
         self.conn.execute("UPDATE meta SET value='9' WHERE key='schema_version'")
         self.conn.commit()
         spec = self.conn.spec
@@ -254,11 +304,19 @@ allowed_hooks: ["tests.run"]
                 "PRAGMA table_info(execution_result)"
             ).fetchall()
         }
-        self.assertTrue({
-            "expected_result", "actual_result", "hook_name",
-            "implementation_identity",
-            "actual_exit_code", "stdout", "stderr", "duration_ms", "actor",
-        }.issubset(columns))
+        self.assertTrue(
+            {
+                "expected_result",
+                "actual_result",
+                "hook_name",
+                "implementation_identity",
+                "actual_exit_code",
+                "stdout",
+                "stderr",
+                "duration_ms",
+                "actor",
+            }.issubset(columns)
+        )
         self.assertEqual(
             self.conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
@@ -271,8 +329,10 @@ allowed_hooks: ["tests.run"]
         repo.mkdir()
         subprocess.run(["git", "init", "-q", repo], check=True)
         subprocess.run(["git", "-C", repo, "config", "user.name", "Test"], check=True)
-        subprocess.run(["git", "-C", repo, "config", "user.email", "test@example.invalid"],
-                       check=True)
+        subprocess.run(
+            ["git", "-C", repo, "config", "user.email", "test@example.invalid"],
+            check=True,
+        )
         (repo / ".gitignore").write_text("ignored.log\n", encoding="utf-8")
         (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
         subprocess.run(["git", "-C", repo, "add", "."], check=True)

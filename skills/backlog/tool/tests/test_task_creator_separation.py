@@ -47,8 +47,13 @@ class TaskCreatorSeparationTest(unittest.TestCase):
 
     def test_creator_is_stored_and_cannot_accept_own_task(self):
         created = self.cli(
-            "story", "add", "--title", "Independent refinement",
-            "--actor", "codex", json_output=True,
+            "story",
+            "add",
+            "--title",
+            "Independent refinement",
+            "--actor",
+            "codex",
+            json_output=True,
         )
         self.assertEqual(created["created_by"], "codex")
         self.assertIn("creator    : codex", self.cli("show", created["key"]))
@@ -69,26 +74,39 @@ class TaskCreatorSeparationTest(unittest.TestCase):
         self.assertEqual([event["kind"] for event in history], ["created"])
 
         accepted = self.cli(
-            "action", created["key"], "refinement.accepted",
-            "--actor", "product-manager", json_output=True,
+            "action",
+            created["key"],
+            "refinement.accepted",
+            "--actor",
+            "product-manager",
+            json_output=True,
         )
         self.assertEqual(accepted["task"]["status"], "ready")
         history = self.cli("history", created["key"], json_output=True)
         self.assertEqual(history[-2]["kind"], "action")
         self.assertEqual(history[-2]["actor"], "product-manager")
 
-    def test_new_task_requires_actor_but_unattributed_legacy_task_remains_operable(self):
+    def test_new_task_requires_actor_but_unattributed_legacy_task_remains_operable(
+        self,
+    ):
         missing = self.raw("bug", "add", "--title", "Missing attribution")
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("task creation requires an actor", missing.stderr)
 
         created = self.cli(
-            "bug", "add", "--title", "Legacy attribution", "--actor", "legacy-seeder",
+            "bug",
+            "add",
+            "--title",
+            "Legacy attribution",
+            "--actor",
+            "legacy-seeder",
             json_output=True,
         )
         database = self.root / ".backlog" / "backlog.db"
         with sqlite3.connect(database) as conn:
-            conn.execute("UPDATE task SET created_by = NULL WHERE key = ?", (created["key"],))
+            conn.execute(
+                "UPDATE task SET created_by = NULL WHERE key = ?", (created["key"],)
+            )
             conn.execute(
                 "UPDATE event SET actor = NULL WHERE entity_key = ? AND kind = 'created'",
                 (created["key"],),
@@ -101,8 +119,13 @@ class TaskCreatorSeparationTest(unittest.TestCase):
 
     def test_v15_migration_backfills_creator_from_creation_event(self):
         created = self.cli(
-            "feature", "add", "--title", "Migrated creator",
-            "--actor", "codex", json_output=True,
+            "feature",
+            "add",
+            "--title",
+            "Migrated creator",
+            "--actor",
+            "codex",
+            json_output=True,
         )
         database = self.root / ".backlog" / "backlog.db"
         with sqlite3.connect(database) as conn:

@@ -39,8 +39,11 @@ class ReviewRestrictionTest(unittest.TestCase):
         if json_output:
             command.append("--json")
         result = subprocess.run(
-            [*command, *args], cwd=self.root, env=self.env,
-            text=True, capture_output=True,
+            [*command, *args],
+            cwd=self.root,
+            env=self.env,
+            text=True,
+            capture_output=True,
         )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         return json.loads(result.stdout) if json_output else result.stdout
@@ -51,45 +54,90 @@ class ReviewRestrictionTest(unittest.TestCase):
         self.run_cli("assign", key, "--to", "dev", "--reviewer", "reviewer")
         self.run_cli("action", key, "refinement.accepted", "--actor", "reviewer")
         opened = self.run_cli(
-            "review", "open", key, "--author", "reviewer",
-            "--severity", "nice_to_have", "--body", "Tighten this",
+            "review",
+            "open",
+            key,
+            "--author",
+            "reviewer",
+            "--severity",
+            "nice_to_have",
+            "--body",
+            "Tighten this",
             json_output=True,
         )
         root = opened["root"]
         self.run_cli(
-            "review", "severity", root, "--severity", "blocker",
-            "--author", "reviewer",
+            "review",
+            "severity",
+            root,
+            "--severity",
+            "blocker",
+            "--author",
+            "reviewer",
         )
-        self.assertEqual(self.run_cli("show", key, json_output=True)["status"], "incomplete")
+        self.assertEqual(
+            self.run_cli("show", key, json_output=True)["status"], "incomplete"
+        )
         reply = self.run_cli(
-            "review", "reply", root, "--author", "dev", "--action", "fix",
-            "--body", "Changed the validation", json_output=True,
+            "review",
+            "reply",
+            root,
+            "--author",
+            "dev",
+            "--action",
+            "fix",
+            "--body",
+            "Changed the validation",
+            json_output=True,
         )
         self.run_cli(
-            "review", "reply", reply["reply_to"], "--author", "reviewer",
-            "--action", "accept", "--body", "Verified",
+            "review",
+            "reply",
+            reply["reply_to"],
+            "--author",
+            "reviewer",
+            "--action",
+            "accept",
+            "--body",
+            "Verified",
         )
         audit = self.run_cli("review", "audit", root, json_output=True)
         self.assertEqual(audit["decisions"][-1]["author"], "reviewer")
         self.assertEqual(audit["decisions"][-1]["action"], "accept")
 
     def test_python_session_actor_rejects_review_impersonation(self):
-        with patch.dict(os.environ, self.env), patch("pathlib.Path.cwd", return_value=self.root):
+        with (
+            patch.dict(os.environ, self.env),
+            patch("pathlib.Path.cwd", return_value=self.root),
+        ):
             with api.open(actor="reviewer") as bl:
                 story = bl.create_story("Actor bound")
-                with self.assertRaisesRegex(BacklogError, "does not match session actor"):
+                with self.assertRaisesRegex(
+                    BacklogError, "does not match session actor"
+                ):
                     bl.review_open(
-                        story.key, author="someone-else", body="No",
-                        role="reviewer", severity=ReviewSeverity.BLOCKER,
+                        story.key,
+                        author="someone-else",
+                        body="No",
+                        role="reviewer",
+                        severity=ReviewSeverity.BLOCKER,
                     )
 
     def test_task_parent_projection_is_uniform(self):
         feature = self.run_cli("feature", "add", "--title", "Parent", json_output=True)
         story = self.run_cli(
-            "story", "add", "--title", "Child", "--feature", feature["key"],
+            "story",
+            "add",
+            "--title",
+            "Child",
+            "--feature",
+            feature["key"],
             json_output=True,
         )
-        with patch.dict(os.environ, self.env), patch("pathlib.Path.cwd", return_value=self.root):
+        with (
+            patch.dict(os.environ, self.env),
+            patch("pathlib.Path.cwd", return_value=self.root),
+        ):
             with api.open() as bl:
                 self.assertEqual(bl.task(story["key"]).parent_key, feature["key"])
                 self.assertEqual(bl.find(story["key"]).parent, feature["key"])

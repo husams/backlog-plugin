@@ -20,19 +20,27 @@ class ExecutionReportingTest(unittest.TestCase):
         self.backlog_dir = self.root / ".backlog"
         self.backlog_dir.mkdir()
         self.store = db.StoreSpec(
-            dialect="sqlite", scope="repo", project="sample",
+            dialect="sqlite",
+            scope="repo",
+            project="sample",
             artifacts_dir=self.backlog_dir / "artifacts",
-            db_path=self.root / "backlog.db", backlog_dir=self.backlog_dir,
+            db_path=self.root / "backlog.db",
+            backlog_dir=self.backlog_dir,
         )
         self.conn = db.connect(spec=self.store, create=True)
         self.project = db.get_or_create_project(self.conn, "sample", self.store)
         self.task = core.add_task(
-            self.conn, self.project["id"], "story", "Reporting",
+            self.conn,
+            self.project["id"],
+            "story",
+            "Reporting",
             actor="fixture-creator",
         )
         self.bl = api.Backlog(self.conn, self.project, self.store, actor="S-010")
         self.policy = execution.ExecutionPolicy(
-            shell_enabled=True, max_output_bytes=4096, max_batch_seconds=60,
+            shell_enabled=True,
+            max_output_bytes=4096,
+            max_batch_seconds=60,
         )
 
     def tearDown(self):
@@ -41,20 +49,28 @@ class ExecutionReportingTest(unittest.TestCase):
 
     def shell_item(self, *, kind="checklist", required=True, expected=0):
         item = core.add_item(
-            self.conn, self.project["id"], self.task["key"], kind, "validate",
+            self.conn,
+            self.project["id"],
+            self.task["key"],
+            kind,
+            "validate",
         )
-        execution.set_executable(self.conn, item["id"], {
-            "executor": "shell",
-            "requirement": "required" if required else "advisory",
-            "shell": {
-                "command": (
-                    f"{shlex.quote(sys.executable)} -c "
-                    + shlex.quote("print('actual')")
-                ),
-                "timeout_seconds": 5,
-                "expected_exit_code": expected,
+        execution.set_executable(
+            self.conn,
+            item["id"],
+            {
+                "executor": "shell",
+                "requirement": "required" if required else "advisory",
+                "shell": {
+                    "command": (
+                        f"{shlex.quote(sys.executable)} -c "
+                        + shlex.quote("print('actual')")
+                    ),
+                    "timeout_seconds": 5,
+                    "expected_exit_code": expected,
+                },
             },
-        })
+        )
         return item
 
     def cli(self, *args):
@@ -68,7 +84,10 @@ class ExecutionReportingTest(unittest.TestCase):
         }
         return subprocess.run(
             [sys.executable, "-m", "backlog_cli.cli", "--json", *args],
-            cwd=self.root, env=env, text=True, capture_output=True,
+            cwd=self.root,
+            env=env,
+            text=True,
+            capture_output=True,
         )
 
     def test_history_is_bounded_and_includes_actor_expected_actual_diagnostic(self):
@@ -85,37 +104,54 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(history[0]["expected"]["exit_code"], 3)
         self.assertEqual(history[0]["actual"]["exit_code"], 0)
         self.assertEqual(
-            history[0]["expected"]["stdout"], {"contains": "<hidden>"}
+            history[0]["expected"]["stdout"],
+            {"contains": "matcher-secret", "equals": None, "regex": None},
         )
-        self.assertEqual(history[0]["actual"]["stdout"], "<hidden>")
-        self.assertNotIn("matcher-secret", json.dumps(history))
+        self.assertEqual(history[0]["actual"]["stdout"], "actual\n")
+        self.assertIn("matcher-secret", json.dumps(history))
         self.assertIn("exit_code_mismatch", history[0]["diagnostic"])
         result = self.cli(
-            "validation", "history", str(item["id"]), "--limit", "1",
-            "--project-root", str(self.root),
+            "validation",
+            "history",
+            str(item["id"]),
+            "--limit",
+            "1",
+            "--project-root",
+            str(self.root),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(len(payload), 1)
-        self.assertNotIn("matcher-secret", result.stdout)
-        self.assertNotIn("actual\\n", result.stdout)
+        self.assertIn("matcher-secret", result.stdout)
+        self.assertIn("actual\\n", result.stdout)
         with self.assertRaisesRegex(db.BacklogError, "between 1 and 100"):
             self.bl.execution_history(item["id"], limit=101)
 
         hook = core.add_item(
-            self.conn, self.project["id"], self.task["key"],
-            "acceptance_criteria", "hook secret",
+            self.conn,
+            self.project["id"],
+            self.task["key"],
+            "acceptance_criteria",
+            "hook secret",
         )
-        hook_row = execution.set_executable(self.conn, hook["id"], {
-            "executor": "hook",
-            "hook": {
-                "name": "secrets.hook",
-                "expected_result": {"nested": {"token": "expected-secret"}},
+        hook_row = execution.set_executable(
+            self.conn,
+            hook["id"],
+            {
+                "executor": "hook",
+                "hook": {
+                    "name": "secrets.hook",
+                    "expected_result": {"nested": {"token": "expected-secret"}},
+                },
             },
-        })
+        )
         execution.record_result(
-            self.conn, hook["id"], hook_row["spec_fingerprint"], "fail",
-            actor="hook-actor", reason="result_mismatch",
+            self.conn,
+            hook["id"],
+            hook_row["spec_fingerprint"],
+            "fail",
+            actor="hook-actor",
+            reason="result_mismatch",
             detail="diagnostic-secret",
             expected={"nested": {"token": "expected-secret"}},
             actual={"nested": {"token": "actual-secret"}},
@@ -123,16 +159,22 @@ class ExecutionReportingTest(unittest.TestCase):
         )
         hook_history = self.bl.execution_history(hook["id"])
         encoded = json.dumps(hook_history)
-        self.assertEqual(hook_history[0]["expected"], "<hidden>")
-        self.assertEqual(hook_history[0]["actual"], "<hidden>")
-        self.assertEqual(hook_history[0]["diagnostic"], "result_mismatch")
-        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
-            self.assertNotIn(secret, encoded)
+        self.assertEqual(
+            hook_history[0]["expected"], {"nested": {"token": "expected-secret"}}
+        )
+        self.assertEqual(
+            hook_history[0]["actual"], {"nested": {"token": "actual-secret"}}
+        )
+        self.assertEqual(hook_history[0]["diagnostic"], "diagnostic-secret")
+        for value in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertIn(value, encoded)
         result = self.cli("validation", "history", str(hook["id"]))
-        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
-            self.assertNotIn(secret, result.stdout)
+        for value in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertIn(value, result.stdout)
 
-    def test_pass_auto_checks_required_checklist_but_criteria_remains_non_tickable(self):
+    def test_pass_auto_checks_required_checklist_but_criteria_remains_non_tickable(
+        self,
+    ):
         checklist = self.shell_item()
         result = self.bl.run_item(checklist["id"], self.root, policy=self.policy)
         self.assertEqual(result.status, "pass")
@@ -145,7 +187,10 @@ class ExecutionReportingTest(unittest.TestCase):
         self.bl.run_item(criterion["id"], self.root, policy=self.policy)
         with self.assertRaisesRegex(db.BacklogError, "not tickable"):
             core.tick_item(
-                self.conn, self.project["id"], criterion["id"], actor="S-010",
+                self.conn,
+                self.project["id"],
+                criterion["id"],
+                actor="S-010",
             )
 
     def test_manual_completion_requires_current_pass_or_audited_waiver(self):
@@ -154,16 +199,27 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(failed.status, "fail")
         with self.assertRaisesRegex(db.BacklogError, "has fail validation"):
             core.tick_item(
-                self.conn, self.project["id"], item["id"], actor="S-010",
+                self.conn,
+                self.project["id"],
+                item["id"],
+                actor="S-010",
             )
         with self.assertRaisesRegex(db.BacklogError, "non-empty reason"):
             core.tick_item(
-                self.conn, self.project["id"], item["id"], actor="S-010",
-                waive_validation=True, waiver_reason=" ",
+                self.conn,
+                self.project["id"],
+                item["id"],
+                actor="S-010",
+                waive_validation=True,
+                waiver_reason=" ",
             )
         core.tick_item(
-            self.conn, self.project["id"], item["id"], actor="S-010",
-            waive_validation=True, waiver_reason="Reviewed external evidence",
+            self.conn,
+            self.project["id"],
+            item["id"],
+            actor="S-010",
+            waive_validation=True,
+            waiver_reason="Reviewed external evidence",
         )
         waiver = execution.current_waiver(self.conn, item["id"])
         self.assertEqual(waiver["actor"], "S-010")
@@ -191,10 +247,13 @@ class ExecutionReportingTest(unittest.TestCase):
         subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
         subprocess.run(
             ["git", "config", "user.email", "test@example.invalid"],
-            cwd=repo, check=True,
+            cwd=repo,
+            check=True,
         )
         subprocess.run(
-            ["git", "config", "user.name", "Test"], cwd=repo, check=True,
+            ["git", "config", "user.name", "Test"],
+            cwd=repo,
+            check=True,
         )
         source = repo / "tracked.txt"
         source.write_text("one\n", encoding="utf-8")
@@ -205,16 +264,18 @@ class ExecutionReportingTest(unittest.TestCase):
         self.bl.run_item(item["id"], repo, policy=self.policy)
         self.assertEqual(execution.item_state(self.conn, item["id"], repo), "pass")
         source.write_text("two\n", encoding="utf-8")
-        self.assertEqual(
-            execution.item_state(self.conn, item["id"], repo), "pending"
-        )
+        self.assertEqual(execution.item_state(self.conn, item["id"], repo), "pending")
         history = self.bl.execution_history(
-            item["id"], limit=1, project_root=repo,
+            item["id"],
+            limit=1,
+            project_root=repo,
         )
         self.assertTrue(history[0]["stale"])
         self.assertFalse(
             execution.required_validations_pass(
-                self.conn, self.task["id"], repo,
+                self.conn,
+                self.task["id"],
+                repo,
             )[0]
         )
         spec = execution.executable_item(self.conn, item["id"])["execution_spec"]
@@ -232,7 +293,9 @@ class ExecutionReportingTest(unittest.TestCase):
     def test_doctor_reports_skipped_and_waived_until_pass_supersedes(self):
         item = self.shell_item()
         self.bl.run_item(
-            item["id"], self.root, policy=execution.ExecutionPolicy(),
+            item["id"],
+            self.root,
+            policy=execution.ExecutionPolicy(),
         )
         self.bl.waive_validation(item["id"], reason="Policy owner approved")
         report = self.cli("doctor")
@@ -248,15 +311,23 @@ class ExecutionReportingTest(unittest.TestCase):
 
         executable = execution.executable_item(self.conn, item["id"])
         execution.record_result(
-            self.conn, item["id"], executable["spec_fingerprint"], "fail",
-            actor="failure-actor", detail="exit_code_mismatch",
+            self.conn,
+            item["id"],
+            executable["spec_fingerprint"],
+            "fail",
+            actor="failure-actor",
+            detail="exit_code_mismatch",
         )
         report = self.cli("doctor")
         joined = "\n".join(json.loads(report.stdout)["diagnostics"])
         self.assertIn("validation_skipped", joined)
         execution.record_result(
-            self.conn, item["id"], executable["spec_fingerprint"], "error",
-            actor="error-actor", detail="runtime_infrastructure_failure",
+            self.conn,
+            item["id"],
+            executable["spec_fingerprint"],
+            "error",
+            actor="error-actor",
+            detail="runtime_infrastructure_failure",
         )
         report = self.cli("doctor")
         joined = "\n".join(json.loads(report.stdout)["diagnostics"])
@@ -268,7 +339,9 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertNotIn("validation_skipped", joined)
         self.assertNotIn("validation_waived", joined)
 
-    def test_aggregate_exit_is_nonzero_for_pending_failed_error_or_skipped_required(self):
+    def test_aggregate_exit_is_nonzero_for_pending_failed_error_or_skipped_required(
+        self,
+    ):
         passed = self.shell_item()
         failed = self.shell_item(expected=7)
         policy_path = self.backlog_dir / "execution.yaml"
@@ -277,8 +350,11 @@ class ExecutionReportingTest(unittest.TestCase):
             encoding="utf-8",
         )
         result = self.cli(
-            "validation", "run-all", self.task["key"],
-            "--project-root", str(self.root),
+            "validation",
+            "run-all",
+            self.task["key"],
+            "--project-root",
+            str(self.root),
         )
         self.assertEqual(result.returncode, 2)
         statuses = [row["status"] for row in json.loads(result.stdout)]
@@ -293,19 +369,21 @@ class ExecutionReportingTest(unittest.TestCase):
         item = self.shell_item()
         executable = execution.executable_item(self.conn, item["id"])
         execution.record_result(
-            self.conn, item["id"], executable["spec_fingerprint"], "fail",
+            self.conn,
+            item["id"],
+            executable["spec_fingerprint"],
+            "fail",
         )
         self.conn.execute("DROP TABLE validation_waiver")
         self.conn.execute("ALTER TABLE execution_result DROP COLUMN actor")
-        self.conn.execute(
-            "UPDATE meta SET value='10' WHERE key='schema_version'"
-        )
+        self.conn.execute("UPDATE meta SET value='10' WHERE key='schema_version'")
         self.conn.commit()
         self.conn.close()
         self.conn = db.connect(spec=self.store)
         self.assertTrue(self.conn.table_exists("validation_waiver"))
         columns = {
-            row["name"] for row in self.conn.execute(
+            row["name"]
+            for row in self.conn.execute(
                 "PRAGMA table_info(execution_result)"
             ).fetchall()
         }
@@ -319,14 +397,19 @@ class ExecutionReportingTest(unittest.TestCase):
         ).fetchone()["actor"]
         self.assertEqual(actor, "unknown")
         bug = core.add_task(
-            self.conn, self.project["id"], "bug", "Migrated defect",
+            self.conn,
+            self.project["id"],
+            "bug",
+            "Migrated defect",
             actor="fixture-creator",
         )
         self.assertEqual((bug["key"], bug["task_type"]), ("B-001", "bug"))
-        self.assertIsNotNone(self.conn.execute(
-            "SELECT id FROM workflow WHERE project_id=? AND task_type='bug'",
-            (self.project["id"],),
-        ).fetchone())
+        self.assertIsNotNone(
+            self.conn.execute(
+                "SELECT id FROM workflow WHERE project_id=? AND task_type='bug'",
+                (self.project["id"],),
+            ).fetchone()
+        )
         iteration_close = self.conn.execute(
             "SELECT tr.gates FROM workflow_transition tr "
             "JOIN workflow w ON w.id=tr.workflow_id "
@@ -346,9 +429,7 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(exported.returncode, 0, exported.stderr)
         payload = json.loads(export_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["schema_version"], SCHEMA_VERSION)
-        self.assertEqual(
-            payload["tables"]["execution_result"][0]["actor"], "S-010"
-        )
+        self.assertEqual(payload["tables"]["execution_result"][0]["actor"], "S-010")
         self.assertEqual(
             payload["tables"]["validation_waiver"][0]["reason"],
             "Round-trip waiver",
