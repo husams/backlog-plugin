@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: self-hosted
+    runs-on: backlog-plugin-runner
     env:
       BACKLOG_DB: postgres
       BACK_LOG_URL: ${{ secrets.BACK_LOG_URL }}

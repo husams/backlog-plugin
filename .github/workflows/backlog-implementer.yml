@@ -39,7 +39,7 @@ jobs:
 
   e2e-coverage:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: backlog-plugin-runner
     env:
       BACKLOG_DB: ${{ secrets.BACK_LOG_URL }}
       BACK_LOG_URL: ""
