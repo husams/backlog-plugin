@@ -19,6 +19,14 @@ Feature: Transition hooks
     And the transition is reported as skipped
     And no post hook was called
 
+  Scenario: A pre hook can prevent an accepted task from moving to Done
+    Given transition hooks that block a requested transition
+    And the story is accepted
+    When delivery completion requests a block
+    Then the task status is "accepted"
+    And the transition is reported as skipped
+    And the last hook call is "pre"
+
   Scenario: A pre hook exception prevents the transition
     Given a pre transition hook that raises an error
     When action "refinement.accepted" is submitted and rejected

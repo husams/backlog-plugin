@@ -43,6 +43,25 @@ Feature: Executable items
     And action "review.approved" is submitted by "reviewer"
     Then the task status is "accepted"
 
+  Scenario: A failing executable acceptance-criteria hook prevents Done
+    Given an executable hook item expecting a matching result
+    And the validation hook is installed and allowlisted
+    And the task is in review
+    When the executable item is run
+    And action "review.approved" is submitted by "reviewer"
+    Then the task status is "accepted"
+    When the validation hook returns a mismatching result
+    And the executable item is run
+    Then the validation status is "fail"
+    And the validation failure reason is "result_mismatch"
+    And the validation detail contains "mismatched"
+    And the task status is "needs_work"
+    When the Done gate is checked through the agent APIs
+    Then both APIs identify the failing executable acceptance criterion
+    When action "pr.merged" is submitted and rejected
+    Then the task status is "needs_work"
+    And the command reports an unavailable action
+
   Scenario: Shell execution reports runtime, matcher, environment, and output limits
     When shell execution edge cases are exercised
     Then executable edge cases are reported

@@ -7,6 +7,8 @@ import textwrap
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from backlog_cli import api, db
+
 from .conftest import World
 
 
@@ -90,6 +92,24 @@ def install_hook(world: World) -> None:
     )
 
 
+@when("the validation hook returns a mismatching result")
+def install_mismatching_hook(world: World) -> None:
+    package = world.root / ".backlog" / "hooks"
+    (package / "__init__.py").write_text(
+        textwrap.dedent(
+            """
+            from backlog_cli.api import ValidationHookResult
+
+            def validate(backlog, context, arguments):
+                return ValidationHookResult({"ok": False}, "mismatched")
+
+            validation_hooks = {"checks.contract": validate}
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+
+
 @given("the task is in review")
 def task_in_review(world: World) -> None:
     for action, actor in (
@@ -133,6 +153,61 @@ def validation_history(world: World, status: str) -> None:
 @then(parsers.parse('the validation diagnostic contains "{reason}"'))
 def validation_diagnostic(world: World, reason: str) -> None:
     assert reason in world.last_json["diagnostic"]
+
+
+@then(parsers.parse('the validation failure reason is "{reason}"'))
+def validation_failure_reason(world: World, reason: str) -> None:
+    assert world.last_json["reason"] == reason
+
+
+@then(parsers.parse('the validation detail contains "{detail}"'))
+def validation_detail(world: World, detail: str) -> None:
+    assert detail in world.last_json["detail"]
+
+
+@when("the Done gate is checked through the agent APIs")
+def check_done_gate_through_agent_apis(world: World) -> None:
+    cli_gate = world.run("gate", world.require_key(), "--for", "done", expected=2)
+    cli_result = world.last_result
+    backlog_dir = world.root / ".backlog"
+    spec = db.StoreSpec(
+        dialect="sqlite",
+        scope="repo",
+        project="bdd-project",
+        artifacts_dir=backlog_dir / "artifacts",
+        db_path=backlog_dir / "backlog.db",
+        backlog_dir=backlog_dir,
+    )
+    conn = db.connect(spec=spec)
+    try:
+        project = db.require_project(conn, "bdd-project")
+        backlog = api.Backlog(conn, project, spec, actor="agent")
+        python_gate = backlog.can(world.require_key(), "done")
+    finally:
+        conn.close()
+    world.last_result = cli_result
+    world.last_json = {
+        "cli": cli_gate["checks"],
+        "python": python_gate.failures,
+    }
+
+
+@then("both APIs identify the failing executable acceptance criterion")
+def agent_apis_report_failed_ac(world: World) -> None:
+    item = f"#{world.item_id}"
+    cli_failure = next(
+        check
+        for check in world.last_json["cli"]
+        if check["check"] == "required_validations_pass"
+    )
+    assert cli_failure["ok"] is False
+    assert item in cli_failure["detail"]
+    python_failure = next(
+        failure
+        for failure in world.last_json["python"]
+        if failure.startswith("required_validations_pass:")
+    )
+    assert item in python_failure
 
 
 def _add_shell_item(world: World, content: str, source: str, *options: str) -> int:
