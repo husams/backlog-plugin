@@ -461,7 +461,7 @@ def tick_item(conn: Conn, project_id: int, item_id: int, done: bool = True,
     ).fetchone()
     if done and executable is not None:
         from pathlib import Path
-        from .api import execution
+        from . import execution
 
         state = execution.item_state(conn, item_id, Path.cwd())
         if state != "pass":
@@ -752,7 +752,7 @@ def run_checks(conn: Conn, project_id: int, task: Row, names: list[str],
                                     f"pr_state={task['pr_state']}"))
         elif name == "required_validations_pass":
             from pathlib import Path
-            from .api.execution import required_validations_pass
+            from .execution import required_validations_pass
 
             ok, pending_or_failed = required_validations_pass(
                 conn, task["id"], Path.cwd()
@@ -842,7 +842,7 @@ def gate(conn: Conn, project_id: int, key: str, target: str,
         ))
 
     if target in ("accepted", "merge"):
-        from .api.execution import required_validations_pass
+        from .execution import required_validations_pass
 
         validations_ok, pending_or_failed = required_validations_pass(conn, task["id"])
         checks.append(Check(

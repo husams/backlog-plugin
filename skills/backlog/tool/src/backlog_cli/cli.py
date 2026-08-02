@@ -9,9 +9,8 @@ import sys
 from pathlib import Path
 
 from . import (
-    __version__, core, deps, hooks, retrospective, review, templates, workflow,
+    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
 )
-from .api import execution
 from .db import (
     BacklogError,
     Conn,
@@ -326,7 +325,7 @@ def cmd_doctor(ctx: Ctx, args) -> int:
                    if not (d / a["rel_path"]).exists()]
     problems += [f"artifact file missing on disk: .backlog/{p}" for p in missing_art]
 
-    from .api.execution import source_revision_unavailable_items
+    from .execution import source_revision_unavailable_items
     unavailable = source_revision_unavailable_items(conn)
     diagnostics += [
         "source_revision_unavailable: latest fresh result for item "
@@ -790,7 +789,7 @@ def _execution_payload(result) -> dict:
 
 def cmd_validation_run(ctx: Ctx, args) -> int:
     from .api import Backlog
-    from .api import execution
+    from . import execution
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
     result = execution.run_validation(
@@ -804,7 +803,7 @@ def cmd_validation_run(ctx: Ctx, args) -> int:
 
 def cmd_validation_run_all(ctx: Ctx, args) -> int:
     from .api import Backlog
-    from .api import execution
+    from . import execution
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
     results = execution.run_task_validations(

@@ -113,7 +113,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
     current = None
     for it in items:
         if conn is not None:
-            from .api.execution import _item_details
+            from .execution import _item_details
             it = _item_details(conn, it)
         if it["kind"] != current:
             current = it["kind"]

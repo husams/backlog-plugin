@@ -22,12 +22,11 @@ import contextlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from .. import core, deps, hooks, retrospective, review, workflow
-from . import execution
-from ..hooks import Action
-from ..retrospective import RetrospectiveStatus
-from ..schema import ReviewSeverity
-from ..db import (
+from . import core, deps, execution, hooks, retrospective, review, workflow
+from .hooks import Action
+from .retrospective import RetrospectiveStatus
+from .schema import ReviewSeverity
+from .db import (
     BacklogError,
     Conn,
     connect,

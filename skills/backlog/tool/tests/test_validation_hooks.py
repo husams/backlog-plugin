@@ -8,9 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from backlog_cli import api, core, db
-from backlog_cli.api import execution
-from backlog_cli.api.execution import hooks as execution_hooks
+from backlog_cli import api, core, db, execution
 
 
 class ValidationHookTest(unittest.TestCase):
@@ -155,7 +153,7 @@ class ValidationHookTest(unittest.TestCase):
 
         callback = Callable()
         callback.__backlog_validation_version__ = "v1"
-        with patch.object(execution_hooks.inspect, "getsource", side_effect=TypeError):
+        with patch.object(execution.inspect, "getsource", side_effect=TypeError):
             self.assertEqual(
                 execution.hook_implementation_identity(callback), "version:v1"
             )
@@ -173,7 +171,7 @@ class ValidationHookTest(unittest.TestCase):
         ]
         identities = []
         for source in samples:
-            with patch.object(execution_hooks.inspect, "getsource", return_value=source):
+            with patch.object(execution.inspect, "getsource", return_value=source):
                 identities.append(execution.hook_implementation_identity(callback))
         self.assertEqual(identities[0], identities[1])
 
@@ -214,7 +212,7 @@ class ValidationHookTest(unittest.TestCase):
             """
         )
         with patch.object(
-            execution_hooks, "_timeout_constraint", return_value="sigalrm_unavailable"
+            execution, "_timeout_constraint", return_value="sigalrm_unavailable"
         ):
             result = self.bl.run_hook_validation(
                 self.item["id"], project_root=self.root

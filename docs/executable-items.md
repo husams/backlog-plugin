@@ -70,20 +70,6 @@ with api.open(actor="planner") as backlog:
 `Task.item_details()` returns plain and executable items with their declarations
 and state.
 
-### Internal organization
-
-The supported entry point remains `from backlog_cli import api`. Execution
-internals live below `backlog_cli.api.execution` and are separated by purpose:
-
-- `contracts.py` — typed declarations and input validation;
-- `policy.py` — trusted local policy and source identity;
-- `store.py` — persistence, state, history, waivers, and workflow gates;
-- `hooks.py` — named hook loading and invocation;
-- `runner.py` — shell and batch execution.
-
-There is no top-level `backlog_cli.execution` module or alternate public view
-layer.
-
 ## Trusted local policy
 
 Execution policy is loaded only from
