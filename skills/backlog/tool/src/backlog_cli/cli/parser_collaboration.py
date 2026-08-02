@@ -6,7 +6,7 @@ from __future__ import annotations
 from ..schema import (
     ARTIFACT_KINDS,
     DEPENDENCY_KINDS,
-    ITEM_KINDS,
+    GENERIC_ITEM_KINDS,
     PR_REVIEW_STATES,
     PR_STATES,
 )
@@ -18,6 +18,13 @@ from .items import (
     cmd_item_list,
     cmd_item_check,
     cmd_item_rm,
+)
+from .todos import (
+    cmd_todo_add,
+    cmd_todo_close,
+    cmd_todo_list,
+    cmd_todo_move,
+    cmd_todo_reopen,
 )
 from .dependencies import (
     cmd_dep_add,
@@ -52,19 +59,23 @@ def register_collaboration(sub):
     ip = sub.group("item", help="sections of a task: criteria, checklist, notes")
     sp = ip.add_parser("add")
     sp.add_argument("key")
-    sp.add_argument("--kind", default="acceptance_criteria", choices=ITEM_KINDS)
+    sp.add_argument(
+        "--kind", default="acceptance_criteria", choices=GENERIC_ITEM_KINDS
+    )
     sp.add_argument("--content", required=True, help="one entry per line")
     add_execution_flags(sp)
     sp.set_defaults(func=cmd_item_add)
     sp = ip.add_parser("set", help="replace every entry of one kind")
     sp.add_argument("key")
-    sp.add_argument("--kind", default="acceptance_criteria", choices=ITEM_KINDS)
+    sp.add_argument(
+        "--kind", default="acceptance_criteria", choices=GENERIC_ITEM_KINDS
+    )
     sp.add_argument("--content", required=True)
     add_execution_flags(sp)
     sp.set_defaults(func=cmd_item_set)
     sp = ip.add_parser("list")
     sp.add_argument("key")
-    sp.add_argument("--kind", choices=ITEM_KINDS)
+    sp.add_argument("--kind", choices=GENERIC_ITEM_KINDS)
     sp.set_defaults(func=cmd_item_list)
     sp = ip.add_parser("check", help="tick a checklist entry")
     sp.add_argument("id", type=int)
@@ -79,6 +90,25 @@ def register_collaboration(sub):
     sp = ip.add_parser("rm")
     sp.add_argument("id", type=int)
     sp.set_defaults(func=cmd_item_rm)
+
+    tp = sub.group("todo", help="flat ordered implementation steps on a task")
+    sp = tp.add_parser("add", help="append one or more open todos")
+    sp.add_argument("key")
+    sp.add_argument("--content", required=True, help="one todo per non-empty line")
+    sp.set_defaults(func=cmd_todo_add)
+    sp = tp.add_parser("list", help="list todos in stable zero-based order")
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_todo_list)
+    sp = tp.add_parser("close", help="close one todo")
+    sp.add_argument("id", type=int)
+    sp.set_defaults(func=cmd_todo_close)
+    sp = tp.add_parser("reopen", help="reopen one todo")
+    sp.add_argument("id", type=int)
+    sp.set_defaults(func=cmd_todo_reopen)
+    sp = tp.add_parser("move", help="move one todo to a zero-based position")
+    sp.add_argument("id", type=int)
+    sp.add_argument("--position", required=True, type=int)
+    sp.set_defaults(func=cmd_todo_move)
 
     dp = sub.group("dep", help="dependencies between tasks")
     for name, helptext in (("add", "record a dependency"), ("rm", "drop a dependency")):

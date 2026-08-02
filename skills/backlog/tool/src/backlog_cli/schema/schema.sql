@@ -215,17 +215,19 @@ CREATE INDEX IF NOT EXISTS idx_retrospective_iteration
 CREATE INDEX IF NOT EXISTS idx_retrospective_resolution
     ON retrospective_action(resolution_project_id, resolution_task_id);
 
--- Sections of a task: acceptance criteria, checklist entries, loose notes.
+-- Sections of a task: acceptance criteria, checklist entries, loose notes,
+-- and flat ordered implementation todos.
 CREATE TABLE IF NOT EXISTS task_item (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id     INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
-    kind        TEXT NOT NULL CHECK (kind IN ('acceptance_criteria','checklist','note')),
+    kind        TEXT NOT NULL CHECK (kind IN ('acceptance_criteria','checklist','note','todo')),
     position    INTEGER NOT NULL DEFAULT 0,
     content     TEXT NOT NULL,
     done        INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL,
-    created_by  TEXT
+    created_by  TEXT,
+    updated_by  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_item_task ON task_item(task_id, kind, position);

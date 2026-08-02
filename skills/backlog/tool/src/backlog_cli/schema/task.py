@@ -16,7 +16,7 @@ key.
 from __future__ import annotations
 
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 # --------------------------------------------------------------------------- #
 # tasks

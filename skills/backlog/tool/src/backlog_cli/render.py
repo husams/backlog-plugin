@@ -141,8 +141,10 @@ def items_block(items: list[Row], conn: Conn, indent: str = "  ") -> list[str]:
             current = it["kind"]
             out.append(f"{indent}{ITEM_KIND_DISPLAY[current]}:")
         box = ""
-        if it["kind"] == "checklist":
+        if it["kind"] in ("checklist", "todo"):
             box = "[x] " if it["done"] else "[ ] "
+        if it["kind"] == "todo":
+            box = f"{it['position']:>3} {box}"
         suffix = ""
         if it.get("executor") and it["executor"] != "plain":
             suffix = f"  [{it['executor']}, {it['requirement']}, {it['state']}]"

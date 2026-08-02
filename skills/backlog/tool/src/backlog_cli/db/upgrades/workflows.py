@@ -185,3 +185,40 @@ def upgrade_feature_review_flow(conn: Conn) -> list[str]:
     conn.commit()
     count = len(template_rows) + len(project_rows)
     return [f"enabled feature scope review in {count} workflow(s)"] if count else []
+
+
+def upgrade_todo_review_gates(conn: Conn) -> list[str]:
+    """Gate every existing transition into a review-category state on todos."""
+    changed = 0
+    for status_table, transition_table, fk in (
+        (
+            "template_status",
+            "template_transition",
+            "template_workflow_id",
+        ),
+        ("workflow_status", "workflow_transition", "workflow_id"),
+    ):
+        transitions = conn.execute(
+            f"SELECT tr.id,tr.gates FROM {transition_table} tr "
+            f"JOIN {status_table} target ON target.{fk}=tr.{fk} "
+            "AND target.slug=tr.to_status "
+            f"JOIN {status_table} source ON source.{fk}=tr.{fk} "
+            "AND source.slug=tr.from_status "
+            "WHERE target.category='review' AND source.category!='review'"
+        ).fetchall()
+        for transition in transitions:
+            gates = [
+                gate.strip()
+                for gate in (transition["gates"] or "").split(",")
+                if gate.strip()
+            ]
+            if "todos_closed" in gates:
+                continue
+            gates.append("todos_closed")
+            conn.execute(
+                f"UPDATE {transition_table} SET gates=? WHERE id=?",
+                (",".join(gates), transition["id"]),
+            )
+            changed += 1
+    conn.commit()
+    return [f"added todo review gate to {changed} transition(s)"] if changed else []

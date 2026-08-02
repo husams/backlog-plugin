@@ -131,6 +131,26 @@ $BL item add S-001 --kind checklist --content "release policy passes" \
 The same execution flags work with feature/story creation and `item set`.
 Existing plain and multi-line forms remain unchanged.
 
+## Lightweight implementation todos
+
+Use todos for a flat sequence of steps that does not need independent
+assignment, dependencies, review, or a pull request. Use subtasks when a step
+needs its own lifecycle.
+
+```bash
+$BL todo add S-001 --content "implement
+test
+document" --actor developer
+$BL todo move 9 --position 0 --actor developer
+$BL todo close 9 --actor developer
+$BL todo list S-001
+```
+
+Todos remain part of the parent task. Adding or reopening one after requested
+changes blocks the next review submission until every todo is closed again.
+Acceptance criteria, checklists, notes, executable validation, and the
+`children_complete` gate retain their existing semantics.
+
 ## Grooming
 
 Everything starts in the initial status. Grooming decides which way it goes:

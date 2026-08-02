@@ -102,6 +102,11 @@ class Task:
         return [execution._item_details(self._bl._conn, row) for row in rows]
 
     @property
+    def todos(self) -> list[dict]:
+        """Flat implementation todos in their current stable order."""
+        return self._bl.todos(self.key)
+
+    @property
     def open_threads(self) -> list[str]:
         return [
             r["root_key"] for r in core.open_threads(self._bl._conn, self._row["id"])

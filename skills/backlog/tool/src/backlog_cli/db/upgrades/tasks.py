@@ -107,3 +107,50 @@ def backfill_task_creators(conn: Conn) -> list[str]:
         updated += 1
     conn.commit()
     return [f"attributed creators for {updated} task(s)"] if updated else []
+
+
+def upgrade_todo_task_items(conn: Conn) -> list[str]:
+    """Allow dedicated todo items and retain their latest mutation actor."""
+    add_column(conn, "task_item", "updated_by", "TEXT")
+    conn.execute(
+        "UPDATE task_item SET updated_by=created_by WHERE updated_by IS NULL"
+    )
+    conn.commit()
+    if conn.is_postgres:
+        conn.execute(
+            "ALTER TABLE task_item DROP CONSTRAINT IF EXISTS task_item_kind_check"
+        )
+        conn.execute(
+            "ALTER TABLE task_item ADD CONSTRAINT task_item_kind_check "
+            "CHECK (kind IN ('acceptance_criteria','checklist','note','todo'))"
+        )
+        conn.commit()
+        return ["enabled ordered todo task items"]
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript("""
+CREATE TABLE task_item_v18 (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('acceptance_criteria','checklist','note','todo')),
+    position INTEGER NOT NULL DEFAULT 0,
+    content TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    created_by TEXT,
+    updated_by TEXT
+);
+INSERT INTO task_item_v18(
+    id,task_id,kind,position,content,done,created_at,updated_at,created_by,updated_by
+)
+SELECT
+    id,task_id,kind,position,content,done,created_at,updated_at,created_by,updated_by
+FROM task_item;
+DROP TABLE task_item;
+ALTER TABLE task_item_v18 RENAME TO task_item;
+CREATE INDEX idx_item_task ON task_item(task_id,kind,position);
+""")
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+    return ["enabled ordered todo task items"]

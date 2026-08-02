@@ -18,6 +18,12 @@ from .task_queries import find_task as find_task_row, get_task as get_task_row
 from .tasks import (
     add_task as insert_task,
 )
+from .todos import (
+    add_todos as insert_todos,
+    list_todos as read_todos,
+    move_todo as reorder_todo,
+    set_state as set_todo_state,
+)
 
 
 def _validated_spec(value: dict | None) -> dict | None:
@@ -125,6 +131,8 @@ def add_item(
     """Add one plain, shell, or hook item and return its details."""
     spec = _validated_spec(execution_spec)
     normalized_kind = normalize_item_kind(kind)
+    if normalized_kind == "todo":
+        raise BacklogError("todos must be added through add_todo() or add_todos()")
     if spec is not None and normalized_kind not in (
         "acceptance_criteria",
         "checklist",
@@ -144,6 +152,8 @@ def set_items(self, key: str, kind: str, items: list[str | dict]) -> list[dict]:
     """Replace one item kind using strings or ``{content, execution}`` mappings."""
     prepared = _prepare_items(items)
     normalized_kind = normalize_item_kind(kind)
+    if normalized_kind == "todo":
+        raise BacklogError("todos cannot be replaced; use the dedicated todo operations")
     if any(spec is not None for _, spec in prepared) and normalized_kind not in (
         "acceptance_criteria",
         "checklist",
@@ -163,6 +173,44 @@ def set_items(self, key: str, kind: str, items: list[str | dict]) -> list[dict]:
         if spec is not None:
             execution.set_executable(self._conn, row["id"], spec)
     return [execution._item_details(self._conn, row) for row in rows]
+
+
+def add_todo(self, key: str, content: str) -> dict:
+    """Append one open todo and return its persisted public view."""
+    return insert_todos(self._conn, self.pid, key, [content], actor=self.actor)[0]
+
+
+def add_todos(self, key: str, contents: list[str]) -> list[dict]:
+    """Append several open todos atomically in the supplied order."""
+    if not isinstance(contents, list):
+        raise TypeError("contents must be a list of strings")
+    return insert_todos(self._conn, self.pid, key, contents, actor=self.actor)
+
+
+def todos(self, key: str) -> list[dict]:
+    """List a task's todos in stable contiguous order."""
+    return read_todos(self._conn, self.pid, key)
+
+
+def close_todo(self, todo_id: int) -> dict:
+    """Close one open todo."""
+    return set_todo_state(
+        self._conn, self.pid, todo_id, done=True, actor=self.actor
+    )
+
+
+def reopen_todo(self, todo_id: int) -> dict:
+    """Reopen one closed todo."""
+    return set_todo_state(
+        self._conn, self.pid, todo_id, done=False, actor=self.actor
+    )
+
+
+def move_todo(self, todo_id: int, position: int) -> dict:
+    """Move a todo to a zero-based position without changing its state."""
+    return reorder_todo(
+        self._conn, self.pid, todo_id, position, actor=self.actor
+    )
 
 
 def task(self, key: str) -> Task:

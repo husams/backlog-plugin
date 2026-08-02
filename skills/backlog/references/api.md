@@ -101,6 +101,10 @@ assertion, not cryptographic authentication.
 | `bl.task_type_counts()` | counts by type, including `iteration` |
 | `bl.add_item(key, kind, content, execution_spec=None)` | author one plain/shell/hook item |
 | `bl.set_items(key, kind, items)` | replace items from strings or `{content, execution}` mappings |
+| `bl.add_todo(key, content)` / `bl.add_todos(key, contents)` | append one or several open todos; writes require an actor |
+| `bl.todos(key)` | ordered todo dictionaries with state and attribution |
+| `bl.close_todo(id)` / `bl.reopen_todo(id)` | persist an attributed state change |
+| `bl.move_todo(id, position)` | move a todo to a zero-based contiguous position without changing state |
 | `bl.run_item(item_id, project_root, policy=None, actor=None)` | execute one shell or hook item under trusted local policy |
 | `bl.run_task(key, project_root, fail_fast=False, policy=None, actor=None)` | execute all executable items in declaration order |
 | `bl.execution_history(item_id, limit=20, project_root=None)` | bounded newest-first result history with stale metadata |
@@ -294,11 +298,18 @@ actor remain unattributed and operable.
 | `t.children` | `list[Task]` |
 | `t.parent` | parent task key; alias for `parent_key` |
 | `t.blockers` | unfinished blockers as `{other_key, other_status}` |
-| `t.items(kind=None)` | criteria / checklist / notes as strings |
+| `t.items(kind=None)` | criteria / checklist / notes / todos as strings |
 | `t.item_details(kind=None)` | plain/executable items with declarations, requirement and state |
+| `t.todos` | the same ordered public todo view as `bl.todos(t.key)` |
 | `t.open_threads` | root keys of open review threads |
 
 `str(task)` is `KEY  status  title`.
+
+Todo dictionaries expose `id`, `task_key`, zero-based `position`, `content`,
+`state` (`open` or `closed`), `done`, `created_by`, `updated_by`, `created_at`,
+and `updated_at`. Batch creation validates the complete input before inserting
+anything. Unknown tasks or todos, non-todo item IDs, invalid positions, and
+duplicate close/reopen operations fail without changing order or state.
 
 ## Gate
 

@@ -213,4 +213,22 @@ def run_checks(
                     + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
                 )
             )
+        elif name == "todos_closed":
+            open_todos = conn.execute(
+                "SELECT id,content FROM task_item "
+                "WHERE task_id=? AND kind='todo' AND done=0 ORDER BY position,id",
+                (task["id"],),
+            ).fetchall()
+            checks.append(
+                Check(
+                    name,
+                    not open_todos,
+                    "all todos closed"
+                    if not open_todos
+                    else "open todos: "
+                    + "; ".join(
+                        f"#{todo['id']} {todo['content']}" for todo in open_todos
+                    ),
+                )
+            )
     return checks
