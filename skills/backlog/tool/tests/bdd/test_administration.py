@@ -1115,7 +1115,8 @@ def exercise_task_authoring_and_planning(world: World) -> None:
     )
     synced_draft = world.run("pr", "sync", live_pr["key"], actor="github")
     assert synced_draft["pr_state"] in {"draft", "open", "merged"}
-    assert synced_draft["pr_review_state"] == "pending"
+    expected_review = "none" if synced_draft["pr_state"] == "merged" else "pending"
+    assert synced_draft["pr_review_state"] == expected_review
 
     merged_pr = world.run("bug", "add", "--title", "Live merged PR", actor="creator")
     world.run(

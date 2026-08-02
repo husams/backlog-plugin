@@ -276,6 +276,18 @@ class ShellExecutionTest(unittest.TestCase):
             [(r.item_id, r.status) for r in fast_results], [(first["id"], "fail")]
         )
 
+    def test_output_reader_failure_is_recorded_as_infrastructure_error(self):
+        item = self.add_shell(self.python("pass"))
+        with patch(
+            "backlog_cli.execution.shell._communicate_bounded",
+            return_value=("", "", False, False, "OSError"),
+        ):
+            result = self.bl.run_item(item["id"], self.root, policy=self.policy())
+
+        self.assertEqual(result.status, "error")
+        self.assertEqual(result.diagnostic, "runtime_infrastructure_failure:OSError")
+        self.assertEqual(self.actions(), ["check.started", "check.failed"])
+
     def test_cli_run_uses_same_structured_contract(self):
         item = self.add_shell(self.python("print('cli')"))
         (self.backlog_dir / "execution-policy.yaml").write_text(
