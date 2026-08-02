@@ -36,8 +36,6 @@ def load_workflow(backlog_dir: Path) -> dict[str, Any]:
     path = workflow_path(backlog_dir)
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except OSError as exc:
-        raise BacklogError(f"cannot read workflow configuration {path}: {exc}") from None
     except yaml.YAMLError as exc:
         raise BacklogError(f"invalid workflow configuration {path}: {exc}") from None
     if not isinstance(data, dict):
@@ -45,7 +43,9 @@ def load_workflow(backlog_dir: Path) -> dict[str, Any]:
     states = data.get("states")
     transitions = data.get("transitions")
     if not isinstance(states, list) or not isinstance(transitions, list):
-        raise BacklogError(f"workflow configuration {path} requires states and transitions lists")
+        raise BacklogError(
+            f"workflow configuration {path} requires states and transitions lists"
+        )
     known_states = {
         row.get("slug") for row in states if isinstance(row, dict) and row.get("slug")
     }
@@ -76,8 +76,14 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
         "SELECT task_type, description FROM workflow WHERE project_id = ?",
         (project_id,),
     ).fetchall()
-    if len(rows) == len(TASK_TYPES) and all(row["description"] == marker for row in rows):
+    current_types = {row["task_type"] for row in rows if row["description"] == marker}
+    if len(current_types) == len(TASK_TYPES):
         return False
+    task_types = (
+        [task_type for task_type in TASK_TYPES if task_type not in current_types]
+        if current_types
+        else TASK_TYPES
+    )
 
     states = data["states"]
     state_names = {row["slug"] for row in states}
@@ -94,8 +100,12 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
 
     for row in states:
         declared_types = row.get("task_types", TASK_TYPES)
-        if not isinstance(declared_types, list) or any(t not in TASK_TYPES for t in declared_types):
-            raise BacklogError(f"state {row['slug']} in {source} has invalid task_types")
+        if not isinstance(declared_types, list) or any(
+            t not in TASK_TYPES for t in declared_types
+        ):
+            raise BacklogError(
+                f"state {row['slug']} in {source} has invalid task_types"
+            )
         category = row.get("category", "active")
         if category not in STATUS_CATEGORIES:
             raise BacklogError(
@@ -107,7 +117,9 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
     }
     for row in data["transitions"]:
         gates = row.get("gates") or []
-        if not isinstance(gates, list) or any(gate not in GATE_CHECKS for gate in gates):
+        if not isinstance(gates, list) or any(
+            gate not in GATE_CHECKS for gate in gates
+        ):
             raise BacklogError(
                 f"transition {row['from']} -> {row['to']} in {source} "
                 "contains an unknown gate"
@@ -128,9 +140,18 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
             transitions_by_type[task_type][pair] = gate_text
 
     ts = utcnow()
-    conn.execute("DELETE FROM workflow WHERE project_id = ?", (project_id,))
-    for task_type in TASK_TYPES:
-        typed_states = [row for row in states if task_type in row.get("task_types", TASK_TYPES)]
+    if current_types:
+        for task_type in task_types:
+            conn.execute(
+                "DELETE FROM workflow WHERE project_id = ? AND task_type = ?",
+                (project_id, task_type),
+            )
+    else:
+        conn.execute("DELETE FROM workflow WHERE project_id = ?", (project_id,))
+    for task_type in task_types:
+        typed_states = [
+            row for row in states if task_type in row.get("task_types", TASK_TYPES)
+        ]
         initial = [row["slug"] for row in typed_states if row.get("initial")]
         if len(initial) != 1:
             raise BacklogError(
@@ -139,7 +160,14 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
         workflow_id = conn.insert_returning_id(
             "INSERT INTO workflow(project_id, task_type, name, description, created_at, "
             "updated_at) VALUES(?,?,?,?,?,?)",
-            (project_id, task_type, data.get("name", "action workflow"), marker, ts, ts),
+            (
+                project_id,
+                task_type,
+                data.get("name", "action workflow"),
+                marker,
+                ts,
+                ts,
+            ),
         )
         conn.executemany(
             "INSERT INTO workflow_status(workflow_id, slug, display, category, position, "
@@ -165,8 +193,9 @@ def apply_workflow(conn: Conn, project_id: int, backlog_dir: Path) -> bool:
             "VALUES(?,?,?,?)",
             [
                 (workflow_id, from_state, to_state, gates)
-                for (from_state, to_state), gates
-                in transitions_by_type[task_type].items()
+                for (from_state, to_state), gates in transitions_by_type[
+                    task_type
+                ].items()
             ],
         )
     conn.commit()
@@ -196,8 +225,9 @@ def resolve_transition(
     return matches[0] if matches else None
 
 
-def available_actions(backlog_dir: Path, task_type: str,
-                      current_state: str) -> list[Action]:
+def available_actions(
+    backlog_dir: Path, task_type: str, current_state: str
+) -> list[Action]:
     """Semantic actions configured for this task type and current state."""
     found = {
         normalize_action(row["action"])

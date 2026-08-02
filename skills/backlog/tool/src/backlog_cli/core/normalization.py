@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from .. import workflow
 from ..db import BacklogError
 from ..schema import (
     ITEM_KIND_ALIASES,
@@ -16,21 +15,11 @@ from ..schema import (
 )
 
 
-def normalize_status(value: str, wf: "workflow.Workflow | None" = None) -> str:
-    """Resolve a status against a workflow when one is given.
-
-    Without a workflow this only normalises spelling and applies the built-in
-    aliases; it deliberately does not reject an unknown value, because a
-    project may define statuses this code has never heard of.
-    """
+def normalize_status(value: str) -> str:
+    """Normalize spelling and apply the built-in status aliases."""
     slug = value.strip().lower().replace("-", "_").replace(" ", "_")
     while "__" in slug:
         slug = slug.replace("__", "_")
-    if wf is not None:
-        try:
-            return wf.resolve(slug)
-        except BacklogError:
-            return wf.resolve(STATUS_ALIASES.get(slug, slug))
     slug = STATUS_ALIASES.get(slug, slug)
     if slug not in STATUSES:
         raise BacklogError(

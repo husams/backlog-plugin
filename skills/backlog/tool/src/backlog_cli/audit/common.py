@@ -8,10 +8,12 @@ from typing import Any, Mapping
 from ..db import BacklogError, Conn
 from ..execution.contracts import SourceIdentity
 
+
 def _task_for_item(conn: Conn, project_id: int, item_id: int):
     row = conn.execute(
         "SELECT t.* FROM task t JOIN task_item i ON i.task_id=t.id "
-        "WHERE t.project_id=? AND i.id=?", (project_id, item_id),
+        "WHERE t.project_id=? AND i.id=?",
+        (project_id, item_id),
     ).fetchone()
     if row is None:
         raise BacklogError(f"no task item with id {item_id} in this project")

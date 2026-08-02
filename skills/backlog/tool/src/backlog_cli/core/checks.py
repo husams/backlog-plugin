@@ -203,41 +203,14 @@ def run_checks(
                     m["status"]
                 )
             ]
-            if task["status"] == "closed":
-                conflicts = conn.execute(
-                    "SELECT DISTINCT member.key AS member_key,i.key AS iteration_key "
-                    "FROM iteration_member mine "
-                    "JOIN task member ON member.id=mine.member_id "
-                    "JOIN iteration_member other ON other.member_id=mine.member_id "
-                    "JOIN task i ON i.id=other.iteration_id "
-                    "WHERE mine.iteration_id=? AND other.iteration_id!=? AND i.status='open' "
-                    "ORDER BY member.key,i.key",
-                    (task["id"], task["id"]),
-                ).fetchall()
-                checks.append(
-                    Check(
-                        name,
-                        not conflicts,
-                        "no membership conflicts"
-                        if not conflicts
-                        else "members also belong to open Iterations: "
-                        + ", ".join(
-                            f"{r['member_key']} in {r['iteration_key']}"
-                            for r in conflicts
-                        ),
-                    )
+            checks.append(
+                Check(
+                    name,
+                    not unfinished,
+                    "all members finished"
+                    if not unfinished
+                    else "unfinished members: "
+                    + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
                 )
-            else:
-                checks.append(
-                    Check(
-                        name,
-                        not unfinished,
-                        "all members finished"
-                        if not unfinished
-                        else "unfinished members: "
-                        + ", ".join(f"{m['key']}={m['status']}" for m in unfinished),
-                    )
-                )
-        else:
-            checks.append(Check(name, False, "unknown gate check"))
+            )
     return checks

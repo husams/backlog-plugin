@@ -6,7 +6,6 @@ from .model import (
     STATUSES,
     STATUS_DISPLAY,
     RetrospectiveStatus,
-    normalize_status,
     required_decision,
 )
 from .store import (

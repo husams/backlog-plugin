@@ -7,7 +7,7 @@ from typing import Any
 from .. import workflow
 from ..db import BacklogError, Conn, Row, log_event, require_backlog_dir, utcnow
 from .checks import Check, run_checks
-from .normalization import normalize_status, require_independent_actor
+from .normalization import require_independent_actor
 from .task_queries import get_task, get_task_by_id
 
 
@@ -16,29 +16,24 @@ def _transition(
     project_id: int,
     key: str,
     to_status: str,
+    *,
+    action,
     actor: str | None = None,
     reason: str = "",
     no_pr: bool = False,
     allow_open_children: bool = False,
     allow_blocked: bool = False,
-    action=None,
     trigger: dict[str, Any] | None = None,
 ) -> tuple[Row, list[Check]]:
     """Private transition executor reached only after resolving an action."""
     task = get_task(conn, project_id, key)
     wf = workflow.get(conn, project_id, task["task_type"])
-    target = (
-        wf.resolve(to_status)
-        if _known(wf, to_status)
-        else normalize_status(to_status, wf)
-    )
+    target = wf.resolve(to_status)
     current = task["status"]
 
     from .. import hooks
     from ..api import Backlog
 
-    if action is None:
-        raise BacklogError("internal transition requires a semantic action")
     hook_action = hooks.normalize_action(action)
     hook_trigger = dict(trigger or {})
     hook_trigger.setdefault("operation", "action")
@@ -189,11 +184,3 @@ def trigger_action(
         trigger=trigger,
     )
     return row, checks, row["status"] != task["status"]
-
-
-def _known(wf, value: str) -> bool:
-    try:
-        wf.resolve(value)
-        return True
-    except BacklogError:
-        return False

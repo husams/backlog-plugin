@@ -43,3 +43,7 @@ Feature: Task state machines
     When action "review.approved" is submitted and rejected
     Then the task status is "in_review"
     And the command reports the "children_complete" gate
+
+  Scenario: Pull request events and every public gate outcome are exercised
+    When pull request events and gate outcomes are exercised
+    Then the gate exercise succeeds

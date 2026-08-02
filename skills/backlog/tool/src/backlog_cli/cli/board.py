@@ -2,60 +2,31 @@
 
 from __future__ import annotations
 
-import argparse
-import json
-import os
-import sys
-from pathlib import Path
 
 from .. import (
-    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
+    core,
+    deps,
+    retrospective,
+    review,
+    workflow,
 )
 from ..db import (
     BacklogError,
-    Conn,
-    connect,
-    database_errors,
-    get_or_create_project,
-    init_store,
-    list_projects,
-    require_backlog_dir,
-    require_project,
-    resolve_spec,
-    resync_sequences,
-    slugify,
 )
 from ..render import (
-    deps_block,
-    items_block,
-    projects_table,
-    render_task,
     render_thread,
     row_to_dict,
     table,
     tasks_table,
 )
 from ..schema import (
-    ARTIFACT_KINDS,
-    GATE_CHECKS,
-    GATE_DESCRIPTIONS,
-    STATUS_CATEGORIES,
     TASK_KEY_PREFIX,
-    DEPENDENCY_KINDS,
-    ITEM_KINDS,
-    PR_REVIEW_STATES,
-    PR_STATES,
-    SCHEMA_VERSION,
-    STATUS_DISPLAY,
-    STATUSES,
-    TASK_PARENT_TYPES,
     TASK_TYPES,
-    transitions_for,
 )
 
 
-
 from .context import Ctx, _task_rows
+
 
 def cmd_board(ctx: Ctx, args) -> int:
     conn = ctx.conn
@@ -86,8 +57,14 @@ def cmd_board(ctx: Ctx, args) -> int:
             )
         member_ids = {m["id"] for m in core.iteration_members(conn, selected["id"])}
         iterations = [selected]
-        rows = [r for r in rows if r["id"] in member_ids and r["task_type"] in {"story", "bug"}
-                and r["status"] in core.ACTIONABLE_BY_DEV and r["key"] not in blocked]
+        rows = [
+            r
+            for r in rows
+            if r["id"] in member_ids
+            and r["task_type"] in {"story", "bug"}
+            and r["status"] in core.ACTIONABLE_BY_DEV
+            and r["key"] not in blocked
+        ]
     retrospective_actions = retrospective.list_open_actions(
         conn, ctx.pid, iteration=args.iteration
     )
@@ -96,16 +73,21 @@ def cmd_board(ctx: Ctx, args) -> int:
         by_status.setdefault(r["status"], []).append(r)
 
     open_by_task = {
-        r["key"]: r["n"] for r in conn.execute(
+        r["key"]: r["n"]
+        for r in conn.execute(
             "SELECT t.key, COUNT(*) AS n FROM review_thread r JOIN task t ON t.id = r.task_id "
-            "WHERE r.state != 'closed' AND t.project_id = ? GROUP BY t.key", (ctx.pid,)
+            "WHERE r.state != 'closed' AND t.project_id = ? GROUP BY t.key",
+            (ctx.pid,),
         ).fetchall()
     }
     eligible_by_iteration = {
-        r["key"]: [m for m in core.iteration_members(conn, r["id"])
-                   if m["task_type"] in {"story", "bug"}
-                   and m["status"] in core.ACTIONABLE_BY_DEV
-                   and m["key"] not in blocked]
+        r["key"]: [
+            m
+            for m in core.iteration_members(conn, r["id"])
+            if m["task_type"] in {"story", "bug"}
+            and m["status"] in core.ACTIONABLE_BY_DEV
+            and m["key"] not in blocked
+        ]
         for r in iterations
     }
     lines = []
@@ -119,8 +101,10 @@ def cmd_board(ctx: Ctx, args) -> int:
                 f"{len(eligible)} eligible members]"
             )
             for member in eligible:
-                lines.append(f"    {member['key']:<7} {TASK_KEY_PREFIX[member['task_type']]}  "
-                             f"{member['priority']}  {member['title']}")
+                lines.append(
+                    f"    {member['key']:<7} {TASK_KEY_PREFIX[member['task_type']]}  "
+                    f"{member['priority']}  {member['title']}"
+                )
     if retrospective_actions:
         lines.append(f"== Retrospective actions ({len(retrospective_actions)})")
         for action in retrospective_actions:
@@ -141,29 +125,42 @@ def cmd_board(ctx: Ctx, args) -> int:
             if open_by_task.get(r["key"]):
                 flags.append(f"{open_by_task[r['key']]} open review")
             if r["pr_number"]:
-                flags.append(f"PR #{r['pr_number']} {r['pr_state']}/{r['pr_review_state']}")
+                flags.append(
+                    f"PR #{r['pr_number']} {r['pr_state']}/{r['pr_review_state']}"
+                )
             suffix = ("  [" + "; ".join(flags) + "]") if flags else ""
-            lines.append(f"  {r['key']:<7} {TASK_KEY_PREFIX[r['task_type']]}  {r['priority']}  "
-                         f"{r['assignee'] or '-':<12} {r['title']}{suffix}")
-    # anything in a status no workflow declares is still shown, never hidden
-    for slug, group in sorted(by_status.items()):
-        lines.append(f"== {slug} ({len(group)})  [not in any workflow]")
-        for r in group:
-            lines.append(f"  {r['key']:<7} {r['title']}")
+            lines.append(
+                f"  {r['key']:<7} {TASK_KEY_PREFIX[r['task_type']]}  {r['priority']}  "
+                f"{r['assignee'] or '-':<12} {r['title']}{suffix}"
+            )
     ctx.emit(
-        {"project": row_to_dict(ctx.project),
-         "tasks_by_status": {slug: [row_to_dict(r) for r in group]
-                             for slug, group in by_status.items()},
-         "iterations": [{**row_to_dict(r),
-                         "eligible_members": [row_to_dict(m)
-                                              for m in eligible_by_iteration[r["key"]]]}
-                        for r in iterations],
-         "retrospective_actions": [
-             {**row_to_dict(action),
-              "required_decision": retrospective.required_decision(action["status"])}
-             for action in retrospective_actions
-         ],
-         "open_review_threads": open_by_task, "blocked_by": blocked},
+        {
+            "project": row_to_dict(ctx.project),
+            "tasks_by_status": {
+                slug: [row_to_dict(r) for r in group]
+                for slug, group in by_status.items()
+            },
+            "iterations": [
+                {
+                    **row_to_dict(r),
+                    "eligible_members": [
+                        row_to_dict(m) for m in eligible_by_iteration[r["key"]]
+                    ],
+                }
+                for r in iterations
+            ],
+            "retrospective_actions": [
+                {
+                    **row_to_dict(action),
+                    "required_decision": retrospective.required_decision(
+                        action["status"]
+                    ),
+                }
+                for action in retrospective_actions
+            ],
+            "open_review_threads": open_by_task,
+            "blocked_by": blocked,
+        },
         f"project: {ctx.project['slug']}  ({ctx.project['name']})\n\n"
         + ("\n".join(lines) if lines else "(no open tasks)"),
     )
@@ -217,8 +214,10 @@ def cmd_next(ctx: Ctx, args) -> int:
 
     parts = []
     if threads:
-        parts.append(f"REVIEW THREADS WAITING ON YOU ({len(threads)})\n"
-                     + "\n\n".join(render_thread(t) for t in threads))
+        parts.append(
+            f"REVIEW THREADS WAITING ON YOU ({len(threads)})\n"
+            + "\n\n".join(render_thread(t) for t in threads)
+        )
     if retrospective_actions:
         lines = []
         for action in retrospective_actions:
@@ -234,9 +233,15 @@ def cmd_next(ctx: Ctx, args) -> int:
     if dev_items:
         parts.append("WORK TO DO\n" + tasks_table(dev_items))
     if blocked_items:
-        parts.append("BLOCKED — do not start\n" + tasks_table(blocked_items) + "\n"
-                     + "\n".join(f"  {r['key']} waits on " + ", ".join(blocked[r["key"]])
-                                 for r in blocked_items))
+        parts.append(
+            "BLOCKED — do not start\n"
+            + tasks_table(blocked_items)
+            + "\n"
+            + "\n".join(
+                f"  {r['key']} waits on " + ", ".join(blocked[r["key"]])
+                for r in blocked_items
+            )
+        )
     if rev_items:
         parts.append("AWAITING YOUR REVIEW\n" + tasks_table(rev_items))
     if ready_to_accept:
@@ -250,17 +255,28 @@ def cmd_next(ctx: Ctx, args) -> int:
             + tasks_table(ready_to_done)
         )
     ctx.emit(
-        {"actor": actor, "project": ctx.project["slug"], "review_threads": threads,
-         "work_to_do": [row_to_dict(r) for r in dev_items],
-         "blocked": [{**row_to_dict(r), "blocked_by": blocked[r["key"]]} for r in blocked_items],
-         "awaiting_your_review": [row_to_dict(r) for r in rev_items],
-         "ready_to_accept": [row_to_dict(r) for r in ready_to_accept],
-         "ready_to_done": [row_to_dict(r) for r in ready_to_done],
-         "retrospective_actions": [
-             {**row_to_dict(action),
-              "required_decision": retrospective.required_decision(action["status"])}
-             for action in retrospective_actions
-         ]},
+        {
+            "actor": actor,
+            "project": ctx.project["slug"],
+            "review_threads": threads,
+            "work_to_do": [row_to_dict(r) for r in dev_items],
+            "blocked": [
+                {**row_to_dict(r), "blocked_by": blocked[r["key"]]}
+                for r in blocked_items
+            ],
+            "awaiting_your_review": [row_to_dict(r) for r in rev_items],
+            "ready_to_accept": [row_to_dict(r) for r in ready_to_accept],
+            "ready_to_done": [row_to_dict(r) for r in ready_to_done],
+            "retrospective_actions": [
+                {
+                    **row_to_dict(action),
+                    "required_decision": retrospective.required_decision(
+                        action["status"]
+                    ),
+                }
+                for action in retrospective_actions
+            ],
+        },
         "\n\n".join(parts) if parts else "(nothing actionable)",
     )
     return 0
@@ -271,8 +287,21 @@ def cmd_history(ctx: Ctx, args) -> int:
     rows = ctx.conn.execute(
         "SELECT * FROM event WHERE task_id = ? ORDER BY id", (task["id"],)
     ).fetchall()
-    ctx.emit([row_to_dict(r) for r in rows],
-             table(["TS", "KIND", "ACTOR", "FROM", "TO", "DETAIL"],
-                   [[r["ts"], r["kind"], r["actor"] or "-", r["from_value"] or "",
-                     r["to_value"] or "", r["detail"]] for r in rows]))
+    ctx.emit(
+        [row_to_dict(r) for r in rows],
+        table(
+            ["TS", "KIND", "ACTOR", "FROM", "TO", "DETAIL"],
+            [
+                [
+                    r["ts"],
+                    r["kind"],
+                    r["actor"] or "-",
+                    r["from_value"] or "",
+                    r["to_value"] or "",
+                    r["detail"],
+                ]
+                for r in rows
+            ],
+        ),
+    )
     return 0

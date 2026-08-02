@@ -17,7 +17,9 @@ from .workflow import DEFAULT_STATUS_ROWS, DEFAULT_TRANSITIONS, ITERATION_STATUS
 
 _SOFTWARE_WORKFLOWS = {
     ttype: {
-        "statuses": ITERATION_STATUS_ROWS if ttype == "iteration" else DEFAULT_STATUS_ROWS,
+        "statuses": ITERATION_STATUS_ROWS
+        if ttype == "iteration"
+        else DEFAULT_STATUS_ROWS,
         "transitions": DEFAULT_TRANSITIONS[ttype],
     }
     for ttype in TASK_TYPES
@@ -62,32 +64,52 @@ BUILTIN_TEMPLATES = [
     {
         "slug": "software-delivery",
         "name": "Software delivery",
-        "description": ("Feature / story / subtask delivered through review and a "
-                        "pull request. Features are containers and carry no PR."),
+        "description": (
+            "Feature / story / subtask delivered through review and a "
+            "pull request. Features are containers and carry no PR."
+        ),
         "is_default": 1,
         "workflows": _SOFTWARE_WORKFLOWS,
     },
     {
         "slug": "lightweight",
         "name": "Lightweight",
-        "description": ("No review stage and no pull-request gates — for work "
-                        "tracked for visibility rather than delivered through review."),
+        "description": (
+            "No review stage and no pull-request gates — for work "
+            "tracked for visibility rather than delivered through review."
+        ),
         "is_default": 0,
-        "workflows": {t: {
-            "statuses": ITERATION_STATUS_ROWS if t == "iteration" else _LIGHTWEIGHT_STATUSES,
-            "transitions": DEFAULT_TRANSITIONS["iteration"] if t == "iteration" else _LIGHTWEIGHT_TRANSITIONS,
-        } for t in TASK_TYPES},
+        "workflows": {
+            t: {
+                "statuses": ITERATION_STATUS_ROWS
+                if t == "iteration"
+                else _LIGHTWEIGHT_STATUSES,
+                "transitions": DEFAULT_TRANSITIONS["iteration"]
+                if t == "iteration"
+                else _LIGHTWEIGHT_TRANSITIONS,
+            }
+            for t in TASK_TYPES
+        },
     },
     {
         "slug": "research",
         "name": "Research",
-        "description": ("Propose, investigate, draft, review, publish — for "
-                        "investigation rather than shipped code."),
+        "description": (
+            "Propose, investigate, draft, review, publish — for "
+            "investigation rather than shipped code."
+        ),
         "is_default": 0,
-        "workflows": {t: {
-            "statuses": ITERATION_STATUS_ROWS if t == "iteration" else _RESEARCH_STATUSES,
-            "transitions": DEFAULT_TRANSITIONS["iteration"] if t == "iteration" else _RESEARCH_TRANSITIONS,
-        } for t in TASK_TYPES},
+        "workflows": {
+            t: {
+                "statuses": ITERATION_STATUS_ROWS
+                if t == "iteration"
+                else _RESEARCH_STATUSES,
+                "transitions": DEFAULT_TRANSITIONS["iteration"]
+                if t == "iteration"
+                else _RESEARCH_TRANSITIONS,
+            }
+            for t in TASK_TYPES
+        },
     },
 ]
 
@@ -107,9 +129,21 @@ ACTOR_KINDS = ["human", "agent", "unknown"]
 
 # Names that are agents unless stated otherwise.
 KNOWN_AGENTS = {
-    "claude", "codex", "cursor", "copilot", "devin", "aider", "gemini",
-    "developer", "senior-developer", "qa-engineer", "architect",
-    "product-manager", "business-analyst", "doc-writer", "devops",
+    "claude",
+    "codex",
+    "cursor",
+    "copilot",
+    "devin",
+    "aider",
+    "gemini",
+    "developer",
+    "senior-developer",
+    "qa-engineer",
+    "architect",
+    "product-manager",
+    "business-analyst",
+    "doc-writer",
+    "devops",
     "backlog",
 }
 

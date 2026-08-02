@@ -36,7 +36,9 @@ REPO_README = (
 )
 
 
-def init_store(root: Path, force: bool = False, spec: StoreSpec | None = None) -> StoreSpec:
+def init_store(
+    root: Path, force: bool = False, spec: StoreSpec | None = None
+) -> StoreSpec:
     spec = spec or resolve_spec(root, for_init=True)
 
     if spec.dialect == POSTGRES:
@@ -80,12 +82,19 @@ def init_store(root: Path, force: bool = False, spec: StoreSpec | None = None) -
 
 
 def get_project(conn: Conn, slug: str) -> Row | None:
-    return conn.execute("SELECT * FROM project WHERE slug = ?", (slugify(slug),)).fetchone()
+    return conn.execute(
+        "SELECT * FROM project WHERE slug = ?", (slugify(slug),)
+    ).fetchone()
 
 
-def get_or_create_project(conn: Conn, slug: str, spec: StoreSpec | None = None,
-                          name: str | None = None, description: str = "",
-                          template: str | None = None) -> Row:
+def get_or_create_project(
+    conn: Conn,
+    slug: str,
+    spec: StoreSpec | None = None,
+    name: str | None = None,
+    description: str = "",
+    template: str | None = None,
+) -> Row:
     slug = slugify(slug)
     row = get_project(conn, slug)
     if row is not None:
@@ -120,12 +129,26 @@ def list_projects(conn: Conn) -> list[Row]:
     ).fetchall()
 
 
-_SERIAL_TABLES = ["template", "template_workflow", "template_status",
-                  "template_transition", "project", "workflow", "workflow_status",
-                  "workflow_transition", "task", "retrospective_action", "task_item",
-                  "execution_result",
-                  "validation_waiver", "dependency", "artifact",
-                  "review_thread", "review_comment", "event"]
+_SERIAL_TABLES = [
+    "template",
+    "template_workflow",
+    "template_status",
+    "template_transition",
+    "project",
+    "workflow",
+    "workflow_status",
+    "workflow_transition",
+    "task",
+    "retrospective_action",
+    "task_item",
+    "execution_result",
+    "validation_waiver",
+    "dependency",
+    "artifact",
+    "review_thread",
+    "review_comment",
+    "event",
+]
 
 
 def resync_sequences(conn: Conn) -> list[str]:
@@ -137,20 +160,12 @@ def resync_sequences(conn: Conn) -> list[str]:
     """
     if conn.dialect != POSTGRES:
         return []
-    with_id = {
-        r["table_name"]
-        for r in conn.execute(
-            "SELECT table_name FROM information_schema.columns "
-            "WHERE table_schema = current_schema() AND column_name = 'id'"
-        ).fetchall()
-    }
     moved = []
     for table in _SERIAL_TABLES:
-        if table not in with_id:
-            continue
-        seq = conn.execute("SELECT pg_get_serial_sequence(?, 'id') AS seq", (table,)).fetchone()
-        if seq is None or not seq["seq"]:
-            continue
+        seq = conn.execute(
+            "SELECT pg_get_serial_sequence(?, 'id') AS seq", (table,)
+        ).fetchone()
+        assert seq is not None and seq["seq"]
         top = conn.execute(f"SELECT MAX(id) AS m FROM {table}").fetchone()["m"]
         if top is None:
             continue
@@ -163,6 +178,7 @@ def resync_sequences(conn: Conn) -> list[str]:
 # --------------------------------------------------------------------------- #
 # shared helpers
 # --------------------------------------------------------------------------- #
+
 
 def next_key(conn: Conn, project_id: int, prefix: str) -> str:
     conn.execute(
@@ -220,6 +236,16 @@ def log_event(
     conn.execute(
         "INSERT INTO event(ts, project_id, task_id, entity_key, actor, actor_kind, kind, "
         "from_value, to_value, detail) VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (utcnow(), project_id, task_id, entity_key, actor, actor_kind(actor), kind,
-         from_value, to_value, detail),
+        (
+            utcnow(),
+            project_id,
+            task_id,
+            entity_key,
+            actor,
+            actor_kind(actor),
+            kind,
+            from_value,
+            to_value,
+            detail,
+        ),
     )

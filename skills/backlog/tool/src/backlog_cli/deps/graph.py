@@ -7,6 +7,7 @@ from .queries import all_edges
 
 # --------------------------------------------------------------------------- #
 
+
 def blocks_adjacency(conn: Conn) -> dict[int, list[int]]:
     adj: dict[int, list[int]] = {}
     for r in conn.execute(
@@ -18,19 +19,15 @@ def blocks_adjacency(conn: Conn) -> dict[int, list[int]]:
 
 
 def keys_for(conn: Conn, ids: list[int]) -> list[str]:
-    if not ids:
-        return []
     rows = conn.execute(
         "SELECT id, key FROM task WHERE id IN (" + ",".join("?" * len(ids)) + ")", ids
     ).fetchall()
     by_id = {r["id"]: r["key"] for r in rows}
-    return [by_id.get(i, str(i)) for i in ids]
+    return [by_id[i] for i in ids]
 
 
 def cycle_path(conn: Conn, from_id: int, to_id: int) -> list[int] | None:
     """Would adding `from blocks to` close a loop? Return the loop if so."""
-    if from_id == to_id:
-        return [from_id, to_id]
     adj = blocks_adjacency(conn)
     stack = [(to_id, [from_id, to_id])]
     seen = {to_id}
@@ -56,7 +53,7 @@ def cycles(conn: Conn) -> list[list[str]]:
         colour[node] = 1
         for nxt in adj.get(node, []):
             if colour.get(nxt) == 1:
-                loop = path[path.index(nxt):] + [nxt]
+                loop = path[path.index(nxt) :] + [nxt]
                 sig = frozenset(loop)
                 if sig not in seen_sets:
                     seen_sets.add(sig)
@@ -79,17 +76,26 @@ def dot(conn: Conn, project_id: int) -> str:
         "duplicates": 'color="#3366cc" style=dotted',
     }
     edges = all_edges(conn, project_id)
-    lines = ["digraph backlog {", "  rankdir=LR;", '  node [shape=box fontname="monospace"];']
+    lines = [
+        "digraph backlog {",
+        "  rankdir=LR;",
+        '  node [shape=box fontname="monospace"];',
+    ]
     seen: set[str] = set()
     for r in edges:
-        for key, status in ((r["from_key"], r["from_status"]), (r["to_key"], r["to_status"])):
+        for key, status in (
+            (r["from_key"], r["from_status"]),
+            (r["to_key"], r["to_status"]),
+        ):
             if key in seen:
                 continue
             seen.add(key)
             row = conn.execute(
-                "SELECT title FROM task WHERE project_id = ? AND key = ?", (project_id, key)
+                "SELECT title FROM task WHERE project_id = ? AND key = ?",
+                (project_id, key),
             ).fetchone()
-            title = (row["title"] if row else "?").replace('"', "'")[:44]
+            assert row is not None
+            title = row["title"].replace('"', "'")[:44]
             lines.append(f'  "{key}" [label="{key}\\n{title}\\n[{status}]"];')
     for r in edges:
         lines.append(
@@ -98,8 +104,3 @@ def dot(conn: Conn, project_id: int) -> str:
         )
     lines.append("}")
     return "\n".join(lines)
-
-
-def dangling(conn: Conn) -> list[dict]:
-    """Foreign keys make a dangling edge impossible; kept for `doctor`."""
-    return []

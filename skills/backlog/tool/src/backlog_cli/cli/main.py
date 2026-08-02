@@ -9,12 +9,11 @@ from ..db import BacklogError, database_errors
 from .context import Ctx
 from .parser import build_parser
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     ctx = Ctx(args)
-    if not hasattr(args, "actor"):
-        args.actor = None
     try:
         return args.func(ctx, args)
     except BacklogError as e:

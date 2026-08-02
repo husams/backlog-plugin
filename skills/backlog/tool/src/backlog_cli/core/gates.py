@@ -2,37 +2,11 @@
 
 from __future__ import annotations
 
-from .. import deps, workflow
+from .. import deps
 from ..db import Conn
 from ..schema import PR_BEARING_TYPES, SATISFIED_STATUSES, STATUS_DISPLAY
-from .checks import GATE_TARGETS, Check, normalize_gate, run_checks
+from .checks import Check, normalize_gate
 from .task_queries import blocking_threads, children_of, get_task
-
-
-def gate_for_move(
-    conn: Conn,
-    project_id: int,
-    key: str,
-    to_status: str,
-    allow_open_children: bool = False,
-    no_pr: bool = False,
-    allow_blocked: bool = False,
-) -> tuple[bool, list[Check], str]:
-    """The gate for one concrete move, as the project's workflow defines it."""
-    task = get_task(conn, project_id, key)
-    wf = workflow.get(conn, project_id, task["task_type"])
-    target = wf.resolve(to_status)
-    names = wf.gates_for(task["status"], target)
-    checks = run_checks(
-        conn,
-        project_id,
-        task,
-        names,
-        allow_open_children=allow_open_children,
-        no_pr=no_pr,
-        allow_blocked=allow_blocked,
-    )
-    return all(c.ok for c in checks), checks, target
 
 
 def gate(
@@ -185,6 +159,3 @@ def gate(
             checks.append(Check("pr_recorded", True, f"not applicable to a {ttype}"))
 
     return all(c.ok for c in checks), checks
-
-
-from .transitions import trigger_action

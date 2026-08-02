@@ -30,7 +30,9 @@ def comment_dict(row: Row, reviewer: str) -> dict:
 def thread_summary(conn: Conn, root_key: str) -> dict:
     """Root + direct parent of the latest comment + latest comment. Nothing else."""
     rk = normalize_key(root_key)
-    thread = conn.execute("SELECT * FROM review_thread WHERE root_key = ?", (rk,)).fetchone()
+    thread = conn.execute(
+        "SELECT * FROM review_thread WHERE root_key = ?", (rk,)
+    ).fetchone()
     if thread is None:
         raise BacklogError(f"no review thread rooted at {rk}")
     task = get_task_by_id(conn, thread["task_id"])
@@ -58,7 +60,8 @@ def thread_summary(conn: Conn, root_key: str) -> dict:
         "state": thread["state"],
         "resolution": thread["resolution"],
         "severity": thread["severity"],
-        "awaiting_role": None if thread["state"] == "closed"
+        "awaiting_role": None
+        if thread["state"] == "closed"
         else thread["state"].removeprefix("awaiting_"),
         "awaiting_actor": awaiting,
         "file": thread["file_path"],
@@ -73,7 +76,9 @@ def thread_summary(conn: Conn, root_key: str) -> dict:
             comment_dict(parent, thread["opened_by"]) if parent is not None else None
         ),
         "last_comment": comment_dict(last, thread["opened_by"]),
-        "hidden_comments": max(0, int(thread["comment_count"]) - (2 if parent is None else 3)),
+        "hidden_comments": max(
+            0, int(thread["comment_count"]) - (2 if parent is None else 3)
+        ),
         "reply_to": thread["last_comment_key"],
     }
 
@@ -112,11 +117,19 @@ def comment_updates(conn: Conn, root_key: str, after: str | None = None) -> list
     return [comment_dict(row, thread["opened_by"]) for row in rows]
 
 
-def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | None = None,
-          key: str | None = None, include_closed: bool = False,
-          severity: ReviewSeverity | str | None = None) -> list[dict]:
-    sql = ("SELECT r.root_key FROM review_thread r JOIN task t ON t.id = r.task_id "
-           "WHERE t.project_id = ?")
+def inbox(
+    conn: Conn,
+    project_id: int,
+    actor: str | None = None,
+    role: str | None = None,
+    key: str | None = None,
+    include_closed: bool = False,
+    severity: ReviewSeverity | str | None = None,
+) -> list[dict]:
+    sql = (
+        "SELECT r.root_key FROM review_thread r JOIN task t ON t.id = r.task_id "
+        "WHERE t.project_id = ?"
+    )
     params: list = [project_id]
     if not include_closed:
         sql += " AND r.state != 'closed'"
@@ -133,15 +146,25 @@ def inbox(conn: Conn, project_id: int, actor: str | None = None, role: str | Non
         sql += " AND r.state = ?"
         params.append(f"awaiting_{role}")
     if actor:
-        sql += (" AND ((r.state = 'awaiting_developer' AND t.assignee = ?)"
-                "   OR (r.state = 'awaiting_reviewer' AND r.opened_by = ?))")
+        sql += (
+            " AND ((r.state = 'awaiting_developer' AND t.assignee = ?)"
+            "   OR (r.state = 'awaiting_reviewer' AND r.opened_by = ?))"
+        )
         params += [actor, actor]
     sql += " ORDER BY t.priority, t.key, r.root_key"
-    return [thread_summary(conn, r["root_key"]) for r in conn.execute(sql, params).fetchall()]
+    return [
+        thread_summary(conn, r["root_key"])
+        for r in conn.execute(sql, params).fetchall()
+    ]
 
 
-def list_threads(conn: Conn, project_id: int, key: str, state: str = "open",
-                 severity: ReviewSeverity | str | None = None) -> list[dict]:
+def list_threads(
+    conn: Conn,
+    project_id: int,
+    key: str,
+    state: str = "open",
+    severity: ReviewSeverity | str | None = None,
+) -> list[dict]:
     task = get_task(conn, project_id, key)
     sql = "SELECT root_key FROM review_thread WHERE task_id = ?"
     params: list = [task["id"]]
@@ -155,4 +178,7 @@ def list_threads(conn: Conn, project_id: int, key: str, state: str = "open",
         sql += " AND severity = ?"
         params.append(normalize_severity(severity).value)
     sql += " ORDER BY root_key"
-    return [thread_summary(conn, r["root_key"]) for r in conn.execute(sql, params).fetchall()]
+    return [
+        thread_summary(conn, r["root_key"])
+        for r in conn.execute(sql, params).fetchall()
+    ]

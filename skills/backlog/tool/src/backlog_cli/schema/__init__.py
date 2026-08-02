@@ -12,7 +12,6 @@ from .task import (
     TRANSITIONS,
     FEATURE_TRANSITIONS,
     TRANSITIONS_BY_TYPE,
-    transitions_for,
     STATUS_ALIASES,
     SATISFIED_STATUSES,
 )

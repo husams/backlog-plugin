@@ -27,12 +27,8 @@ from .contracts import (
 from .hook_runner import hook_implementation_identity, run_hook_validation
 from .policy import ExecutionPolicy, load_policy, source_identity
 from .specs import parse_spec, validation_hook
-from .runner import (
-    ExecutionResult,
-    run_shell,
-    run_task_shells,
-    run_task_validations,
-    run_validation,
-)
+from .batch import run_task_validations, run_validation
+from .shell import ExecutionResult, run_shell
 from .store import _item_details, executable_item, set_executable
+
 __all__ = [name for name in globals() if not name.startswith("_")]

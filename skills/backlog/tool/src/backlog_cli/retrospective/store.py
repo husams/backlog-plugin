@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from .. import core
 from ..db import BacklogError, Conn, Row, log_event, next_key, require_project, utcnow
-from .model import OPEN_STATUSES, STATUS_DISPLAY, _required, normalize_status
+from .model import OPEN_STATUSES, STATUS_DISPLAY, _required
 
 _SELECT = (
     "SELECT a.*, p.slug AS project_slug, i.key AS iteration_key, "
@@ -42,7 +42,7 @@ def list_actions(
     params: list[object] = [project_id]
     if status is not None:
         clauses.append("a.status=?")
-        params.append(normalize_status(status))
+        params.append(status)
     if iteration is not None:
         iteration_row = core.get_task(conn, project_id, iteration)
         if iteration_row["task_type"] != "iteration":
@@ -60,7 +60,8 @@ def list_open_actions(
 ) -> list[Row]:
     """Created and Ready actions, ordered by their project-local key."""
     return [
-        row for row in list_actions(conn, project_id, iteration=iteration)
+        row
+        for row in list_actions(conn, project_id, iteration=iteration)
         if row["status"] in OPEN_STATUSES
     ]
 
@@ -78,7 +79,9 @@ def create_action(
     actor = core.require_actor(actor, "retrospective action creation")
     issue = _required(repeated_issue, "repeated_issue")
     solution = _required(proposed_solution, "proposed_solution")
-    action_title = _required(title, "title") if title is not None else issue.splitlines()[0]
+    action_title = (
+        _required(title, "title") if title is not None else issue.splitlines()[0]
+    )
     iteration_row = core.get_task(conn, project_id, iteration)
     if iteration_row["task_type"] != "iteration":
         raise BacklogError(f"{iteration_row['key']} is not an Iteration")
@@ -89,7 +92,17 @@ def create_action(
         "INSERT INTO retrospective_action("
         "project_id,iteration_id,key,title,repeated_issue,proposed_solution,status,"
         "created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'created',?,?,?)",
-        (project_id, iteration_row["id"], key, action_title, issue, solution, actor, ts, ts),
+        (
+            project_id,
+            iteration_row["id"],
+            key,
+            action_title,
+            issue,
+            solution,
+            actor,
+            ts,
+            ts,
+        ),
     )
     log_event(
         conn,
@@ -113,6 +126,15 @@ def _require_status(action: Row, allowed: set[str], operation: str) -> None:
         )
 
 
+def _require_updated(conn: Conn, action: Row, operation: str, rowcount: int) -> None:
+    if rowcount == 1:
+        return
+    conn.rollback()
+    raise BacklogError(
+        f"{action['key']} changed concurrently; retry the {operation} operation"
+    )
+
+
 def accept_action(
     conn: Conn, project_id: int, key: str, *, actor: str | None = None
 ) -> Row:
@@ -127,9 +149,7 @@ def accept_action(
         "updated_at=? WHERE id=? AND status='created'",
         (actor, ts, ts, action["id"]),
     )
-    if cursor.rowcount != 1:
-        conn.rollback()
-        raise BacklogError(f"{action['key']} changed concurrently; retry the accept operation")
+    _require_updated(conn, action, "accept", cursor.rowcount)
     log_event(
         conn,
         "retrospective.accepted",
@@ -162,9 +182,7 @@ def reject_action(
         "WHERE id=? AND status=?",
         (rejection_reason, actor, ts, actor, ts, ts, action["id"], before),
     )
-    if cursor.rowcount != 1:
-        conn.rollback()
-        raise BacklogError(f"{action['key']} changed concurrently; retry the reject operation")
+    _require_updated(conn, action, "reject", cursor.rowcount)
     log_event(
         conn,
         "retrospective.rejected",
@@ -210,9 +228,7 @@ def close_action(
         "WHERE id=? AND status='ready'",
         (target_project["id"], target["id"], actor, ts, ts, action["id"]),
     )
-    if cursor.rowcount != 1:
-        conn.rollback()
-        raise BacklogError(f"{action['key']} changed concurrently; retry the close operation")
+    _require_updated(conn, action, "close", cursor.rowcount)
     reference = f"{target_project['slug']}:{target['key']}"
     log_event(
         conn,

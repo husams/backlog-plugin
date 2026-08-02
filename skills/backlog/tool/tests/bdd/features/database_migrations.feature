@@ -23,3 +23,14 @@ Feature: Real database compatibility
     Given a version two export containing linked work
     When the legacy export is imported
     Then the migrated legacy work is queryable
+
+  Scenario: A real version two SQLite database migrates in place
+    Given a real version two SQLite database
+    When the backlog opens the historical store
+    Then the database schema is current
+    And the version two database work is queryable
+
+  Scenario: A database from a newer tool is rejected safely
+    Given a real SQLite store from a newer schema version
+    When the newer store is opened
+    Then the command reports "newer than this tool"

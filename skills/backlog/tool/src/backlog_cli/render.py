@@ -63,7 +63,17 @@ def task_line(row: Row) -> list[str]:
     ]
 
 
-TASK_HEADERS = ["KEY", "T", "PARENT", "STATUS", "PRI", "ASSIGNEE", "REVIEWER", "PR", "TITLE"]
+TASK_HEADERS = [
+    "KEY",
+    "T",
+    "PARENT",
+    "STATUS",
+    "PRI",
+    "ASSIGNEE",
+    "REVIEWER",
+    "PR",
+    "TITLE",
+]
 
 
 def tasks_table(rows: list[Row]) -> str:
@@ -73,8 +83,16 @@ def tasks_table(rows: list[Row]) -> str:
 def projects_table(rows: list[Row], active: str | None = None) -> str:
     return table(
         ["", "PROJECT", "TASKS", "OPEN", "NAME"],
-        [["*" if r["slug"] == active else "", r["slug"], str(r["tasks"]),
-          str(r["open_tasks"]), r["name"]] for r in rows],
+        [
+            [
+                "*" if r["slug"] == active else "",
+                r["slug"],
+                str(r["tasks"]),
+                str(r["open_tasks"]),
+                r["name"],
+            ]
+            for r in rows
+        ],
     )
 
 
@@ -94,8 +112,12 @@ def deps_block(conn: Conn, task_id: int, indent: str = "  ") -> list[str]:
         ("out", "duplicates"): "duplicates",
     }
     out = [f"{indent}dependencies:"]
-    for e in sorted(edges, key=lambda e: (e["kind"] != "blocks", e["direction"], e["other_key"])):
-        mark = "ok  " if e["satisfied"] else ("WAIT" if e["kind"] == "blocks" else "    ")
+    for e in sorted(
+        edges, key=lambda e: (e["kind"] != "blocks", e["direction"], e["other_key"])
+    ):
+        mark = (
+            "ok  " if e["satisfied"] else ("WAIT" if e["kind"] == "blocks" else "    ")
+        )
         if e["direction"] == "out" and e["kind"] == "blocks":
             mark = "    "
         note = f"  — {e['note']}" if e["note"] else ""
@@ -106,7 +128,9 @@ def deps_block(conn: Conn, task_id: int, indent: str = "  ") -> list[str]:
     return out
 
 
-def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) -> list[str]:
+def items_block(
+    items: list[Row], indent: str = "  ", conn: Conn | None = None
+) -> list[str]:
     if not items:
         return []
     out: list[str] = []
@@ -114,6 +138,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
     for it in items:
         if conn is not None:
             from .execution import _item_details
+
             it = _item_details(conn, it)
         if it["kind"] != current:
             current = it["kind"]
@@ -123,9 +148,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
             box = "[x] " if it["done"] else "[ ] "
         suffix = ""
         if it.get("executor") and it["executor"] != "plain":
-            suffix = (
-                f"  [{it['executor']}, {it['requirement']}, {it['state']}]"
-            )
+            suffix = f"  [{it['executor']}, {it['requirement']}, {it['state']}]"
         out.append(f"{indent}  #{it['id']:<4} {box}{it['content']}{suffix}")
         spec = it.get("execution_spec")
         if spec and spec.get("shell"):
@@ -140,8 +163,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
                 out.append(f"{indent}        stderr: {_matcher_text(shell['stderr'])}")
             if shell.get("environment"):
                 out.append(
-                    f"{indent}        environment: "
-                    + ", ".join(shell["environment"])
+                    f"{indent}        environment: " + ", ".join(shell["environment"])
                 )
         elif spec and spec.get("hook"):
             hook = spec["hook"]
@@ -208,8 +230,10 @@ def render_task(conn: Conn, row: Row) -> str:
     if kids:
         out.append(f"  {'stories' if row['task_type'] == 'feature' else 'subtasks'}:")
         for k in kids:
-            out.append(f"    {k['key']}  "
-                       f"{STATUS_DISPLAY.get(k['status'], k['status']):<12} {k['title']}")
+            out.append(
+                f"    {k['key']}  "
+                f"{STATUS_DISPLAY.get(k['status'], k['status']):<12} {k['title']}"
+            )
 
     if row["task_type"] == "iteration":
         members = core.iteration_members(conn, row["id"])
@@ -229,7 +253,9 @@ def render_task(conn: Conn, row: Row) -> str:
         if iterations:
             out.append("  iterations:")
             for iteration in iterations:
-                out.append(f"    {iteration['key']}  {iteration['status']:<12} {iteration['title']}")
+                out.append(
+                    f"    {iteration['key']}  {iteration['status']:<12} {iteration['title']}"
+                )
 
     arts = list_artifacts(conn, row["id"])
     if arts:
@@ -253,8 +279,10 @@ def render_thread(t: dict, full: bool = False) -> str:
     lines.append(f"  comments : {t['comment_count']}")
 
     def block(label: str, c: dict) -> list[str]:
-        b = [f"  --- {label}: {c['key']} by {who(c['author'], c.get('author_kind'))} "
-             f"({c['role']}/{c['action']}) {c['at']}"]
+        b = [
+            f"  --- {label}: {c['key']} by {who(c['author'], c.get('author_kind'))} "
+            f"({c['role']}/{c['action']}) {c['at']}"
+        ]
         b += [f"      {ln}" for ln in c["body"].splitlines()]
         return b
 

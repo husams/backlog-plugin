@@ -2,60 +2,26 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
-import sys
 from pathlib import Path
 
 from .. import (
-    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
-)
-from ..db import (
-    BacklogError,
-    Conn,
-    connect,
-    database_errors,
-    get_or_create_project,
-    init_store,
-    list_projects,
-    require_backlog_dir,
-    require_project,
-    resolve_spec,
-    resync_sequences,
-    slugify,
+    core,
+    execution,
+    hooks,
+    workflow,
 )
 from ..render import (
-    deps_block,
-    items_block,
-    projects_table,
-    render_task,
-    render_thread,
     row_to_dict,
     table,
-    tasks_table,
 )
 from ..schema import (
-    ARTIFACT_KINDS,
-    GATE_CHECKS,
-    GATE_DESCRIPTIONS,
-    STATUS_CATEGORIES,
-    TASK_KEY_PREFIX,
-    DEPENDENCY_KINDS,
-    ITEM_KINDS,
-    PR_REVIEW_STATES,
-    PR_STATES,
-    SCHEMA_VERSION,
-    STATUS_DISPLAY,
-    STATUSES,
-    TASK_PARENT_TYPES,
     TASK_TYPES,
-    transitions_for,
 )
 
 
+from .context import Ctx
 
-from .context import Ctx, _task_rows
 
 def _execution_text(results) -> str:
     lines = []
@@ -97,7 +63,9 @@ def cmd_validation_run(ctx: Ctx, args) -> int:
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
     result = execution.run_validation(
-        backlog, args.item_id, Path(args.project_root),
+        backlog,
+        args.item_id,
+        Path(args.project_root),
         actor=args.actor,
     )
     payload = _execution_payload(result)
@@ -111,26 +79,32 @@ def cmd_validation_run_all(ctx: Ctx, args) -> int:
 
     backlog = Backlog(ctx.conn, ctx.project, ctx.spec, actor=args.actor)
     results = execution.run_task_validations(
-        backlog, args.key, Path(args.project_root),
-        fail_fast=args.fail_fast, actor=args.actor,
+        backlog,
+        args.key,
+        Path(args.project_root),
+        fail_fast=args.fail_fast,
+        actor=args.actor,
     )
     payload = [_execution_payload(result) for result in results]
     ctx.emit(payload, _execution_text(results))
     task = backlog.task(args.key)
-    ok, _ = execution.required_results_pass(
-        ctx.conn, task.id, Path(args.project_root)
-    )
+    ok, _ = execution.required_results_pass(ctx.conn, task.id, Path(args.project_root))
     return 0 if ok else 2
 
 
 def cmd_validation_history(ctx: Ctx, args) -> int:
     rows = execution.execution_history(
-        ctx.conn, args.item_id, limit=args.limit,
+        ctx.conn,
+        args.item_id,
+        limit=args.limit,
         project_root=Path(args.project_root),
     )
     text_rows = [
         [
-            str(row["id"]), row["status"], row["actor"], row["finished_at"],
+            str(row["id"]),
+            row["status"],
+            row["actor"],
+            row["finished_at"],
             "yes" if row["stale"] else "no",
             json.dumps(row["expected"], sort_keys=True),
             json.dumps(row["actual"], sort_keys=True),
@@ -141,8 +115,16 @@ def cmd_validation_history(ctx: Ctx, args) -> int:
     ctx.emit(
         rows,
         table(
-            ["ID", "STATUS", "ACTOR", "TIMESTAMP", "STALE",
-             "EXPECTED", "ACTUAL", "DIAGNOSTIC"],
+            [
+                "ID",
+                "STATUS",
+                "ACTOR",
+                "TIMESTAMP",
+                "STALE",
+                "EXPECTED",
+                "ACTUAL",
+                "DIAGNOSTIC",
+            ],
             text_rows,
         ),
     )
@@ -151,7 +133,10 @@ def cmd_validation_history(ctx: Ctx, args) -> int:
 
 def cmd_validation_waive(ctx: Ctx, args) -> int:
     waiver = execution.waive_validation(
-        ctx.conn, ctx.pid, args.item_id, actor=args.actor or "",
+        ctx.conn,
+        ctx.pid,
+        args.item_id,
+        actor=args.actor or "",
         reason=args.reason,
     )
     ctx.emit(
@@ -165,33 +150,47 @@ def cmd_validation_waive(ctx: Ctx, args) -> int:
 def cmd_actions(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     config_dir = hooks.project_backlog_dir(ctx.dir)
-    actions = hooks.available_actions(
-        config_dir, task["task_type"], task["status"]
-    )
+    actions = hooks.available_actions(config_dir, task["task_type"], task["status"])
     ctx.emit(
         [action.value for action in actions],
-        "\n".join(action.value for action in actions) if actions
+        "\n".join(action.value for action in actions)
+        if actions
         else "(no configured actions)",
     )
     return 0
 
 
 def cmd_gate(ctx: Ctx, args) -> int:
-    ok, checks = core.gate(ctx.conn, ctx.pid, args.key, args.__dict__["for"],
-                           allow_open_children=args.allow_open_subtasks, no_pr=args.no_pr,
-                           allow_blocked=args.allow_blocked)
+    ok, checks = core.gate(
+        ctx.conn,
+        ctx.pid,
+        args.key,
+        args.__dict__["for"],
+        allow_open_children=args.allow_open_subtasks,
+        no_pr=args.no_pr,
+        allow_blocked=args.allow_blocked,
+    )
     key = core.normalize_key(args.key)
     text = f"{key}  gate={args.__dict__['for']}  " + ("PASS" if ok else "BLOCKED")
-    text += "\n" + "\n".join(f"  {'OK  ' if c.ok else 'FAIL'} {c.name}: {c.detail}" for c in checks)
-    ctx.emit({"key": key, "gate": args.__dict__["for"], "ok": ok,
-              "checks": [c.as_dict() for c in checks]}, text)
+    text += "\n" + "\n".join(
+        f"  {'OK  ' if c.ok else 'FAIL'} {c.name}: {c.detail}" for c in checks
+    )
+    ctx.emit(
+        {
+            "key": key,
+            "gate": args.__dict__["for"],
+            "ok": ok,
+            "checks": [c.as_dict() for c in checks],
+        },
+        text,
+    )
     return 0 if ok else 2
 
 
 def cmd_statuses(ctx: Ctx, args) -> int:
     """The flow this project actually runs — read it before moving anything."""
     payload, blocks = {}, []
-    for ttype in ([core.normalize_type(args.type)] if args.type else TASK_TYPES):
+    for ttype in [core.normalize_type(args.type)] if args.type else TASK_TYPES:
         wf = workflow.get(ctx.conn, ctx.pid, ttype)
         payload[ttype] = {
             "name": wf.name,

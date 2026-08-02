@@ -26,3 +26,7 @@ Feature: Administrative end-to-end workflows
   Scenario: Repository and central SQLite store resolution is exercised
     When repository and central store configurations are exercised
     Then the administrative commands succeed
+
+  Scenario: The production PostgreSQL backend is exercised
+    When the production PostgreSQL store is exercised
+    Then the administrative commands succeed

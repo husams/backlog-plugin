@@ -22,8 +22,7 @@ def get_task(conn: Conn, project_id: int, key: str) -> Row:
 
 def get_task_by_id(conn: Conn, task_id: int) -> Row:
     row = conn.execute("SELECT * FROM task WHERE id = ?", (task_id,)).fetchone()
-    if row is None:
-        raise BacklogError(f"no task with id {task_id}")
+    assert row is not None
     return row
 
 

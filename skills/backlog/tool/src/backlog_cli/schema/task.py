@@ -15,7 +15,6 @@ key.
 
 from __future__ import annotations
 
-from enum import Enum
 
 SCHEMA_VERSION = 17
 
@@ -26,7 +25,10 @@ SCHEMA_VERSION = 17
 TASK_TYPES = ["feature", "story", "bug", "subtask", "iteration"]
 
 TASK_TYPE_DISPLAY = {
-    "feature": "Feature", "story": "Story", "bug": "Bug", "subtask": "Subtask",
+    "feature": "Feature",
+    "story": "Story",
+    "bug": "Bug",
+    "subtask": "Subtask",
     "iteration": "Iteration",
 }
 
@@ -42,7 +44,11 @@ TASK_PARENT_TYPES: dict[str, set[str]] = {
 }
 
 TASK_KEY_PREFIX = {
-    "feature": "F", "story": "S", "bug": "B", "subtask": "T", "iteration": "I"
+    "feature": "F",
+    "story": "S",
+    "bug": "B",
+    "subtask": "T",
+    "iteration": "I",
 }
 
 TASK_TYPE_ALIASES = {
@@ -122,11 +128,6 @@ TRANSITIONS_BY_TYPE: dict[str, dict[str, set[str]]] = {
     "subtask": TRANSITIONS,
     "iteration": {"planned": {"open"}, "open": {"closed"}, "closed": {"open"}},
 }
-
-
-def transitions_for(task_type: str) -> dict[str, set[str]]:
-    return TRANSITIONS_BY_TYPE.get(task_type, TRANSITIONS)
-
 STATUS_ALIASES = {
     "in_complete": "incomplete",
     "need_work": "needs_work",

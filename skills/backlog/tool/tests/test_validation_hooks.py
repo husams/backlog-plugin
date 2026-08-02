@@ -19,19 +19,28 @@ class ValidationHookTest(unittest.TestCase):
         self.backlog_dir = self.root / ".backlog"
         self.backlog_dir.mkdir()
         spec = db.StoreSpec(
-            dialect="sqlite", scope="repo", project="sample",
+            dialect="sqlite",
+            scope="repo",
+            project="sample",
             artifacts_dir=self.backlog_dir / "artifacts",
-            db_path=self.root / "backlog.db", backlog_dir=self.backlog_dir,
+            db_path=self.root / "backlog.db",
+            backlog_dir=self.backlog_dir,
         )
         self.conn = db.connect(spec=spec, create=True)
         self.project = db.get_or_create_project(self.conn, "sample", spec)
         self.task = core.add_task(
-            self.conn, self.project["id"], "story", "Hook validation",
+            self.conn,
+            self.project["id"],
+            "story",
+            "Hook validation",
             actor="fixture-creator",
         )
         self.item = core.add_item(
-            self.conn, self.project["id"], self.task["key"],
-            "acceptance_criteria", "Contract matches",
+            self.conn,
+            self.project["id"],
+            self.task["key"],
+            "acceptance_criteria",
+            "Contract matches",
         )
         self.bl = api.Backlog(self.conn, self.project, spec, actor="S-009")
 
@@ -56,17 +65,14 @@ class ValidationHookTest(unittest.TestCase):
 
     def policy(self, *names):
         (self.backlog_dir / "execution.yaml").write_text(
-            "allowed_hooks: " + json.dumps(list(names)) + "\n"
-            "max_timeout_seconds: 30\n",
+            "allowed_hooks: " + json.dumps(list(names)) + "\nmax_timeout_seconds: 30\n",
             encoding="utf-8",
         )
 
     def hooks(self, body):
         package = self.backlog_dir / "hooks"
         package.mkdir(exist_ok=True)
-        (package / "__init__.py").write_text(
-            textwrap.dedent(body), encoding="utf-8"
-        )
+        (package / "__init__.py").write_text(textwrap.dedent(body), encoding="utf-8")
 
     def actions(self):
         return [
@@ -92,18 +98,12 @@ class ValidationHookTest(unittest.TestCase):
             validation_hooks = {"contracts.sample": validate}
             """
         )
-        passed = self.bl.run_hook_validation(
-            self.item["id"], project_root=self.root
-        )
+        passed = self.bl.run_hook_validation(self.item["id"], project_root=self.root)
         self.assertEqual(passed.status, execution.TerminalStatus.PASS)
         self.assertEqual(self.actions(), ["check.started", "check.passed"])
-        self.assertTrue(
-            passed.implementation_identity.startswith("source_sha256:")
-        )
+        self.assertTrue(passed.implementation_identity.startswith("source_sha256:"))
         self.assertEqual(passed.record["hook_name"], "contracts.sample")
-        self.assertEqual(
-            json.loads(passed.record["actual_result"]), {"ok": True}
-        )
+        self.assertEqual(json.loads(passed.record["actual_result"]), {"ok": True})
 
         spec = self.declare(expected={"ok": False})
         self.hooks(
@@ -114,19 +114,19 @@ class ValidationHookTest(unittest.TestCase):
             validation_hooks = {"contracts.sample": validate}
             """
         )
-        failed = self.bl.run_hook_validation(
-            self.item["id"], project_root=self.root
+        failed = self.bl.run_hook_validation(self.item["id"], project_root=self.root)
+        self.assertEqual(
+            (failed.status.value, failed.reason), ("fail", "result_mismatch")
         )
-        self.assertEqual((failed.status.value, failed.reason), ("fail", "result_mismatch"))
         self.assertEqual(execution.item_state(self.conn, self.item["id"]), "fail")
         self.assertEqual(failed.record["spec_fingerprint"], spec["spec_fingerprint"])
 
     def test_policy_and_pre_invocation_failures_never_emit_started(self):
         self.declare()
-        denied = self.bl.run_hook_validation(
-            self.item["id"], project_root=self.root
+        denied = self.bl.run_hook_validation(self.item["id"], project_root=self.root)
+        self.assertEqual(
+            (denied.status.value, denied.reason), ("skipped", "policy_denied")
         )
-        self.assertEqual((denied.status.value, denied.reason), ("skipped", "policy_denied"))
         self.assertEqual(self.actions(), [])
 
         cases = [
@@ -144,7 +144,9 @@ class ValidationHookTest(unittest.TestCase):
                 result = self.bl.run_hook_validation(
                     self.item["id"], project_root=self.root
                 )
-                self.assertEqual((result.status.value, result.reason), ("error", reason))
+                self.assertEqual(
+                    (result.status.value, result.reason), ("error", reason)
+                )
                 self.assertEqual(self.actions()[before:], ["check.failed"])
 
     def test_explicit_version_fallback_and_unavailable_identity(self):
@@ -195,7 +197,9 @@ class ValidationHookTest(unittest.TestCase):
                 result = self.bl.run_hook_validation(
                     self.item["id"], project_root=self.root
                 )
-                self.assertEqual((result.status.value, result.reason), ("error", reason))
+                self.assertEqual(
+                    (result.status.value, result.reason), ("error", reason)
+                )
                 self.assertEqual(
                     self.actions()[before:], ["check.started", terminal_action]
                 )

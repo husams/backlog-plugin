@@ -46,3 +46,16 @@ Feature: Retrospective action state machine
     When a product manager accepts the retrospective action
     And iteration closure is attempted successfully
     Then the iteration status is "closed"
+
+  Scenario: An open Iteration review comment blocks closure
+    Given the iteration is open
+    When a reviewer opens an Iteration comment
+    And iteration closure is attempted
+    Then the iteration command is rejected by "iteration_comments_closed"
+    When the Iteration comment is resolved
+    And iteration closure is attempted successfully
+    Then the iteration status is "closed"
+
+  Scenario: Invalid retrospective lifecycle operations are rejected
+    When retrospective lifecycle validation is exercised
+    Then the retrospective command is rejected

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 
-from .. import execution
 from ..db import BacklogError, Conn, Row, log_event, utcnow
 from ..schema import TICKABLE_ITEM_KINDS
 from .normalization import normalize_item_kind
@@ -17,17 +15,15 @@ def add_item(
     key: str,
     kind: str,
     content: str,
-    position: int | None = None,
     actor: str | None = None,
 ) -> Row:
     task = get_task(conn, project_id, key)
     kind = normalize_item_kind(kind)
-    if position is None:
-        row = conn.execute(
-            "SELECT COALESCE(MAX(position), -1) AS p FROM task_item WHERE task_id = ? AND kind = ?",
-            (task["id"], kind),
-        ).fetchone()
-        position = int(row["p"]) + 1
+    row = conn.execute(
+        "SELECT COALESCE(MAX(position), -1) AS p FROM task_item WHERE task_id = ? AND kind = ?",
+        (task["id"], kind),
+    ).fetchone()
+    position = int(row["p"]) + 1
     ts = utcnow()
     item_id = conn.insert_returning_id(
         "INSERT INTO task_item(task_id, kind, position, content, done, created_at, "

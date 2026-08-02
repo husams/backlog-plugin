@@ -22,6 +22,7 @@ packages = ["src/backlog_cli"]
 
 [dependency-groups]
 dev = [
+    "psycopg[binary]>=3.1",
     "pytest>=8.4,<9",
     "pytest-bdd>=8.1,<9",
     "pytest-cov>=7.1,<8",

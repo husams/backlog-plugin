@@ -12,7 +12,7 @@ from ..schema import (
 )
 
 
-from .tasks import (
+from .authoring import (
     cmd_task_add,
     cmd_feature_add,
     cmd_story_add,
@@ -20,6 +20,9 @@ from .tasks import (
     cmd_iteration_add,
     cmd_iteration_member_add,
     cmd_iteration_member_remove,
+    cmd_subtask_add,
+)
+from .retrospectives import (
     cmd_retrospective_add,
     cmd_retrospective_list,
     cmd_retrospective_show,
@@ -27,7 +30,8 @@ from .tasks import (
     cmd_retrospective_reject,
     cmd_retrospective_close,
     cmd_retrospective_history,
-    cmd_subtask_add,
+)
+from .tasks import (
     _list,
     cmd_list,
     cmd_feature_list,

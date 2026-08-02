@@ -40,3 +40,7 @@ Feature: Review state machine
   Scenario: Review discovery, severity, audit, and non-blocking comments are available
     When review discovery and severity commands are exercised
     Then review discovery reports the complete thread
+
+  Scenario: Invalid review roles, phases, reopening, and lookup are rejected
+    When review validation and escalation commands are exercised
+    Then review discovery reports the complete thread

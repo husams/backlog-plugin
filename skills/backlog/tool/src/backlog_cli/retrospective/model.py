@@ -30,19 +30,7 @@ REQUIRED_DECISIONS = {
 
 def required_decision(status: str) -> str | None:
     """The decision that advances an open retrospective action."""
-    return REQUIRED_DECISIONS.get(normalize_status(status))
-
-
-def normalize_status(value: str) -> str:
-    status = value.strip().lower().replace("-", "_").replace(" ", "_")
-    if status == "reject":
-        status = "rejected"
-    if status not in STATUSES:
-        raise BacklogError(
-            f"unknown retrospective status {value!r}. Valid: "
-            + ", ".join(STATUS_DISPLAY[s] for s in STATUSES)
-        )
-    return status
+    return REQUIRED_DECISIONS.get(status)
 
 
 def _required(value: str, label: str) -> str:

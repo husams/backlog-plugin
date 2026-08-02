@@ -30,3 +30,11 @@ Feature: Transition hooks
     When action "refinement.accepted" is submitted and rejected
     Then the task status is "ready"
     And the command reports "transition committed, but post_transition failed"
+
+  Scenario: Invalid transition hook contracts are rejected
+    When invalid transition hook contracts are exercised
+    Then hook configuration errors are reported
+
+  Scenario: Custom action workflow configuration is applied and validated
+    When custom action workflow configuration is exercised
+    Then hook configuration errors are reported

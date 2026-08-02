@@ -6,9 +6,9 @@ from typing import Any
 
 from ..db import Conn, log_event, utcnow
 from ..execution.contracts import Requirement
-from ..execution.store import executable_item
 from .common import _task_for_item
 from .waivers import current_waiver
+
 
 def validation_diagnostics(conn: Conn) -> list[dict[str, Any]]:
     """Skipped and active-waiver details for doctor."""
@@ -40,23 +40,33 @@ def validation_diagnostics(conn: Conn) -> list[dict[str, Any]]:
                 "AND spec_fingerprint=? AND id<? ORDER BY id DESC LIMIT 1",
                 (row["item_id"], row["spec_fingerprint"], skipped["id"]),
             ).fetchone()
-            diagnostics.append({
-                "kind": "skipped", "task": row["task_key"],
-                "item_id": int(row["item_id"]), "item": row["content"],
-                "executor": row["executor"], "actor": skipped["actor"],
-                "reason": skipped["reason"],
-                "prior_result": prior["status"] if prior else "pending",
-                "timestamp": skipped["finished_at"],
-            })
+            diagnostics.append(
+                {
+                    "kind": "skipped",
+                    "task": row["task_key"],
+                    "item_id": int(row["item_id"]),
+                    "item": row["content"],
+                    "executor": row["executor"],
+                    "actor": skipped["actor"],
+                    "reason": skipped["reason"],
+                    "prior_result": prior["status"] if prior else "pending",
+                    "timestamp": skipped["finished_at"],
+                }
+            )
         if waiver is not None:
-            diagnostics.append({
-                "kind": "waived", "task": row["task_key"],
-                "item_id": int(row["item_id"]), "item": row["content"],
-                "executor": row["executor"], "actor": waiver["actor"],
-                "reason": waiver["reason"],
-                "prior_result": latest["status"] if latest else "pending",
-                "timestamp": waiver["created_at"],
-            })
+            diagnostics.append(
+                {
+                    "kind": "waived",
+                    "task": row["task_key"],
+                    "item_id": int(row["item_id"]),
+                    "item": row["content"],
+                    "executor": row["executor"],
+                    "actor": waiver["actor"],
+                    "reason": waiver["reason"],
+                    "prior_result": latest["status"] if latest else "pending",
+                    "timestamp": waiver["created_at"],
+                }
+            )
     return diagnostics
 
 
@@ -73,16 +83,24 @@ def _after_pass(backlog, item_id: int, actor: str) -> None:
         (item_id,),
     ).fetchone()
     if (
-        row is not None and row["kind"] == "checklist"
-        and row["requirement"] == Requirement.REQUIRED.value and not row["done"]
+        row is not None
+        and row["kind"] == "checklist"
+        and row["requirement"] == Requirement.REQUIRED.value
+        and not row["done"]
     ):
         task = _task_for_item(backlog._conn, backlog.pid, item_id)
         backlog._conn.execute(
             "UPDATE task_item SET done=1,updated_at=? WHERE id=?", (now, item_id)
         )
         log_event(
-            backlog._conn, "item", backlog.pid, task["id"], task["key"], actor,
-            to_value="done", detail=f"validation pass automatically checked item #{item_id}",
+            backlog._conn,
+            "item",
+            backlog.pid,
+            task["id"],
+            task["key"],
+            actor,
+            to_value="done",
+            detail=f"validation pass automatically checked item #{item_id}",
         )
     backlog._conn.commit()
 

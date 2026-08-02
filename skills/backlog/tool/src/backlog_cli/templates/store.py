@@ -15,9 +15,6 @@ from __future__ import annotations
 from ..db import BacklogError, Conn, Row, slugify, utcnow
 from ..schema import (
     BUILTIN_TEMPLATES,
-    DEFAULT_TEMPLATE_SLUG,
-    GATE_CHECKS,
-    STATUS_CATEGORIES,
     TASK_TYPES,
 )
 
@@ -25,6 +22,7 @@ from ..schema import (
 # --------------------------------------------------------------------------- #
 # installation and lookup
 # --------------------------------------------------------------------------- #
+
 
 def install_builtins(conn: Conn) -> list[str]:
     """Put the shipped templates in the store. Idempotent; never overwrites a
@@ -37,7 +35,14 @@ def install_builtins(conn: Conn) -> list[str]:
         tid = conn.insert_returning_id(
             "INSERT INTO template(slug, name, description, is_default, builtin, "
             "created_at, updated_at) VALUES(?,?,?,?,1,?,?)",
-            (spec["slug"], spec["name"], spec["description"], spec["is_default"], ts, ts),
+            (
+                spec["slug"],
+                spec["name"],
+                spec["description"],
+                spec["is_default"],
+                ts,
+                ts,
+            ),
         )
         for task_type, wf in spec["workflows"].items():
             _write_workflow(conn, tid, task_type, wf["statuses"], wf["transitions"])
@@ -47,8 +52,15 @@ def install_builtins(conn: Conn) -> list[str]:
     return added
 
 
-def _write_workflow(conn: Conn, template_id: int, task_type: str,
-                    statuses, transitions, name: str = "", description: str = "") -> int:
+def _write_workflow(
+    conn: Conn,
+    template_id: int,
+    task_type: str,
+    statuses,
+    transitions,
+    name: str = "",
+    description: str = "",
+) -> int:
     wf_id = conn.insert_returning_id(
         "INSERT INTO template_workflow(template_id, task_type, name, description) "
         "VALUES(?,?,?,?)",
@@ -57,8 +69,10 @@ def _write_workflow(conn: Conn, template_id: int, task_type: str,
     conn.executemany(
         "INSERT INTO template_status(template_workflow_id, slug, display, category, "
         "position, satisfies_dependency, is_initial, is_terminal) VALUES(?,?,?,?,?,?,?,?)",
-        [(wf_id, slug, display, cat, pos, sat, init, term)
-         for pos, (slug, display, cat, sat, init, term) in enumerate(statuses)],
+        [
+            (wf_id, slug, display, cat, pos, sat, init, term)
+            for pos, (slug, display, cat, sat, init, term) in enumerate(statuses)
+        ],
     )
     conn.executemany(
         "INSERT INTO template_transition(template_workflow_id, from_status, to_status, gates) "
@@ -69,7 +83,9 @@ def _write_workflow(conn: Conn, template_id: int, task_type: str,
 
 
 def get(conn: Conn, slug: str) -> Row | None:
-    return conn.execute("SELECT * FROM template WHERE slug = ?", (slugify(slug),)).fetchone()
+    return conn.execute(
+        "SELECT * FROM template WHERE slug = ?", (slugify(slug),)
+    ).fetchone()
 
 
 def require(conn: Conn, slug: str) -> Row:
@@ -84,12 +100,7 @@ def default(conn: Conn) -> Row:
     row = conn.execute(
         "SELECT * FROM template WHERE is_default = 1 ORDER BY id LIMIT 1"
     ).fetchone()
-    if row is not None:
-        return row
-    install_builtins(conn)
-    row = get(conn, DEFAULT_TEMPLATE_SLUG)
-    if row is None:
-        raise BacklogError("no default template is installed; run `backlog doctor`")
+    assert row is not None
     return row
 
 
@@ -103,10 +114,13 @@ def list_all(conn: Conn) -> list[Row]:
 
 
 def workflows_of(conn: Conn, template_id: int) -> dict[str, Row]:
-    return {r["task_type"]: r for r in conn.execute(
-        "SELECT * FROM template_workflow WHERE template_id = ? ORDER BY task_type",
-        (template_id,),
-    ).fetchall()}
+    return {
+        r["task_type"]: r
+        for r in conn.execute(
+            "SELECT * FROM template_workflow WHERE template_id = ? ORDER BY task_type",
+            (template_id,),
+        ).fetchall()
+    }
 
 
 def statuses_of(conn: Conn, template_workflow_id: int) -> list[Row]:
@@ -119,7 +133,8 @@ def statuses_of(conn: Conn, template_workflow_id: int) -> list[Row]:
 def transitions_of(conn: Conn, template_workflow_id: int) -> list[Row]:
     return conn.execute(
         "SELECT * FROM template_transition WHERE template_workflow_id = ? "
-        "ORDER BY from_status, to_status", (template_workflow_id,),
+        "ORDER BY from_status, to_status",
+        (template_workflow_id,),
     ).fetchall()
 
 
@@ -127,8 +142,14 @@ def transitions_of(conn: Conn, template_workflow_id: int) -> list[Row]:
 # instantiation — template -> a project's own workflow rows
 # --------------------------------------------------------------------------- #
 
-def instantiate(conn: Conn, template_id: int, project_id: int,
-                task_type: str | None = None, replace: bool = False) -> list[str]:
+
+def instantiate(
+    conn: Conn,
+    template_id: int,
+    project_id: int,
+    task_type: str | None = None,
+    replace: bool = False,
+) -> list[str]:
     """Copy a template's workflows onto a project.
 
     This is a copy, not a reference: the project owns the result and may edit
@@ -136,10 +157,9 @@ def instantiate(conn: Conn, template_id: int, project_id: int,
     """
     tpl_workflows = workflows_of(conn, template_id)
     done: list[str] = []
-    for ttype in ([task_type] if task_type else TASK_TYPES):
+    for ttype in [task_type] if task_type else TASK_TYPES:
         tpl = tpl_workflows.get(ttype)
-        if tpl is None:
-            continue
+        assert tpl is not None
         exists = conn.execute(
             "SELECT id FROM workflow WHERE project_id = ? AND task_type = ?",
             (project_id, ttype),
@@ -158,15 +178,28 @@ def instantiate(conn: Conn, template_id: int, project_id: int,
             "INSERT INTO workflow_status(workflow_id, slug, display, category, position, "
             "satisfies_dependency, is_initial, is_terminal, description) "
             "VALUES(?,?,?,?,?,?,?,?,?)",
-            [(wf_id, s["slug"], s["display"], s["category"], s["position"],
-              s["satisfies_dependency"], s["is_initial"], s["is_terminal"], s["description"])
-             for s in statuses_of(conn, tpl["id"])],
+            [
+                (
+                    wf_id,
+                    s["slug"],
+                    s["display"],
+                    s["category"],
+                    s["position"],
+                    s["satisfies_dependency"],
+                    s["is_initial"],
+                    s["is_terminal"],
+                    s["description"],
+                )
+                for s in statuses_of(conn, tpl["id"])
+            ],
         )
         conn.executemany(
             "INSERT INTO workflow_transition(workflow_id, from_status, to_status, gates, note) "
             "VALUES(?,?,?,?,?)",
-            [(wf_id, t["from_status"], t["to_status"], t["gates"], t["note"])
-             for t in transitions_of(conn, tpl["id"])],
+            [
+                (wf_id, t["from_status"], t["to_status"], t["gates"], t["note"])
+                for t in transitions_of(conn, tpl["id"])
+            ],
         )
         done.append(ttype)
     conn.commit()

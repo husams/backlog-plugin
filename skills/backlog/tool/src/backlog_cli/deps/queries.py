@@ -7,9 +7,12 @@ from .model import OTHER, is_satisfied, normalize_kind
 
 # --------------------------------------------------------------------------- #
 
+
 def outgoing(conn: Conn, task_id: int, kind: str | None = None) -> list[Row]:
-    sql = (f"SELECT d.*, {OTHER} FROM dependency d JOIN task t ON t.id = d.to_task_id "
-           "WHERE d.from_task_id = ?")
+    sql = (
+        f"SELECT d.*, {OTHER} FROM dependency d JOIN task t ON t.id = d.to_task_id "
+        "WHERE d.from_task_id = ?"
+    )
     params: list = [task_id]
     if kind:
         sql += " AND d.kind = ?"
@@ -18,8 +21,10 @@ def outgoing(conn: Conn, task_id: int, kind: str | None = None) -> list[Row]:
 
 
 def incoming(conn: Conn, task_id: int, kind: str | None = None) -> list[Row]:
-    sql = (f"SELECT d.*, {OTHER} FROM dependency d JOIN task t ON t.id = d.from_task_id "
-           "WHERE d.to_task_id = ?")
+    sql = (
+        f"SELECT d.*, {OTHER} FROM dependency d JOIN task t ON t.id = d.from_task_id "
+        "WHERE d.to_task_id = ?"
+    )
     params: list = [task_id]
     if kind:
         sql += " AND d.kind = ?"
@@ -44,7 +49,9 @@ def blockers(conn: Conn, task_id: int, open_only: bool = True) -> list[dict]:
     ).fetchone()["project_id"]
     for r in incoming(conn, task_id, "blocks"):
         e = dict(r)
-        e["satisfied"] = is_satisfied(e["other_status"], conn, project_id, e["other_type"])
+        e["satisfied"] = is_satisfied(
+            e["other_status"], conn, project_id, e["other_type"]
+        )
         if open_only and e["satisfied"]:
             continue
         out.append(e)

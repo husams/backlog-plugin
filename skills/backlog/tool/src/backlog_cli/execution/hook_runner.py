@@ -27,7 +27,11 @@ from .store import executable_item
 
 
 def run_hook_validation(
-    backlog, item_id: int, *, actor: str, project_root: Path,
+    backlog,
+    item_id: int,
+    *,
+    actor: str,
+    project_root: Path,
 ) -> ValidationExecutionResult:
     """Resolve and execute one allowlisted project validation hook."""
     from .. import hooks
@@ -38,14 +42,6 @@ def run_hook_validation(
     if spec.executor != Executor.HOOK or spec.hook is None:
         raise BacklogError(f"task item {item_id} is not a hook executable")
     hook_spec = spec.hook
-    policy = load_policy(root)
-    denial = policy.denial_reason(spec)
-    if denial is not None:
-        return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.SKIPPED,
-            "policy_denied", denial, None, None, emit_failed=False,
-        )
-
     task_item = backlog._conn.execute(
         "SELECT i.id, i.kind, i.content, t.id AS task_id, t.key AS task_key "
         "FROM task_item i JOIN task t ON t.id=i.task_id WHERE i.id=? AND t.project_id=?",
@@ -54,50 +50,121 @@ def run_hook_validation(
     if task_item is None:
         raise BacklogError(f"no task item with id {item_id} in this project")
 
+    policy = load_policy(root)
+    denial = policy.denial_reason(spec)
+    if denial is not None:
+        return _hook_terminal(
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.SKIPPED,
+            "policy_denied",
+            denial,
+            None,
+            None,
+            emit_failed=False,
+        )
+
     backlog_dir = root / ".backlog"
     try:
         module = hooks.load_project_hooks(backlog_dir)
     except BacklogError:
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hooks_package_invalid", "trusted hooks package could not be loaded",
-            None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hooks_package_invalid",
+            "trusted hooks package could not be loaded",
+            None,
+            None,
         )
     if module is None:
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hooks_package_missing", "trusted hooks package is absent", None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hooks_package_missing",
+            "trusted hooks package is absent",
+            None,
+            None,
         )
     registrations = getattr(module, "validation_hooks", None)
     if not isinstance(registrations, Mapping):
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "validation_hooks_missing", "validation_hooks must be a mapping", None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "validation_hooks_missing",
+            "validation_hooks must be a mapping",
+            None,
+            None,
         )
     if hook_spec.name not in registrations:
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_unknown", "registered hook name was not found", None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_unknown",
+            "registered hook name was not found",
+            None,
+            None,
         )
     callback = registrations[hook_spec.name]
     if not callable(callback):
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_not_callable", "registered hook entry is not callable", None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_not_callable",
+            "registered hook entry is not callable",
+            None,
+            None,
         )
     try:
         identity = hook_implementation_identity(callback)
     except BacklogError:
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_identity_unavailable", "deterministic hook identity is unavailable",
-            None, None,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_identity_unavailable",
+            "deterministic hook identity is unavailable",
+            None,
+            None,
         )
     timeout_constraint = _timeout_constraint()
     if timeout_constraint is not None:
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_timeout_unavailable", timeout_constraint, None, identity,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_timeout_unavailable",
+            timeout_constraint,
+            None,
+            identity,
         )
 
     source = source_identity(root)
@@ -111,7 +178,9 @@ def run_hook_validation(
         source=source,
     )
     backlog.trigger(
-        task_item["task_key"], hooks.Action.CHECK_STARTED, actor=actor,
+        task_item["task_key"],
+        hooks.Action.CHECK_STARTED,
+        actor=actor,
         operation="validation.hook",
         parameters={"item_id": item_id, "hook": hook_spec.name, "identity": identity},
     )
@@ -121,41 +190,93 @@ def run_hook_validation(
         if not isinstance(returned, ValidationHookResult):
             raise BacklogError("hook must return ValidationHookResult")
         actual = returned.value
-        status = (TerminalStatus.PASS if actual == hook_spec.expected_result
-                  else TerminalStatus.FAIL)
+        status = (
+            TerminalStatus.PASS
+            if actual == hook_spec.expected_result
+            else TerminalStatus.FAIL
+        )
         reason = "" if status == TerminalStatus.PASS else "result_mismatch"
-        action = (hooks.Action.CHECK_PASSED if status == TerminalStatus.PASS
-                  else hooks.Action.CHECK_FAILED)
+        action = (
+            hooks.Action.CHECK_PASSED
+            if status == TerminalStatus.PASS
+            else hooks.Action.CHECK_FAILED
+        )
         backlog.trigger(
-            task_item["task_key"], action, actor=actor, operation="validation.hook",
-            parameters={"item_id": item_id, "hook": hook_spec.name, "identity": identity},
+            task_item["task_key"],
+            action,
+            actor=actor,
+            operation="validation.hook",
+            parameters={
+                "item_id": item_id,
+                "hook": hook_spec.name,
+                "identity": identity,
+            },
         )
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, status, reason,
-            returned.detail, actual, identity, emit_failed=False, source=source,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            status,
+            reason,
+            returned.detail,
+            actual,
+            identity,
+            emit_failed=False,
+            source=source,
         )
     except _HookTimeout:
         backlog.trigger(
-            task_item["task_key"], hooks.Action.CHECK_TIMED_OUT, actor=actor,
+            task_item["task_key"],
+            hooks.Action.CHECK_TIMED_OUT,
+            actor=actor,
             operation="validation.hook",
-            parameters={"item_id": item_id, "hook": hook_spec.name, "reason": "hook_timeout"},
+            parameters={
+                "item_id": item_id,
+                "hook": hook_spec.name,
+                "reason": "hook_timeout",
+            },
         )
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_timeout", "validation hook exceeded its timeout", None, identity,
-            emit_failed=False, source=source,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_timeout",
+            "validation hook exceeded its timeout",
+            None,
+            identity,
+            emit_failed=False,
+            source=source,
         )
     except Exception:
         backlog.trigger(
-            task_item["task_key"], hooks.Action.CHECK_FAILED, actor=actor,
+            task_item["task_key"],
+            hooks.Action.CHECK_FAILED,
+            actor=actor,
             operation="validation.hook",
-            parameters={"item_id": item_id, "hook": hook_spec.name,
-                        "reason": "hook_exception"},
+            parameters={
+                "item_id": item_id,
+                "hook": hook_spec.name,
+                "reason": "hook_exception",
+            },
         )
         return _hook_terminal(
-            backlog, executable, hook_spec, actor, root, TerminalStatus.ERROR,
-            "hook_exception", "validation hook raised an exception", None, identity,
-            emit_failed=False, source=source,
+            backlog,
+            executable,
+            hook_spec,
+            actor,
+            root,
+            TerminalStatus.ERROR,
+            "hook_exception",
+            "validation hook raised an exception",
+            None,
+            identity,
+            emit_failed=False,
+            source=source,
         )
 
 
@@ -176,9 +297,18 @@ def hook_implementation_identity(callback: Callable) -> str:
 
 
 def _hook_terminal(
-    backlog, executable: Mapping[str, Any], hook_spec: HookSpec, actor: str,
-    root: Path, status: TerminalStatus, reason: str, detail: str, actual: Any,
-    identity: str | None, *, emit_failed: bool = True,
+    backlog,
+    executable: Mapping[str, Any],
+    hook_spec: HookSpec,
+    actor: str,
+    root: Path,
+    status: TerminalStatus,
+    reason: str,
+    detail: str,
+    actual: Any,
+    identity: str | None,
+    *,
+    emit_failed: bool = True,
     source: SourceIdentity | None = None,
 ) -> ValidationExecutionResult:
     from ..hooks import Action
@@ -187,26 +317,42 @@ def _hook_terminal(
     if emit_failed:
         row = backlog._conn.execute(
             "SELECT t.key FROM task_item i JOIN task t ON t.id=i.task_id "
-            "WHERE i.id=? AND t.project_id=?", (item_id, backlog.pid),
+            "WHERE i.id=? AND t.project_id=?",
+            (item_id, backlog.pid),
         ).fetchone()
-        if row is not None:
-            backlog.trigger(
-                row["key"], Action.CHECK_FAILED, actor=actor,
-                operation="validation.hook",
-                parameters={"item_id": item_id, "hook": hook_spec.name, "reason": reason},
-            )
+        assert row is not None
+        backlog.trigger(
+            row["key"],
+            Action.CHECK_FAILED,
+            actor=actor,
+            operation="validation.hook",
+            parameters={"item_id": item_id, "hook": hook_spec.name, "reason": reason},
+        )
     record = audit.record_result(
-        backlog._conn, item_id, executable["spec_fingerprint"], status,
-        reason=reason, detail=detail, source=source or source_identity(root),
-        expected=hook_spec.expected_result, actual=actual, hook_name=hook_spec.name,
+        backlog._conn,
+        item_id,
+        executable["spec_fingerprint"],
+        status,
+        reason=reason,
+        detail=detail,
+        source=source or source_identity(root),
+        expected=hook_spec.expected_result,
+        actual=actual,
+        hook_name=hook_spec.name,
         implementation_identity=identity,
         actor=actor,
     )
     if status == TerminalStatus.PASS:
         audit._after_pass(backlog, item_id, actor)
     return ValidationExecutionResult(
-        status, reason, detail, hook_spec.expected_result, actual,
-        hook_spec.name, identity, record,
+        status,
+        reason,
+        detail,
+        hook_spec.expected_result,
+        actual,
+        hook_spec.name,
+        identity,
+        record,
     )
 
 
@@ -216,9 +362,6 @@ class _HookTimeout(Exception):
 
 @contextmanager
 def _deadline(seconds: int):
-    constraint = _timeout_constraint()
-    if constraint is not None:
-        raise BacklogError(constraint)
     previous = signal.getsignal(signal.SIGALRM)
 
     def expired(_signum, _frame):
@@ -235,7 +378,9 @@ def _deadline(seconds: int):
 
 def _timeout_constraint() -> str | None:
     """Return a stable pre-invocation reason when in-process timeout is unsafe."""
-    if not all(hasattr(signal, name) for name in ("SIGALRM", "ITIMER_REAL", "setitimer")):
+    if not all(
+        hasattr(signal, name) for name in ("SIGALRM", "ITIMER_REAL", "setitimer")
+    ):
         return "sigalrm_unavailable"
     if threading.current_thread() is not threading.main_thread():
         return "main_thread_required"

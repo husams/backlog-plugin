@@ -20,6 +20,7 @@ from .common import (
 
 # --------------------------------------------------------------------------- #
 
+
 @dataclass
 class StoreSpec:
     dialect: str
@@ -35,7 +36,9 @@ class StoreSpec:
     def location(self) -> str:
         if self.dialect == POSTGRES:
             u = urlparse(self.dsn or "")
-            return f"postgresql://{u.hostname or '?'}{u.path or ''} schema={self.schema}"
+            return (
+                f"postgresql://{u.hostname or '?'}{u.path or ''} schema={self.schema}"
+            )
         return str(self.db_path)
 
 
@@ -88,14 +91,16 @@ def resolve_spec(start: Path | None = None, for_init: bool = False) -> StoreSpec
                 "BACKLOG_DB=postgres requires BACK_LOG_URL with a PostgreSQL DSN."
             )
         if backend == POSTGRES and urlparse(url).scheme.lower() not in (
-            "postgres", "postgresql"
+            "postgres",
+            "postgresql",
         ):
             raise BacklogError(
                 "BACK_LOG_URL must start with postgres:// or postgresql:// "
                 "when BACKLOG_DB=postgres."
             )
         if backend == SQLITE and urlparse(url).scheme.lower() in (
-            "postgres", "postgresql"
+            "postgres",
+            "postgresql",
         ):
             raise BacklogError(
                 "BACK_LOG_URL cannot be a PostgreSQL DSN when BACKLOG_DB=sqlite."
@@ -109,19 +114,27 @@ def resolve_spec(start: Path | None = None, for_init: bool = False) -> StoreSpec
         if scheme in ("postgres", "postgresql"):
             home = Path(art).expanduser() if art else Path.home() / BACKLOG_DIR_NAME
             return StoreSpec(
-                dialect=POSTGRES, scope="shared", project=project, dsn=url,
+                dialect=POSTGRES,
+                scope="shared",
+                project=project,
+                dsn=url,
                 schema=os.environ.get("BACKLOG_SCHEMA", DEFAULT_PG_SCHEMA),
                 artifacts_dir=home / ARTIFACTS_DIR_NAME,
             )
-        raw = url[len("sqlite://"):] if scheme == "sqlite" else url
+        raw = url[len("sqlite://") :] if scheme == "sqlite" else url
         path = Path(raw if raw.startswith("/") else raw.lstrip("/")).expanduser()
         # A path ending in .db names the file; anything else is a directory
         # holding one store for every project on this machine.
         home = path.resolve() if path.suffix == ".db" else (path / DB_NAME).resolve()
         return StoreSpec(
-            dialect=SQLITE, scope="central", project=project, db_path=home,
+            dialect=SQLITE,
+            scope="central",
+            project=project,
+            db_path=home,
             backlog_dir=home.parent,
-            artifacts_dir=(Path(art).expanduser() if art else home.parent / ARTIFACTS_DIR_NAME),
+            artifacts_dir=(
+                Path(art).expanduser() if art else home.parent / ARTIFACTS_DIR_NAME
+            ),
         )
 
     d = find_backlog_dir(start)
@@ -134,7 +147,10 @@ def resolve_spec(start: Path | None = None, for_init: bool = False) -> StoreSpec
             )
         d = (start or Path.cwd()).resolve() / BACKLOG_DIR_NAME
     return StoreSpec(
-        dialect=SQLITE, scope="repo", project=project, db_path=d / DB_NAME,
+        dialect=SQLITE,
+        scope="repo",
+        project=project,
+        db_path=d / DB_NAME,
         backlog_dir=d,
         artifacts_dir=(Path(art).expanduser() if art else d / ARTIFACTS_DIR_NAME),
     )

@@ -12,15 +12,9 @@ from .schema import ReviewSeverity
 if TYPE_CHECKING:
     from .api import Backlog
 
-def _age_days(stamp: str | None) -> float:
-    if not stamp:
-        return 0.0
-    try:
-        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
-    except ValueError:
-        return 0.0
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
+
+def _age_days(stamp: str) -> float:
+    when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     return (datetime.now(timezone.utc) - when).total_seconds() / 86400.0
 
 
@@ -83,9 +77,9 @@ class Task:
 
     @property
     def children(self) -> list["Task"]:
-        return [self._bl._task(r) for r in core.children_of(
-            self._bl._conn, self._row["id"]
-        )]
+        return [
+            self._bl._task(r) for r in core.children_of(self._bl._conn, self._row["id"])
+        ]
 
     @property
     def parent(self) -> str | None:
@@ -109,23 +103,27 @@ class Task:
 
     @property
     def open_threads(self) -> list[str]:
-        return [r["root_key"] for r in core.open_threads(self._bl._conn, self._row["id"])]
+        return [
+            r["root_key"] for r in core.open_threads(self._bl._conn, self._row["id"])
+        ]
 
     @property
     def iteration_members(self) -> list["Task"]:
         """Tasks grouped by this Iteration, ordered by priority."""
         if self.task_type != "iteration":
             return []
-        return [self._bl._task(r) for r in core.iteration_members(
-            self._bl._conn, self._row["id"]
-        )]
+        return [
+            self._bl._task(r)
+            for r in core.iteration_members(self._bl._conn, self._row["id"])
+        ]
 
     @property
     def iterations(self) -> list["Task"]:
         """Iterations containing this task."""
         rows = self._bl._conn.execute(
             "SELECT i.* FROM iteration_member m JOIN task i ON i.id=m.iteration_id "
-            "WHERE m.member_id=? ORDER BY i.priority,i.key", (self._row["id"],)
+            "WHERE m.member_id=? ORDER BY i.priority,i.key",
+            (self._row["id"],),
         ).fetchall()
         return [self._bl._task(r) for r in rows]
 
@@ -186,7 +184,9 @@ class Gate:
 
     @property
     def failures(self) -> list[str]:
-        return [f"{name}: {detail}" for name, passed, detail in self.checks if not passed]
+        return [
+            f"{name}: {detail}" for name, passed, detail in self.checks if not passed
+        ]
 
     def __str__(self) -> str:
         if self.ok:
@@ -223,8 +223,9 @@ class Thread:
         return f"{self.file}:{self.line}" if self.file else ""
 
     def __str__(self) -> str:
-        head = (f"{self.task_key}  {self.root_key}  "
-                f"{self.opened_by}, {self.age_days:.0f}d")
+        head = (
+            f"{self.task_key}  {self.root_key}  {self.opened_by}, {self.age_days:.0f}d"
+        )
         if self.file:
             head += f"  {self.where}"
         return f"{head}\n  {self.body}"

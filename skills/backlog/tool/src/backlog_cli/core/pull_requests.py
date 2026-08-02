@@ -5,10 +5,10 @@ from __future__ import annotations
 import shutil
 import subprocess
 
-from ..db import BacklogError, Conn, Row, actor_kind, log_event, utcnow
+from ..db import BacklogError, Conn, Row, log_event, utcnow
 from ..schema import PR_BEARING_TYPES, PR_REVIEW_STATES, PR_STATES
-from .gates import trigger_action
 from .task_queries import get_task, get_task_by_id
+from .transitions import trigger_action
 
 
 def set_pr(
@@ -21,7 +21,6 @@ def set_pr(
     state: str | None = None,
     review_state: str | None = None,
     actor: str | None = None,
-    emit_action: bool = True,
 ) -> Row:
     task = get_task(conn, project_id, key)
     if task["task_type"] not in PR_BEARING_TYPES:
@@ -79,38 +78,37 @@ def set_pr(
     )
     conn.commit()
     updated = get_task_by_id(conn, task["id"])
-    if emit_action:
-        from ..hooks import Action
+    from ..hooks import Action
 
-        if state == "merged":
-            action = Action.PR_MERGED
-        elif review_state == "approved":
-            action = Action.PR_APPROVED
-        elif review_state == "changes_requested":
-            action = Action.PR_CHANGES_REQUESTED
-        elif state == "closed":
-            action = Action.PR_CLOSED
-        elif state == "open" and task["pr_state"] == "closed":
-            action = Action.PR_REOPENED
-        elif state == "open" and task["pr_state"] == "draft":
-            action = Action.PR_MARKED_READY
-        elif url is not None and not task["pr_url"]:
-            action = Action.PR_CREATED
-        else:
-            action = Action.PR_UPDATED
-        updated, _, _ = trigger_action(
-            conn,
-            project_id,
-            task["key"],
-            action,
-            actor=actor,
-            operation="pr.set",
-            parameters={
-                "url": updated["pr_url"],
-                "state": updated["pr_state"],
-                "review_state": updated["pr_review_state"],
-            },
-        )
+    if state == "merged":
+        action = Action.PR_MERGED
+    elif review_state == "approved":
+        action = Action.PR_APPROVED
+    elif review_state == "changes_requested":
+        action = Action.PR_CHANGES_REQUESTED
+    elif state == "closed":
+        action = Action.PR_CLOSED
+    elif state == "open" and task["pr_state"] == "closed":
+        action = Action.PR_REOPENED
+    elif state == "open" and task["pr_state"] == "draft":
+        action = Action.PR_MARKED_READY
+    elif url is not None and not task["pr_url"]:
+        action = Action.PR_CREATED
+    else:
+        action = Action.PR_UPDATED
+    updated, _, _ = trigger_action(
+        conn,
+        project_id,
+        task["key"],
+        action,
+        actor=actor,
+        operation="pr.set",
+        parameters={
+            "url": updated["pr_url"],
+            "state": updated["pr_state"],
+            "review_state": updated["pr_review_state"],
+        },
+    )
     return updated
 
 

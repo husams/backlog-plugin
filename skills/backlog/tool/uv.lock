@@ -17,6 +17,7 @@ postgres = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "psycopg", extra = ["binary"] },
     { name = "pytest" },
     { name = "pytest-bdd" },
     { name = "pytest-cov" },
@@ -31,6 +32,7 @@ provides-extras = ["postgres"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "pytest", specifier = ">=8.4,<9" },
     { name = "pytest-bdd", specifier = ">=8.1,<9" },
     { name = "pytest-cov", specifier = ">=7.1,<8" },

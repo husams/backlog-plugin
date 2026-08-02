@@ -10,8 +10,10 @@ import threading
 
 from .contracts import ShellSpec, TextMatcher
 
-def _communicate_bounded(process: subprocess.Popen, timeout: int,
-                         limit: int) -> tuple[str, str, bool, bool, str]:
+
+def _communicate_bounded(
+    process: subprocess.Popen, timeout: int, limit: int
+) -> tuple[str, str, bool, bool, str]:
     captured = [bytearray(), bytearray()]
     truncated = [False]
     read_errors: list[str] = []
@@ -49,24 +51,26 @@ def _communicate_bounded(process: subprocess.Popen, timeout: int,
         process.wait()
     for thread in threads:
         thread.join()
-    for stream in (process.stdout, process.stderr):
-        if stream is not None:
-            stream.close()
+    assert process.stdout is not None and process.stderr is not None
+    process.stdout.close()
+    process.stderr.close()
     stdout = captured[0].decode("utf-8", "replace")
     stderr = captured[1].decode("utf-8", "replace")
     diagnostic = ",".join(read_errors)
     return stdout, stderr, truncated[0], timed_out, diagnostic
 
 
-def _mismatches(shell: ShellSpec, exit_code: int | None,
-                stdout: str, stderr: str) -> list[str]:
+def _mismatches(
+    shell: ShellSpec, exit_code: int | None, stdout: str, stderr: str
+) -> list[str]:
     mismatches = []
     if exit_code != shell.expected_exit_code:
         mismatches.append(
             f"exit_code_mismatch:expected={shell.expected_exit_code},actual={exit_code}"
         )
     for label, matcher, actual in (
-        ("stdout", shell.stdout, stdout), ("stderr", shell.stderr, stderr)
+        ("stdout", shell.stdout, stdout),
+        ("stderr", shell.stderr, stderr),
     ):
         if matcher and not _matches(matcher, actual):
             mismatches.append(f"{label}_mismatch")

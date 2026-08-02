@@ -40,11 +40,12 @@ def test_bdd_suite_uses_real_database_without_test_doubles() -> None:
                     else ""
                 )
                 assert name not in forbidden_calls, (
-                    f"test-double call {name} is forbidden in "
-                    f"{path.name}:{node.lineno}"
+                    f"test-double call {name} is forbidden in {path.name}:{node.lineno}"
                 )
             elif isinstance(node, ast.Constant) and node.value == ":memory:":
-                raise AssertionError(f"in-memory databases are forbidden in {path.name}")
+                raise AssertionError(
+                    f"in-memory databases are forbidden in {path.name}"
+                )
 
     harness = (BDD_ROOT / "conftest.py").read_text(encoding="utf-8")
     assert '"BACKLOG_DB": "sqlite"' in harness

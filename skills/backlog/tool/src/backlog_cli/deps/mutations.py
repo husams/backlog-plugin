@@ -9,8 +9,17 @@ from .model import canonical, normalize_kind
 
 # --------------------------------------------------------------------------- #
 
-def add(conn: Conn, project_id: int, from_key: str, to_key: str, kind: str = "blocks",
-        note: str = "", actor: str | None = None, external_id: str | None = None) -> dict:
+
+def add(
+    conn: Conn,
+    project_id: int,
+    from_key: str,
+    to_key: str,
+    kind: str = "blocks",
+    note: str = "",
+    actor: str | None = None,
+    external_id: str | None = None,
+) -> dict:
     from ..core import get_task
 
     kind = normalize_kind(kind)
@@ -37,8 +46,12 @@ def add(conn: Conn, project_id: int, from_key: str, to_key: str, kind: str = "bl
                 (note, external_id, existing["id"]),
             )
             conn.commit()
-        return {**dict(existing), "created": False,
-                "from_key": src["key"], "to_key": dst["key"]}
+        return {
+            **dict(existing),
+            "created": False,
+            "from_key": src["key"],
+            "to_key": dst["key"],
+        }
 
     if kind in HARD_DEPENDENCY_KINDS:
         path = cycle_path(conn, a, b)
@@ -54,10 +67,26 @@ def add(conn: Conn, project_id: int, from_key: str, to_key: str, kind: str = "bl
         (a, b, kind, note, external_id, utcnow(), actor),
     )
     detail = f"{src['key']} {kind} {dst['key']}"
-    log_event(conn, "dependency", project_id, src["id"], src["key"], actor,
-              to_value=dst["key"], detail=detail)
-    log_event(conn, "dependency", project_id, dst["id"], dst["key"], actor,
-              from_value=src["key"], detail=detail)
+    log_event(
+        conn,
+        "dependency",
+        project_id,
+        src["id"],
+        src["key"],
+        actor,
+        to_value=dst["key"],
+        detail=detail,
+    )
+    log_event(
+        conn,
+        "dependency",
+        project_id,
+        dst["id"],
+        dst["key"],
+        actor,
+        from_value=src["key"],
+        detail=detail,
+    )
     conn.commit()
     row = conn.execute(
         "SELECT * FROM dependency WHERE from_task_id=? AND to_task_id=? AND kind=?",
@@ -66,8 +95,14 @@ def add(conn: Conn, project_id: int, from_key: str, to_key: str, kind: str = "bl
     return {**dict(row), "created": True, "from_key": src["key"], "to_key": dst["key"]}
 
 
-def remove(conn: Conn, project_id: int, from_key: str, to_key: str,
-           kind: str = "blocks", actor: str | None = None) -> dict:
+def remove(
+    conn: Conn,
+    project_id: int,
+    from_key: str,
+    to_key: str,
+    kind: str = "blocks",
+    actor: str | None = None,
+) -> dict:
     from ..core import get_task
 
     kind = normalize_kind(kind)
@@ -82,10 +117,26 @@ def remove(conn: Conn, project_id: int, from_key: str, to_key: str,
         raise BacklogError(f"no {kind} edge {src['key']} -> {dst['key']}")
     conn.execute("DELETE FROM dependency WHERE id = ?", (row["id"],))
     detail = f"{src['key']} {kind} {dst['key']}"
-    log_event(conn, "dependency_removed", project_id, src["id"], src["key"], actor,
-              to_value=dst["key"], detail=detail)
-    log_event(conn, "dependency_removed", project_id, dst["id"], dst["key"], actor,
-              from_value=src["key"], detail=detail)
+    log_event(
+        conn,
+        "dependency_removed",
+        project_id,
+        src["id"],
+        src["key"],
+        actor,
+        to_value=dst["key"],
+        detail=detail,
+    )
+    log_event(
+        conn,
+        "dependency_removed",
+        project_id,
+        dst["id"],
+        dst["key"],
+        actor,
+        from_value=src["key"],
+        detail=detail,
+    )
     conn.commit()
     return {**dict(row), "from_key": src["key"], "to_key": dst["key"]}
 

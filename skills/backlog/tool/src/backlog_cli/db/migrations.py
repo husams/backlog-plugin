@@ -27,9 +27,12 @@ from .upgrades import (
 
 # --------------------------------------------------------------------------- #
 
+
 def check_version(conn: Conn, spec: StoreSpec) -> None:
     try:
-        row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+        row = conn.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone()
     except Exception:
         conn.rollback()  # an empty store has no `meta` yet
         row = None
@@ -63,18 +66,6 @@ def _bootstrap(conn: Conn) -> None:
     templates.install_builtins(conn)
 
 
-V2_TABLES = ["feature", "item", "dependency", "review_comment", "review_thread",
-              "artifact", "event", "key_counter"]
-
-# The retired feature vocabulary, mapped onto the one status machine.
-_FEATURE_STATUS_IN = {
-    "planned": "created",
-    "active": "in_progress",
-    "shipped": "done",
-    "dropped": "incomplete",
-}
-
-
 def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     """Forward migration.
 
@@ -85,9 +76,6 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     v16                     -> v17 (Iteration retrospective-action closure gate)
     """
     notes: list[str] = []
-    if from_version >= SCHEMA_VERSION:
-        return notes
-
     if from_version >= 3 or not conn.table_exists("feature"):
         add_column(conn, "task", "created_by", "TEXT")
         if from_version < 13:
@@ -108,7 +96,9 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         add_column(conn, "execution_result", "actual_exit_code", "INTEGER")
         add_column(conn, "execution_result", "stdout", "TEXT NOT NULL DEFAULT ''")
         add_column(conn, "execution_result", "stderr", "TEXT NOT NULL DEFAULT ''")
-        add_column(conn, "execution_result", "duration_ms", "INTEGER NOT NULL DEFAULT 0")
+        add_column(
+            conn, "execution_result", "duration_ms", "INTEGER NOT NULL DEFAULT 0"
+        )
         add_column(conn, "execution_result", "actor", "TEXT NOT NULL DEFAULT 'unknown'")
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
@@ -156,8 +146,6 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     conn.commit()
     _resync_sequences(conn)
     return notes
-
-
 
 
 def _resync_sequences(conn: Conn) -> list[str]:

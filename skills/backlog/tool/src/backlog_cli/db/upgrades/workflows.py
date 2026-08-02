@@ -96,6 +96,14 @@ def upgrade_iteration_template_workflows(conn: Conn) -> list[str]:
 
 def upgrade_iteration_feedback_flow(conn: Conn) -> list[str]:
     """Add all-severity comment closure policy to existing Iteration flows."""
+    return _add_iteration_gate(
+        conn,
+        "iteration_comments_closed",
+        "gated Iteration closure in {changed} transition(s)",
+    )
+
+
+def _add_iteration_gate(conn: Conn, gate: str, message: str) -> list[str]:
     changed = 0
     for workflow_table, transition_table, fk in (
         ("template_workflow", "template_transition", "template_workflow_id"),
@@ -111,38 +119,6 @@ def upgrade_iteration_feedback_flow(conn: Conn) -> list[str]:
                 f"WHERE {fk} = ? AND from_status = 'open' AND to_status = 'closed'",
                 (workflow_id,),
             ).fetchone()
-            if close is not None:
-                gates = [
-                    g.strip() for g in (close["gates"] or "").split(",") if g.strip()
-                ]
-                if "iteration_comments_closed" not in gates:
-                    gates.append("iteration_comments_closed")
-                    conn.execute(
-                        f"UPDATE {transition_table} SET gates = ? WHERE id = ?",
-                        (",".join(gates), close["id"]),
-                    )
-                    changed += 1
-    conn.commit()
-    return [f"gated Iteration closure in {changed} transition(s)"] if changed else []
-
-
-def upgrade_iteration_retrospective_action_gate(conn: Conn) -> list[str]:
-    """Require every Created retrospective action to be triaged before closure."""
-    changed = 0
-    gate = "iteration_retrospective_actions_clear"
-    for workflow_table, transition_table, fk in (
-        ("template_workflow", "template_transition", "template_workflow_id"),
-        ("workflow", "workflow_transition", "workflow_id"),
-    ):
-        workflows = conn.execute(
-            f"SELECT id FROM {workflow_table} WHERE task_type = 'iteration'"
-        ).fetchall()
-        for workflow_row in workflows:
-            close = conn.execute(
-                f"SELECT id, gates FROM {transition_table} "
-                f"WHERE {fk} = ? AND from_status = 'open' AND to_status = 'closed'",
-                (workflow_row["id"],),
-            ).fetchone()
             if close is None:
                 continue
             gates = [g.strip() for g in (close["gates"] or "").split(",") if g.strip()]
@@ -155,10 +131,15 @@ def upgrade_iteration_retrospective_action_gate(conn: Conn) -> list[str]:
             )
             changed += 1
     conn.commit()
-    return (
-        [f"added retrospective action gate to {changed} Iteration transition(s)"]
-        if changed
-        else []
+    return [message.format(changed=changed)] if changed else []
+
+
+def upgrade_iteration_retrospective_action_gate(conn: Conn) -> list[str]:
+    """Require every Created retrospective action to be triaged before closure."""
+    return _add_iteration_gate(
+        conn,
+        "iteration_retrospective_actions_clear",
+        "added retrospective action gate to {changed} Iteration transition(s)",
     )
 
 

@@ -12,16 +12,16 @@ STATUS_CATEGORIES = ["backlog", "ready", "active", "review", "done", "dropped"]
 # The gate checks a transition may demand. The names are fixed because each one
 # is a piece of code; which of them apply to which transition is data.
 GATE_CHECKS = [
-    "dependencies_clear",     # nothing that blocks this task is still open
-    "children_complete",      # every child task is finished
+    "dependencies_clear",  # nothing that blocks this task is still open
+    "children_complete",  # every child task is finished
     "review_threads_closed",  # no open blocker review thread
     "iteration_comments_closed",  # no open Iteration thread of any severity
     "iteration_retrospective_actions_clear",  # no untriaged retrospective action
-    "pr_recorded",            # a pull request is referenced
-    "pr_approved",            # the pull request is approved
-    "pr_merged",              # the pull request is merged
+    "pr_recorded",  # a pull request is referenced
+    "pr_approved",  # the pull request is approved
+    "pr_merged",  # the pull request is merged
     "required_validations_pass",  # required executable items have a fresh pass
-    "iteration_members_finished", # every Iteration member is finished
+    "iteration_members_finished",  # every Iteration member is finished
 ]
 
 GATE_DESCRIPTIONS = {
@@ -61,7 +61,11 @@ DEFAULT_TRANSITIONS = {
         ("incomplete", "ready", ""),
         ("ready", "in_progress", "dependencies_clear"),
         ("in_progress", "in_review", "pr_recorded"),
-        ("in_review", "accepted", "review_threads_closed,pr_approved,children_complete,required_validations_pass"),
+        (
+            "in_review",
+            "accepted",
+            "review_threads_closed,pr_approved,children_complete,required_validations_pass",
+        ),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
         ("accepted", "needs_work", ""),
@@ -76,7 +80,11 @@ DEFAULT_TRANSITIONS = {
         ("in_progress", "in_review", ""),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
-        ("in_review", "accepted", "review_threads_closed,children_complete,required_validations_pass"),
+        (
+            "in_review",
+            "accepted",
+            "review_threads_closed,children_complete,required_validations_pass",
+        ),
         ("accepted", "needs_work", ""),
         ("accepted", "done", "children_complete"),
     ],
@@ -91,7 +99,11 @@ ITERATION_STATUS_ROWS = [
 ]
 DEFAULT_TRANSITIONS["iteration"] = [
     ("planned", "open", ""),
-    ("open", "closed", "iteration_members_finished,iteration_comments_closed,iteration_retrospective_actions_clear"),
+    (
+        "open",
+        "closed",
+        "iteration_members_finished,iteration_comments_closed,iteration_retrospective_actions_clear",
+    ),
     ("closed", "open", "iteration_members_finished"),
 ]
 

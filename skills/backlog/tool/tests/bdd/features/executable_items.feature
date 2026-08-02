@@ -50,3 +50,7 @@ Feature: Executable items
   Scenario: Hook execution reports installation, contract, failure, and timeout errors
     When hook execution edge cases are exercised
     Then executable edge cases are reported
+
+  Scenario: Validation records clean and dirty Git source identity
+    When clean and dirty Git validation sources are exercised
+    Then executable edge cases are reported

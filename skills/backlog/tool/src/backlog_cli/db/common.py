@@ -31,17 +31,12 @@ Everything above the connection is dialect-agnostic: `Conn.execute` takes
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
-import time
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
 
-from ..schema import KNOWN_AGENTS, SCHEMA_SQL, SCHEMA_VERSION
+from ..schema import KNOWN_AGENTS
 
 if TYPE_CHECKING:
     from .resolution import StoreSpec
@@ -85,6 +80,7 @@ def actor_kind(name: str | None) -> str:
 # dialect-neutral connection
 # --------------------------------------------------------------------------- #
 
+
 def _translate(sql: str, has_params: bool) -> str:
     """`?` placeholders -> `%s`, leaving anything inside quotes alone."""
     out: list[str] = []
@@ -93,8 +89,6 @@ def _translate(sql: str, has_params: bool) -> str:
         if ch == "'":
             in_str = not in_str
             out.append(ch)
-        elif ch == "%" and not in_str and has_params:
-            out.append("%%")
         elif ch == "?" and not in_str:
             out.append("%s")
         else:
@@ -120,7 +114,7 @@ def split_statements(script: str) -> list[str]:
                 in_comment = False
             i += 1
             continue
-        if not in_str and ch == "-" and script[i:i + 2] == "--":
+        if not in_str and ch == "-" and script[i : i + 2] == "--":
             in_comment = True
             buf.append(ch)
             i += 1
@@ -220,7 +214,8 @@ class Conn:
     def table_exists(self, name: str) -> bool:
         if self.dialect == SQLITE:
             row = self.execute(
-                "SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name = ?", (name,)
+                "SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name = ?",
+                (name,),
             ).fetchone()
         else:
             row = self.execute(
@@ -238,14 +233,9 @@ class Conn:
 
 def database_errors() -> tuple[type[Exception], ...]:
     """Errors either backend may raise. Reported as `error: database: ...`."""
-    errs: list[type[Exception]] = [sqlite3.DatabaseError]
-    try:  # pragma: no cover - only when psycopg is installed
-        import psycopg
+    import psycopg
 
-        errs.append(psycopg.Error)
-    except ImportError:
-        pass
-    return tuple(errs)
+    return sqlite3.DatabaseError, psycopg.Error
 
 
 # --------------------------------------------------------------------------- #

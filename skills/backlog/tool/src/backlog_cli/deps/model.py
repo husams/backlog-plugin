@@ -13,11 +13,10 @@ the endpoints honest.
 
 from __future__ import annotations
 
-from ..db import BacklogError, Conn, Row, log_event, utcnow
+from ..db import BacklogError, Conn
 from ..schema import (
     DEPENDENCY_KIND_ALIASES,
     DEPENDENCY_KINDS,
-    HARD_DEPENDENCY_KINDS,
     SATISFIED_STATUSES,
     SYMMETRIC_DEPENDENCY_KINDS,
 )
@@ -39,8 +38,12 @@ def normalize_kind(value: str) -> str:
     return slug
 
 
-def is_satisfied(status: str | None, conn: "Conn | None" = None,
-                 project_id: int | None = None, task_type: str | None = None) -> bool:
+def is_satisfied(
+    status: str | None,
+    conn: "Conn | None" = None,
+    project_id: int | None = None,
+    task_type: str | None = None,
+) -> bool:
     """Has the task progressed far enough to stop blocking its dependents?
 
     The answer belongs to the project's workflow (`satisfies_dependency`), so a

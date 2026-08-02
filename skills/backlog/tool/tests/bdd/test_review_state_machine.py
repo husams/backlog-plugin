@@ -197,6 +197,219 @@ def exercise_review_discovery(world: World) -> None:
     world.last_json = {"root": world.review_root}
 
 
+@when("review validation and escalation commands are exercised")
+def exercise_review_validation(world: World) -> None:
+    def rejected(*args: str, message: str) -> None:
+        world.run(*args, expected=None)
+        assert world.last_result is not None
+        assert world.last_result.returncode != 0
+        assert message in world.output().lower()
+
+    key = world.require_key()
+    rejected(
+        "review",
+        "open",
+        key,
+        "--author",
+        "developer",
+        "--role",
+        "developer",
+        "--body",
+        "No",
+        message="only a reviewer",
+    )
+    rejected(
+        "review",
+        "open",
+        key,
+        "--author",
+        "outsider",
+        "--body",
+        "Cannot infer",
+        message="cannot infer role",
+    )
+    rejected(
+        "review",
+        "open",
+        key,
+        "--author",
+        "reviewer",
+        "--body",
+        "",
+        message="non-empty body",
+    )
+
+    unassigned = world.run(
+        "story", "add", "--title", "Unassigned review", actor="creator"
+    )
+    inferred = world.run(
+        "review",
+        "open",
+        unassigned["key"],
+        "--author",
+        "independent-reviewer",
+        "--body",
+        "Inferred reviewer",
+        "--severity",
+        "info",
+    )
+    assert inferred["reviewer"] == "independent-reviewer"
+
+    thread = world.run(
+        "review",
+        "open",
+        key,
+        "--author",
+        "reviewer",
+        "--body",
+        "Escalate this finding",
+        "--severity",
+        "nice_to_have",
+    )
+    world.review_root = thread["root"]
+    world.review_comment = thread["reply_to"]
+    unchanged = world.run(
+        "review",
+        "severity",
+        world.review_root,
+        "--severity",
+        "nice_to_have",
+        "--author",
+        "reviewer",
+    )
+    assert unchanged["severity"] == "nice_to_have"
+    escalated = world.run(
+        "review",
+        "severity",
+        world.review_root,
+        "--severity",
+        "blocker",
+        "--author",
+        "reviewer",
+    )
+    assert escalated["severity"] == "blocker"
+
+    rejected(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "reviewer",
+        "--action",
+        "comment",
+        "--body",
+        "Wrong turn",
+        message="does not allow reviewer action",
+    )
+    rejected(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "another-reviewer",
+        "--role",
+        "reviewer",
+        "--action",
+        "comment",
+        "--body",
+        "Take over",
+        message="cannot replace",
+    )
+    rejected(
+        "review",
+        "reopen",
+        world.review_root,
+        "--author",
+        "reviewer",
+        "--body",
+        "Still open",
+        message="already open",
+    )
+    rejected(
+        "review",
+        "reply",
+        "RC-999999",
+        "--author",
+        "developer",
+        "--action",
+        "fix",
+        "--body",
+        "Missing",
+        message="no review comment",
+    )
+    rejected(
+        "review",
+        "thread",
+        "RC-999999",
+        message="no review thread",
+    )
+    rejected(
+        "review",
+        "audit",
+        "RC-999999",
+        message="no review thread",
+    )
+    rejected(
+        "review",
+        "severity",
+        "RC-999999",
+        "--severity",
+        "info",
+        "--author",
+        "reviewer",
+        message="no review thread",
+    )
+
+    fixed = world.run(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "developer",
+        "--action",
+        "fix",
+        "--body",
+        "Fixed",
+    )
+    world.review_comment = fixed["reply_to"]
+    accepted = world.run(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "reviewer",
+        "--action",
+        "accept",
+        "--body",
+        "Accepted",
+    )
+    world.review_comment = accepted["reply_to"]
+    rejected(
+        "review",
+        "reply",
+        world.review_comment,
+        "--author",
+        "developer",
+        "--action",
+        "comment",
+        "--body",
+        "Closed",
+        message="is closed",
+    )
+    rejected(
+        "review",
+        "reopen",
+        world.review_root,
+        "--author",
+        "developer",
+        "--body",
+        "Developer reopen",
+        message="only a reviewer",
+    )
+    world.run("review", "thread", world.review_root, "--full")
+    world.last_json = {"root": world.review_root}
+
+
 @then("the review command is rejected")
 def review_rejected(world: World) -> None:
     assert world.last_result is not None

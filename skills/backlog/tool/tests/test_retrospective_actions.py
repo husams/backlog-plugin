@@ -56,12 +56,18 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
 
     def add_action(self, *, actor="facilitator"):
         return self.cli(
-            "--actor", actor,
-            "retrospective", "add",
-            "--iteration", "I-001",
-            "--title", "Catch missing regression coverage",
-            "--issue", "The same regression escaped twice.",
-            "--solution", "Add a reusable test-generation skill and CI check.",
+            "--actor",
+            actor,
+            "retrospective",
+            "add",
+            "--iteration",
+            "I-001",
+            "--title",
+            "Catch missing regression coverage",
+            "--issue",
+            "The same regression escaped twice.",
+            "--solution",
+            "Add a reusable test-generation skill and CI check.",
             json_output=True,
         )
 
@@ -75,7 +81,9 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
             capture_output=True,
         )
 
-    def test_created_action_blocks_iteration_close_but_ready_done_and_rejected_do_not(self):
+    def test_created_action_blocks_iteration_close_but_ready_done_and_rejected_do_not(
+        self,
+    ):
         self.cli("action", "I-001", "iteration.opened")
         created = self.add_action()
 
@@ -92,8 +100,13 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.cli("action", "I-001", "iteration.reopened")
         rejected = self.add_action(actor="facilitator-two")
         self.cli(
-            "--actor", "product-manager", "retrospective", "reject", rejected["key"],
-            "--reason", "Not worth carrying forward",
+            "--actor",
+            "product-manager",
+            "retrospective",
+            "reject",
+            rejected["key"],
+            "--reason",
+            "Not worth carrying forward",
         )
         self.cli("action", "I-001", "iteration.closed")
 
@@ -101,19 +114,32 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         done = self.add_action(actor="facilitator-three")
         self.cli("--actor", "product-manager", "retrospective", "accept", done["key"])
         self.cli(
-            "--actor", "product-manager", "feature", "add",
-            "--title", "Retrospective resolution",
+            "--actor",
+            "product-manager",
+            "feature",
+            "add",
+            "--title",
+            "Retrospective resolution",
         )
         self.cli(
-            "--actor", "product-manager", "retrospective", "close", done["key"],
-            "--resolution-project", self.project_slug, "--feature", "F-001",
+            "--actor",
+            "product-manager",
+            "retrospective",
+            "close",
+            done["key"],
+            "--resolution-project",
+            self.project_slug,
+            "--feature",
+            "F-001",
         )
         self.cli("action", "I-001", "iteration.closed")
 
     def test_board_next_and_standup_surface_open_actions_without_task_counting(self):
         before = self.standup()
         self.assertEqual(before.returncode, 0, before.stderr)
-        before_board = next(line for line in before.stdout.splitlines() if line.startswith("board"))
+        before_board = next(
+            line for line in before.stdout.splitlines() if line.startswith("board")
+        )
 
         created = self.add_action()
         board = self.cli("board")
@@ -128,9 +154,15 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         next_json = self.cli("next", "--actor", "product-manager", json_output=True)
         for payload in (board_json, next_json):
             self.assertEqual(
-                [(row["key"], row["status"], row["iteration_key"],
-                  row["required_decision"])
-                 for row in payload["retrospective_actions"]],
+                [
+                    (
+                        row["key"],
+                        row["status"],
+                        row["iteration_key"],
+                        row["required_decision"],
+                    )
+                    for row in payload["retrospective_actions"]
+                ],
                 [(created["key"], "created", "I-001", "accept_or_reject")],
             )
 
@@ -144,14 +176,20 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.assertEqual(after.returncode, 0, after.stderr)
         self.assertIn("open retrospective actions", after.stdout)
         self.assertIn("close_or_reject", after.stdout)
-        after_board = next(line for line in after.stdout.splitlines() if line.startswith("board"))
+        after_board = next(
+            line for line in after.stdout.splitlines() if line.startswith("board")
+        )
         self.assertEqual(after_board, before_board)
 
     def test_cli_create_accept_and_close_against_local_feature(self):
         created = self.add_action()
         self.assertEqual(
-            (created["key"], created["status"], created["iteration_key"],
-             created["project_slug"]),
+            (
+                created["key"],
+                created["status"],
+                created["iteration_key"],
+                created["project_slug"],
+            ),
             ("R-001", "created", "I-001", self.project_slug),
         )
         self.assertIn("The same regression", created["repeated_issue"])
@@ -159,7 +197,11 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.assertIn("Add a reusable", self.cli("retrospective", "show", "R-001"))
 
         accepted = self.cli(
-            "--actor", "product-manager", "retrospective", "accept", "R-001",
+            "--actor",
+            "product-manager",
+            "retrospective",
+            "accept",
+            "R-001",
             json_output=True,
         )
         self.assertEqual(accepted["status"], "ready")
@@ -167,16 +209,24 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
             "feature", "add", "--title", "Regression prevention", "--actor", "planner"
         )
         closed = self.cli(
-            "--actor", "product-manager",
-            "retrospective", "close", "R-001",
-            "--resolution-project", self.project_slug,
-            "--feature", "F-001",
+            "--actor",
+            "product-manager",
+            "retrospective",
+            "close",
+            "R-001",
+            "--resolution-project",
+            self.project_slug,
+            "--feature",
+            "F-001",
             json_output=True,
         )
         self.assertEqual(closed["status"], "done")
         self.assertEqual(
-            (closed["resolution_project_slug"], closed["resolution_task_key"],
-             closed["resolution_task_type"]),
+            (
+                closed["resolution_project_slug"],
+                closed["resolution_task_key"],
+                closed["resolution_task_type"],
+            ),
             (self.project_slug, "F-001", "feature"),
         )
         history = self.cli("retrospective", "history", "R-001")
@@ -187,8 +237,14 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
 
     def test_creator_cannot_accept_own_action_and_new_action_requires_actor(self):
         missing = self.raw(
-            "retrospective", "add", "--iteration", "I-001",
-            "--issue", "Repeated issue", "--solution", "Proposed solution",
+            "retrospective",
+            "add",
+            "--iteration",
+            "I-001",
+            "--issue",
+            "Repeated issue",
+            "--solution",
+            "Proposed solution",
         )
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("retrospective action creation requires an actor", missing.stderr)
@@ -204,14 +260,22 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.assertNotEqual(actorless.returncode, 0)
         self.assertIn("requires an independent actor", actorless.stderr)
         self.assertEqual(
-            self.cli("retrospective", "show", created["key"], json_output=True)["status"],
+            self.cli("retrospective", "show", created["key"], json_output=True)[
+                "status"
+            ],
             "created",
         )
         history = self.cli("retrospective", "history", created["key"], json_output=True)
-        self.assertEqual([event["kind"] for event in history], ["retrospective.created"])
+        self.assertEqual(
+            [event["kind"] for event in history], ["retrospective.created"]
+        )
 
         accepted = self.cli(
-            "--actor", "product-manager", "retrospective", "accept", created["key"],
+            "--actor",
+            "product-manager",
+            "retrospective",
+            "accept",
+            created["key"],
             json_output=True,
         )
         self.assertEqual(accepted["status"], "ready")
@@ -229,16 +293,16 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
                 "WHERE entity_key = ? AND kind = 'retrospective.created'",
                 (created["key"],),
             )
-        accepted = self.cli(
-            "retrospective", "accept", created["key"], json_output=True
-        )
+        accepted = self.cli("retrospective", "accept", created["key"], json_output=True)
         self.assertEqual(accepted["status"], "ready")
 
     def test_reject_requires_reason_and_is_terminal(self):
         self.add_action()
         env, cwd, session = self.open_api(actor="product-manager")
         with env, cwd, session as bl:
-            with self.assertRaisesRegex(BacklogError, "reason must be a non-empty string"):
+            with self.assertRaisesRegex(
+                BacklogError, "reason must be a non-empty string"
+            ):
                 bl.reject_retrospective_action("R-001", reason="   ")
             self.assertEqual(bl.retrospective_action("R-001").status, "created")
             rejected = bl.reject_retrospective_action(
@@ -257,12 +321,19 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.add_action()
         self.cli("--actor", "owner", "retrospective", "accept", "R-001")
         rejected = self.cli(
-            "--actor", "owner", "retrospective", "reject", "R-001",
-            "--reason", "The proposed automation is too costly.",
+            "--actor",
+            "owner",
+            "retrospective",
+            "reject",
+            "R-001",
+            "--reason",
+            "The proposed automation is too costly.",
             json_output=True,
         )
         self.assertEqual(rejected["status"], "rejected")
-        self.assertEqual(rejected["rejection_reason"], "The proposed automation is too costly.")
+        self.assertEqual(
+            rejected["rejection_reason"], "The proposed automation is too costly."
+        )
         self.assertEqual(
             self.cli("retrospective", "list", "--status", "rejected").count("R-001"),
             1,
@@ -273,8 +344,14 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         self.cli("--actor", "owner", "retrospective", "accept", "R-001")
         self.cli("project", "add", "--name", "Agent Tooling", "--slug", "agent-tooling")
         self.cli(
-            "--project", "agent-tooling", "feature", "add",
-            "--title", "Generate missing tests", "--actor", "planner",
+            "--project",
+            "agent-tooling",
+            "feature",
+            "add",
+            "--title",
+            "Generate missing tests",
+            "--actor",
+            "planner",
         )
 
         env, cwd, session = self.open_api(actor="owner")
@@ -298,8 +375,11 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
                 "R-001", resolution_project=self.project_slug, bug="B-001"
             )
             self.assertEqual(
-                (closed.status, closed.resolution_task_key,
-                 closed.resolution_task_type),
+                (
+                    closed.status,
+                    closed.resolution_task_key,
+                    closed.resolution_task_type,
+                ),
                 ("done", "B-001", "bug"),
             )
 
@@ -327,9 +407,12 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         env, cwd, session = self.open_api()
         with env, cwd, session as bl:
             self.assertEqual(
-                [action.key for action in bl.retrospective_actions(
-                    status=api.RetrospectiveStatus.CREATED, iteration="I-001"
-                )],
+                [
+                    action.key
+                    for action in bl.retrospective_actions(
+                        status=api.RetrospectiveStatus.CREATED, iteration="I-001"
+                    )
+                ],
                 ["R-001"],
             )
             with self.assertRaisesRegex(TypeError, "RetrospectiveStatus"):
@@ -345,9 +428,7 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         env, cwd, session = self.open_api()
         with env, cwd, session as bl:
             bl._conn.execute("DROP TABLE retrospective_action")
-            bl._conn.execute(
-                "UPDATE meta SET value='14' WHERE key='schema_version'"
-            )
+            bl._conn.execute("UPDATE meta SET value='14' WHERE key='schema_version'")
             bl._conn.commit()
 
         env, cwd, session = self.open_api()
@@ -370,7 +451,12 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         payload = json.loads(exported.read_text())
         action = payload["tables"]["retrospective_action"][0]
         story = self.cli(
-            "story", "add", "--title", "Wrong target", "--actor", "planner",
+            "story",
+            "add",
+            "--title",
+            "Wrong target",
+            "--actor",
+            "planner",
             json_output=True,
         )
         self.cli("export", "--out", str(exported))
@@ -379,12 +465,14 @@ class RetrospectiveActionIntegrationTest(unittest.TestCase):
         story_row = next(
             row for row in payload["tables"]["task"] if row["id"] == story["id"]
         )
-        action.update({
-            "status": "done",
-            "resolution_project_id": story_row["project_id"],
-            "resolution_task_id": story_row["id"],
-            "closed_at": action["created_at"],
-        })
+        action.update(
+            {
+                "status": "done",
+                "resolution_project_id": story_row["project_id"],
+                "resolution_task_id": story_row["id"],
+                "closed_at": action["created_at"],
+            }
+        )
         exported.write_text(json.dumps(payload))
 
         imported = self.raw("import", str(exported), "--replace")

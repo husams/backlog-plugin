@@ -2,60 +2,24 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
-import sys
 from pathlib import Path
 
 from .. import (
-    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
+    core,
 )
 from ..db import (
     BacklogError,
-    Conn,
-    connect,
-    database_errors,
     get_or_create_project,
-    init_store,
-    list_projects,
-    require_backlog_dir,
-    require_project,
-    resolve_spec,
     resync_sequences,
-    slugify,
-)
-from ..render import (
-    deps_block,
-    items_block,
-    projects_table,
-    render_task,
-    render_thread,
-    row_to_dict,
-    table,
-    tasks_table,
 )
 from ..schema import (
-    ARTIFACT_KINDS,
-    GATE_CHECKS,
-    GATE_DESCRIPTIONS,
-    STATUS_CATEGORIES,
-    TASK_KEY_PREFIX,
-    DEPENDENCY_KINDS,
-    ITEM_KINDS,
-    PR_REVIEW_STATES,
-    PR_STATES,
     SCHEMA_VERSION,
-    STATUS_DISPLAY,
-    STATUSES,
     TASK_PARENT_TYPES,
-    TASK_TYPES,
-    transitions_for,
 )
 
 
-
-from .context import Ctx, _task_rows
+from .context import Ctx
 
 _EXPORT_TABLES: list[tuple[str, str]] = [
     ("meta", "key"),
@@ -87,8 +51,10 @@ def cmd_export(ctx: Ctx, args) -> int:
     conn = ctx.conn
     dump = {"format": "backlog-export", "schema_version": SCHEMA_VERSION, "tables": {}}
     for t, order in _EXPORT_TABLES:
-        dump["tables"][t] = [{k: r[k] for k in r.keys()}
-                             for r in conn.execute(f"SELECT * FROM {t} ORDER BY {order}")]
+        dump["tables"][t] = [
+            {k: r[k] for k in r.keys()}
+            for r in conn.execute(f"SELECT * FROM {t} ORDER BY {order}")
+        ]
     blob = json.dumps(dump, indent=2, sort_keys=True, default=str)
     if args.out:
         Path(args.out).expanduser().write_text(blob + "\n")
@@ -117,11 +83,17 @@ def cmd_import(ctx: Ctx, args) -> int:
         slug = args.as_project or ctx.spec.project
         proj = get_or_create_project(conn, slug, ctx.spec)
         notes = load_v2_export(conn, int(proj["id"]), data["tables"])
-        ctx.emit({"imported": args.file, "project": proj["slug"],
-                  "converted_from_schema": version, "notes": notes},
-                 f"imported {args.file} into project '{proj['slug']}' "
-                 f"(converted from schema v{version})\n"
-                 + "\n".join(f"  {n}" for n in notes))
+        ctx.emit(
+            {
+                "imported": args.file,
+                "project": proj["slug"],
+                "converted_from_schema": version,
+                "notes": notes,
+            },
+            f"imported {args.file} into project '{proj['slug']}' "
+            f"(converted from schema v{version})\n"
+            + "\n".join(f"  {n}" for n in notes),
+        )
         return 0
 
     if not args.replace:
@@ -146,9 +118,11 @@ def cmd_import(ctx: Ctx, args) -> int:
     if not conn.is_postgres:
         conn.execute("PRAGMA foreign_keys = ON")
     moved = resync_sequences(conn)
-    ctx.emit({"imported": args.file, "sequences_resynced": moved},
-             f"replaced backlog from {args.file}"
-             + (f"\n  sequences resynced: {', '.join(moved)}" if moved else ""))
+    ctx.emit(
+        {"imported": args.file, "sequences_resynced": moved},
+        f"replaced backlog from {args.file}"
+        + (f"\n  sequences resynced: {', '.join(moved)}" if moved else ""),
+    )
     return 0
 
 
@@ -167,7 +141,9 @@ def _validate_import_tasks(rows: list[dict]) -> None:
             continue
         parent = by_id.get(parent_id)
         if parent is None:
-            raise BacklogError(f"import rejected: {key} refers to missing parent id {parent_id}")
+            raise BacklogError(
+                f"import rejected: {key} refers to missing parent id {parent_id}"
+            )
         parent_type = core.normalize_type(parent.get("task_type") or "")
         if parent_type not in TASK_PARENT_TYPES[task_type]:
             raise BacklogError(
@@ -183,13 +159,15 @@ def _validate_import_workflows(tables: dict[str, list[dict]]) -> None:
         for row in tables.get("workflow", [])
     }
     projects = {row.get("id"): row.get("slug") for row in tables.get("project", [])}
-    missing = sorted({
-        (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
-        for row in tables.get("task", [])
-        if core.normalize_type(row.get("task_type") or "") in ("bug", "iteration")
-        if (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
-        not in available
-    })
+    missing = sorted(
+        {
+            (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
+            for row in tables.get("task", [])
+            if core.normalize_type(row.get("task_type") or "") in ("bug", "iteration")
+            if (row.get("project_id"), core.normalize_type(row.get("task_type") or ""))
+            not in available
+        }
+    )
     if missing:
         project_id, task_type = missing[0]
         raise BacklogError(

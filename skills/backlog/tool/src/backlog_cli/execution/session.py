@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from .. import audit
-from . import hook_runner, policy, runner, store
+from . import batch, hook_runner, policy, store
 from .contracts import SourceIdentity, TerminalStatus, ValidationExecutionResult
 from .policy import ExecutionPolicy
-from .runner import ExecutionResult
+from .shell import ExecutionResult
 
 
 def set_item_execution(self, item_id: int, spec: dict) -> dict:
@@ -91,7 +91,7 @@ def run_item(
     """Run one shell or hook executable item under trusted local policy."""
     from pathlib import Path
 
-    return runner.run_validation(
+    return batch.run_validation(
         self,
         item_id,
         Path(project_root),
@@ -112,7 +112,7 @@ def run_task(
     """Run all executable items in declaration order."""
     from pathlib import Path
 
-    return runner.run_task_validations(
+    return batch.run_task_validations(
         self,
         key,
         Path(project_root),

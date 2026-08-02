@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-import hashlib
-import importlib.util
-import sys
 from enum import Enum
-from pathlib import Path
-from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
-import yaml
 
-from ..db import BacklogError, Conn, utcnow
-from ..schema import GATE_CHECKS, STATUS_CATEGORIES, TASK_TYPES
+from ..db import BacklogError
 
 if TYPE_CHECKING:
-    from .api import Backlog
+    pass
 
 Trigger = dict[str, Any]
 
@@ -74,14 +67,16 @@ class Action(str, Enum):
     ITERATION_REOPENED = "iteration.reopened"
 
 
-THREAD_MANAGED_ACTIONS = frozenset({
-    Action.FEEDBACK_POSTED,
-    Action.FEEDBACK_ACCEPTED,
-    Action.FEEDBACK_REJECTED,
-    Action.FEEDBACK_REPLIED,
-    Action.FEEDBACK_RESOLVED,
-    Action.FEEDBACK_REOPENED,
-})
+THREAD_MANAGED_ACTIONS = frozenset(
+    {
+        Action.FEEDBACK_POSTED,
+        Action.FEEDBACK_ACCEPTED,
+        Action.FEEDBACK_REJECTED,
+        Action.FEEDBACK_REPLIED,
+        Action.FEEDBACK_RESOLVED,
+        Action.FEEDBACK_REOPENED,
+    }
+)
 
 
 def public_actions() -> list[Action]:

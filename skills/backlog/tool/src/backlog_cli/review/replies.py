@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from ..core import get_task_by_id, normalize_key, trigger_action
-from ..db import BacklogError, Conn, Row, actor_kind, log_event, next_comment_key, utcnow
+from ..db import (
+    BacklogError,
+    Conn,
+    Row,
+    actor_kind,
+    log_event,
+    next_comment_key,
+    utcnow,
+)
 from ..hooks import Action
 from ..schema import REVIEW_ACTIONS, ReviewSeverity
 from .model import (
@@ -13,12 +21,23 @@ from .model import (
     resolve_reply_role,
 )
 
-def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: str,
-          body: str, role: str | None = None, reopen: bool = False,
-          emit_action: bool = True) -> dict:
+
+def reply(
+    conn: Conn,
+    project_id: int,
+    comment_key: str,
+    author: str,
+    action: str,
+    body: str,
+    role: str | None = None,
+    reopen: bool = False,
+    emit_action: bool = True,
+) -> dict:
     body = _require_body(body)
     ck = normalize_key(comment_key)
-    parent = conn.execute("SELECT * FROM review_comment WHERE key = ?", (ck,)).fetchone()
+    parent = conn.execute(
+        "SELECT * FROM review_comment WHERE key = ?", (ck,)
+    ).fetchone()
     if parent is None:
         raise BacklogError(f"no review comment with key {ck}")
     thread = conn.execute(
@@ -58,8 +77,21 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
         "INSERT INTO review_comment(task_id, key, root_key, parent_key, seq, author, "
         "author_kind, role, action, body, file_path, line, created_at) "
         "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (task["id"], ckey, thread["root_key"], parent["key"], seq, author,
-         actor_kind(author), role, action, body, parent["file_path"], parent["line"], ts),
+        (
+            task["id"],
+            ckey,
+            thread["root_key"],
+            parent["key"],
+            seq,
+            author,
+            actor_kind(author),
+            role,
+            action,
+            body,
+            parent["file_path"],
+            parent["line"],
+            ts,
+        ),
     )
 
     if reopen:
@@ -78,9 +110,17 @@ def reply(conn: Conn, project_id: int, comment_key: str, author: str, action: st
         "comment_count = ?, updated_at = ?, closed_by = ?, closed_at = ? WHERE root_key = ?",
         (state, resolution, ckey, seq, ts, closed_by, closed_at, thread["root_key"]),
     )
-    log_event(conn, "review", project_id, task["id"], task["key"], author,
-              from_value=thread["state"], to_value=state,
-              detail=f"{action} on {thread['root_key']} ({ckey})")
+    log_event(
+        conn,
+        "review",
+        project_id,
+        task["id"],
+        task["key"],
+        author,
+        from_value=thread["state"],
+        to_value=state,
+        detail=f"{action} on {thread['root_key']} ({ckey})",
+    )
     conn.commit()
     if emit_action:
         if action == "accept" and _feedback_is_resolved(conn, task, thread):
@@ -123,17 +163,24 @@ def _unresolved_threads(conn: Conn, task_id: int) -> list[Row]:
 def _feedback_is_resolved(conn: Conn, task: Row, thread: Row) -> bool:
     if task["task_type"] == "iteration":
         return not _unresolved_threads(conn, task["id"])
-    return (
-        thread["severity"] == ReviewSeverity.BLOCKER.value
-        and not _unresolved_blockers(conn, task["id"])
-    )
+    return thread[
+        "severity"
+    ] == ReviewSeverity.BLOCKER.value and not _unresolved_blockers(conn, task["id"])
 
 
-def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
-           role: str | None = None) -> dict:
+def reopen(
+    conn: Conn,
+    project_id: int,
+    root_key: str,
+    author: str,
+    body: str,
+    role: str | None = None,
+) -> dict:
     body = _require_body(body)
     rk = normalize_key(root_key)
-    thread = conn.execute("SELECT * FROM review_thread WHERE root_key = ?", (rk,)).fetchone()
+    thread = conn.execute(
+        "SELECT * FROM review_thread WHERE root_key = ?", (rk,)
+    ).fetchone()
     if thread is None:
         raise BacklogError(f"no review thread rooted at {rk}")
     if thread["state"] != "closed":
@@ -149,18 +196,31 @@ def reopen(conn: Conn, project_id: int, root_key: str, author: str, body: str,
     )
     conn.commit()
     result = reply(
-        conn, project_id, thread["last_comment_key"], author, "comment", body,
-        role=role, reopen=True, emit_action=False
+        conn,
+        project_id,
+        thread["last_comment_key"],
+        author,
+        "comment",
+        body,
+        role=role,
+        reopen=True,
+        emit_action=False,
     )
-    if thread["severity"] == ReviewSeverity.BLOCKER.value or task["task_type"] == "iteration":
+    if (
+        thread["severity"] == ReviewSeverity.BLOCKER.value
+        or task["task_type"] == "iteration"
+    ):
         trigger_action(
             conn,
             project_id,
             task["key"],
             Action.FEEDBACK_REOPENED,
             actor=author,
-            operation=("review.iteration_comment_reopened"
-                       if task["task_type"] == "iteration" else "review.blocker_reopened"),
+            operation=(
+                "review.iteration_comment_reopened"
+                if task["task_type"] == "iteration"
+                else "review.blocker_reopened"
+            ),
             parameters={
                 "root": rk,
                 "reply": result["reply_to"],

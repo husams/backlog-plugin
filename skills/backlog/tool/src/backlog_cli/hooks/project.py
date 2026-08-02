@@ -30,10 +30,10 @@ def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:
         path,
         submodule_search_locations=[str(package_dir)],
     )
-    if spec is None or spec.loader is None:
-        raise BacklogError(f"cannot load project hooks from {path}")
+    assert spec is not None and spec.loader is not None
     for loaded_name in [
-        loaded_name for loaded_name in sys.modules
+        loaded_name
+        for loaded_name in sys.modules
         if loaded_name == name or loaded_name.startswith(f"{name}.")
     ]:
         del sys.modules[loaded_name]

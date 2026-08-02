@@ -16,15 +16,22 @@ What stays in code is the *meaning* of things the engine has to reason about:
 
 from __future__ import annotations
 
-from ..db import BacklogError, Conn, Row, utcnow
-from ..schema import GATE_CHECKS, STATUS_CATEGORIES, TASK_TYPES
+from ..db import BacklogError, Row
 
 
 class Workflow:
     """One task type's flow, loaded from the store."""
 
-    __slots__ = ("id", "project_id", "task_type", "name", "description",
-                 "statuses", "ordered", "transitions")
+    __slots__ = (
+        "id",
+        "project_id",
+        "task_type",
+        "name",
+        "description",
+        "statuses",
+        "ordered",
+        "transitions",
+    )
 
     def __init__(self, row: Row, statuses: list[Row], transitions: list[Row]):
         self.id = row["id"]
@@ -36,16 +43,15 @@ class Workflow:
         self.ordered = statuses
         self.transitions: dict[str, dict[str, str]] = {}
         for t in transitions:
-            self.transitions.setdefault(t["from_status"], {})[t["to_status"]] = t["gates"]
+            self.transitions.setdefault(t["from_status"], {})[t["to_status"]] = t[
+                "gates"
+            ]
 
     # -- statuses ----------------------------------------------------------- #
 
     @property
     def initial(self) -> str:
-        for s in self.ordered:
-            if s["is_initial"]:
-                return s["slug"]
-        return self.ordered[0]["slug"] if self.ordered else "created"
+        return next(s["slug"] for s in self.ordered if s["is_initial"])
 
     @property
     def terminal(self) -> str | None:
@@ -77,11 +83,15 @@ class Workflow:
         if want in self.statuses:
             return want
         for slug, row in self.statuses.items():
-            if row["display"].strip().lower().replace(" ", "_").replace("-", "_") == want:
+            if (
+                row["display"].strip().lower().replace(" ", "_").replace("-", "_")
+                == want
+            ):
                 return slug
         raise BacklogError(
             f"unknown status {value!r} for a {self.task_type} in this project. "
-            "Valid: " + ", ".join(s["display"] for s in self.ordered)
+            "Valid: "
+            + ", ".join(s["display"] for s in self.ordered)
             + f"\n(`backlog workflow show --type {self.task_type}` prints the flow)"
         )
 

@@ -4,9 +4,11 @@ from .. import hooks
 from ..db import BacklogError
 from ..hooks import Action
 from ..types import Gate, Task
-from .gates import gate, normalize_gate, trigger_action
+from .checks import normalize_gate
+from .gates import gate
 from .normalization import normalize_key
 from .pull_requests import set_pr as update_pr
+from .transitions import trigger_action
 from .tasks import assign as assign_task
 
 

@@ -12,8 +12,6 @@ from .normalization import (
     require_actor,
 )
 
-_TASK_FIELDS = {"title", "description", "branch", "owner"}
-
 from .task_queries import get_task, get_task_by_id
 
 
@@ -110,13 +108,7 @@ def update_task(
                 raise BacklogError(
                     f"a {task['task_type']} cannot sit under a {prow['task_type']}"
                 )
-            if _would_loop(conn, task["id"], prow["id"]):
-                raise BacklogError(
-                    f"{prow['key']} is below {task['key']}; that would loop"
-                )
             name, value = "parent_id", prow["id"]
-        elif name not in _TASK_FIELDS:
-            raise BacklogError(f"cannot set field {name!r}")
         sets.append(f"{name} = ?")
         values.append(value)
         notes.append(f"{name}={value}")
@@ -136,18 +128,6 @@ def update_task(
     )
     conn.commit()
     return get_task_by_id(conn, task["id"])
-
-
-def _would_loop(conn: Conn, task_id: int, new_parent_id: int) -> bool:
-    seen = set()
-    cur: int | None = new_parent_id
-    while cur is not None and cur not in seen:
-        if cur == task_id:
-            return True
-        seen.add(cur)
-        row = conn.execute("SELECT parent_id FROM task WHERE id = ?", (cur,)).fetchone()
-        cur = row["parent_id"] if row else None
-    return False
 
 
 def assign(

@@ -8,8 +8,14 @@ from ..db import BacklogError, Conn, log_event, utcnow
 from ..execution.store import executable_item
 from .common import _task_for_item
 
+
 def waive_validation(
-    conn: Conn, project_id: int, item_id: int, *, actor: str, reason: str,
+    conn: Conn,
+    project_id: int,
+    item_id: int,
+    *,
+    actor: str,
+    reason: str,
 ) -> dict[str, Any]:
     actor = (actor or "").strip()
     reason = (reason or "").strip()
@@ -26,8 +32,14 @@ def waive_validation(
         (item_id, executable["spec_fingerprint"], actor, reason, now),
     )
     log_event(
-        conn, "validation.waived", project_id, task["id"], task["key"], actor,
-        to_value=str(item_id), detail=reason,
+        conn,
+        "validation.waived",
+        project_id,
+        task["id"],
+        task["key"],
+        actor,
+        to_value=str(item_id),
+        detail=reason,
     )
     conn.commit()
     row = conn.execute(

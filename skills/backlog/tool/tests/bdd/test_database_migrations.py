@@ -24,6 +24,14 @@ def historical_store(world: World, version: int) -> None:
             conn.execute("DROP TABLE IF EXISTS validation_waiver")
             conn.execute("DROP TABLE execution_result")
             conn.execute("DROP TABLE executable_item")
+            conn.execute("UPDATE project SET template_id=NULL")
+            for table in (
+                "template_transition",
+                "template_status",
+                "template_workflow",
+                "template",
+            ):
+                conn.execute(f"DELETE FROM {table}")
         elif version == 9:
             for column in ("actual_exit_code", "stdout", "stderr", "duration_ms"):
                 conn.execute(f"ALTER TABLE execution_result DROP COLUMN {column}")
@@ -31,16 +39,46 @@ def historical_store(world: World, version: int) -> None:
             conn.execute("DROP TABLE validation_waiver")
             conn.execute("ALTER TABLE execution_result DROP COLUMN actor")
         elif version == 12:
-            conn.execute(
-                "DELETE FROM workflow WHERE task_type IN ('bug','iteration')"
-            )
+            conn.execute("DELETE FROM workflow WHERE task_type IN ('bug','iteration')")
             conn.execute(
                 "DELETE FROM template_workflow WHERE task_type IN ('bug','iteration')"
             )
         elif version == 14:
             conn.execute("DROP TABLE retrospective_action")
+            for table, workflow_table, fk in (
+                ("template_transition", "template_workflow", "template_workflow_id"),
+                ("workflow_transition", "workflow", "workflow_id"),
+            ):
+                rows = conn.execute(
+                    f"SELECT t.id,t.gates FROM {table} t JOIN {workflow_table} w "
+                    f"ON w.id=t.{fk} WHERE w.task_type='iteration' "
+                    "AND t.from_status='open' AND t.to_status='closed'"
+                ).fetchall()
+                for row_id, gates in rows:
+                    reduced = ",".join(
+                        gate
+                        for gate in (gates or "").split(",")
+                        if gate
+                        not in {
+                            "iteration_comments_closed",
+                            "iteration_retrospective_actions_clear",
+                        }
+                    )
+                    conn.execute(
+                        f"UPDATE {table} SET gates=? WHERE id=?", (reduced, row_id)
+                    )
         elif version == 15:
             conn.execute("UPDATE task SET created_by=NULL")
+            conn.execute(
+                "INSERT INTO task(project_id,key,task_type,parent_id,title,description,status,"
+                "priority,owner,assignee,assignee_kind,reviewer,reviewer_kind,branch,pr_url,"
+                "pr_number,pr_repo,pr_state,pr_review_state,pr_waived,created_by,created_at,"
+                "updated_at,closed_at) SELECT project_id,'S-999',task_type,parent_id,"
+                "'Task without a creation event',description,status,priority,owner,assignee,"
+                "assignee_kind,reviewer,reviewer_kind,branch,pr_url,pr_number,pr_repo,pr_state,"
+                "pr_review_state,pr_waived,NULL,created_at,updated_at,closed_at FROM task "
+                "WHERE key='S-001'"
+            )
         elif version == 16:
             for table in ("template_transition", "workflow_transition"):
                 rows = conn.execute(
@@ -77,9 +115,13 @@ def schema_is_current(world: World) -> None:
             "SELECT value FROM meta WHERE key='schema_version'"
         ).fetchone()[0]
         assert int(version) == SCHEMA_VERSION
-        assert conn.execute(
-            "SELECT created_by FROM task WHERE key='S-001'"
-        ).fetchone()[0] == "creator"
+        if "VERSION_TWO_DATABASE" not in world.env:
+            assert (
+                conn.execute(
+                    "SELECT created_by FROM task WHERE key='S-001'"
+                ).fetchone()[0]
+                == "creator"
+            )
     finally:
         conn.close()
 
@@ -172,6 +214,85 @@ def legacy_export(world: World) -> None:
     world.env["LEGACY_EXPORT"] = str(path)
 
 
+@given("a real version two SQLite database")
+def version_two_database(world: World) -> None:
+    path = world.root / ".backlog" / "backlog.db"
+    path.unlink()
+    conn = sqlite3.connect(path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            INSERT INTO meta(key,value) VALUES('schema_version','2');
+            CREATE TABLE feature(
+                key TEXT PRIMARY KEY, title TEXT, status TEXT, priority TEXT,
+                created_at TEXT, updated_at TEXT
+            );
+            CREATE TABLE item(
+                key TEXT PRIMARY KEY, kind TEXT, parent_key TEXT, title TEXT,
+                status TEXT, acceptance_criteria TEXT,
+                created_at TEXT, updated_at TEXT
+            );
+            CREATE TABLE dependency(
+                from_key TEXT, to_key TEXT, kind TEXT, note TEXT,
+                external_id TEXT, created_at TEXT, created_by TEXT
+            );
+            CREATE TABLE artifact(
+                entity_key TEXT, rel_path TEXT, title TEXT, kind TEXT,
+                created_at TEXT, created_by TEXT
+            );
+            CREATE TABLE event(
+                ts TEXT, entity_key TEXT, actor TEXT, kind TEXT,
+                from_value TEXT, to_value TEXT, detail TEXT
+            );
+            CREATE TABLE key_counter(prefix TEXT, next_value INTEGER);
+            INSERT INTO feature(key,title,status,priority,created_at,updated_at)
+            VALUES('F-001','Version two feature','active','P1',
+                   '2024-01-01T00:00:00Z','2024-01-02T00:00:00Z');
+            INSERT INTO item(key,kind,parent_key,title,status,acceptance_criteria,
+                             created_at,updated_at)
+            VALUES('S-001','story','F-001','Version two story','created',
+                   'criterion one\ncriterion two',
+                   '2024-01-01T00:00:00Z','2024-01-02T00:00:00Z');
+            INSERT INTO dependency(from_key,to_key,kind,note)
+            VALUES('F-001','S-001','relates','migrated relationship');
+            INSERT INTO artifact(entity_key,rel_path,title,kind)
+            VALUES('S-001','artifacts/S-001/design.md','Design','doc');
+            INSERT INTO event(ts,entity_key,actor,kind,to_value)
+            VALUES('2024-01-01T00:00:00Z','S-001','legacy-agent','created','created');
+            INSERT INTO key_counter(prefix,next_value) VALUES('S',2);
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    artifact = world.root / ".backlog" / "artifacts" / "S-001" / "design.md"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text("migrated design\n", encoding="utf-8")
+    world.env["VERSION_TWO_DATABASE"] = "1"
+
+
+@given("a real SQLite store from a newer schema version")
+def newer_sqlite_database(world: World) -> None:
+    path = world.root / ".backlog" / "backlog.db"
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            "UPDATE meta SET value=? WHERE key='schema_version'",
+            (str(SCHEMA_VERSION + 1),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@when("the newer store is opened")
+def open_newer_store(world: World) -> None:
+    world.run("doctor", expected=None)
+    assert world.last_result is not None
+    assert world.last_result.returncode == 1
+
+
 @when("the legacy export is imported")
 def import_legacy_export(world: World) -> None:
     world.run(
@@ -190,8 +311,21 @@ def legacy_work_is_queryable(world: World) -> None:
     assert feature["status"] == "in_progress"
     assert story["task_type"] == "story"
     assert subtask["task_type"] == "subtask"
-    assert len(
-        [item for item in story["items"] if item["kind"] == "acceptance_criteria"]
-    ) == 2
+    assert (
+        len([item for item in story["items"] if item["kind"] == "acceptance_criteria"])
+        == 2
+    )
     dependencies = world.run("--project", "legacy-project", "dep", "list")
     assert len(dependencies) == 1
+
+
+@then("the version two database work is queryable")
+def version_two_database_work_is_queryable(world: World) -> None:
+    feature = world.run("show", "F-001")
+    story = world.run("show", "S-001")
+    assert feature["status"] == "in_progress"
+    assert story["parent_id"] == feature["id"]
+    assert len(story["items"]) == 2
+    assert len(story["dependencies"]) == 1
+    accepted = world.run("action", "S-001", "refinement.accepted")
+    assert accepted["task"]["status"] == "ready"

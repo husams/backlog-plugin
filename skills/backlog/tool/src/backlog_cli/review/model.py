@@ -10,21 +10,14 @@ _THREAD_TRANSITIONS: dict[tuple[str, str, str], tuple[str, str | None]] = {
     ("awaiting_developer", "developer", "fix"): ("awaiting_reviewer", None),
     ("awaiting_developer", "developer", "reject"): ("awaiting_reviewer", None),
     ("awaiting_reviewer", "reviewer", "reject"): ("awaiting_developer", None),
-    ("awaiting_reviewer", "reviewer", "accept"): (
-        "closed", "accepted_by_reviewer"
-    ),
+    ("awaiting_reviewer", "reviewer", "accept"): ("closed", "accepted_by_reviewer"),
 }
 
 
 def normalize_severity(value: ReviewSeverity | str) -> ReviewSeverity:
     if isinstance(value, ReviewSeverity):
         return value
-    try:
-        return ReviewSeverity(str(value).strip().lower())
-    except ValueError:
-        raise BacklogError(
-            f"severity must be one of {', '.join(REVIEW_SEVERITIES)}"
-        ) from None
+    return ReviewSeverity(str(value).strip().lower())
 
 
 def resolve_role(task: Row, author: str, role: str | None) -> str:
@@ -42,7 +35,7 @@ def resolve_role(task: Row, author: str, role: str | None) -> str:
     raise BacklogError(
         f"cannot infer role for author {author!r} on {task['key']} "
         f"(assignee={task['assignee'] or '-'}, reviewer={task['reviewer'] or '-'}). "
-        "Pass role=\"reviewer\" or role=\"developer\" in Python "
+        'Pass role="reviewer" or role="developer" in Python '
         "(--role reviewer|developer on the CLI)."
     )
 

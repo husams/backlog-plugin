@@ -2,81 +2,31 @@
 
 from __future__ import annotations
 
-import argparse
-import json
-import os
-import sys
-from pathlib import Path
 
 from .. import (
-    __version__, core, deps, execution, hooks, retrospective, review, templates, workflow,
+    core,
+    deps,
+    execution,
+    hooks,
+    review,
+    workflow,
 )
 from ..db import (
     BacklogError,
-    Conn,
-    connect,
-    database_errors,
-    get_or_create_project,
-    init_store,
-    list_projects,
-    require_backlog_dir,
-    require_project,
-    resolve_spec,
-    resync_sequences,
-    slugify,
 )
 from ..render import (
-    deps_block,
-    items_block,
-    projects_table,
     render_task,
-    render_thread,
     row_to_dict,
-    table,
     tasks_table,
 )
-from ..schema import (
-    ARTIFACT_KINDS,
-    GATE_CHECKS,
-    GATE_DESCRIPTIONS,
-    STATUS_CATEGORIES,
-    TASK_KEY_PREFIX,
-    DEPENDENCY_KINDS,
-    ITEM_KINDS,
-    PR_REVIEW_STATES,
-    PR_STATES,
-    SCHEMA_VERSION,
-    STATUS_DISPLAY,
-    STATUSES,
-    TASK_PARENT_TYPES,
-    TASK_TYPES,
-    transitions_for,
-)
-
 
 
 from .context import Ctx, _task_rows
 
 from .authoring import (
     _execution_spec,
-    cmd_bug_add,
-    cmd_feature_add,
-    cmd_iteration_add,
-    cmd_iteration_member_add,
-    cmd_iteration_member_remove,
-    cmd_story_add,
-    cmd_subtask_add,
-    cmd_task_add,
 )
-from .retrospectives import (
-    cmd_retrospective_accept,
-    cmd_retrospective_add,
-    cmd_retrospective_close,
-    cmd_retrospective_history,
-    cmd_retrospective_list,
-    cmd_retrospective_reject,
-    cmd_retrospective_show,
-)
+
 
 def _list(ctx: Ctx, args, task_type: str | None) -> int:
     where, params = "", []
@@ -134,13 +84,26 @@ def cmd_set(ctx: Ctx, args) -> int:
             raise BacklogError(
                 "executable --ac requires exactly one non-empty acceptance criterion"
             )
-    row = core.update_task(ctx.conn, ctx.pid, args.key, actor=args.actor,
-                           title=args.title, description=args.description,
-                           priority=args.priority, branch=args.branch,
-                           owner=args.owner, parent=args.parent)
+    row = core.update_task(
+        ctx.conn,
+        ctx.pid,
+        args.key,
+        actor=args.actor,
+        title=args.title,
+        description=args.description,
+        priority=args.priority,
+        branch=args.branch,
+        owner=args.owner,
+        parent=args.parent,
+    )
     if criteria is not None:
         items = core.set_items(
-            ctx.conn, ctx.pid, row["key"], "acceptance_criteria", criteria, actor=args.actor
+            ctx.conn,
+            ctx.pid,
+            row["key"],
+            "acceptance_criteria",
+            criteria,
+            actor=args.actor,
         )
         if item_spec:
             execution.set_executable(ctx.conn, items[0]["id"], item_spec)
@@ -149,11 +112,21 @@ def cmd_set(ctx: Ctx, args) -> int:
 
 
 def cmd_assign(ctx: Ctx, args) -> int:
-    row = core.assign(ctx.conn, ctx.pid, args.key, to=args.to, reviewer=args.reviewer,
-                      actor=args.actor, to_kind=args.to_kind, reviewer_kind=args.reviewer_kind)
-    ctx.emit(row_to_dict(row),
-             f"{row['key']}  assignee={row['assignee'] or '-'} ({row['assignee_kind']})  "
-             f"reviewer={row['reviewer'] or '-'} ({row['reviewer_kind']})")
+    row = core.assign(
+        ctx.conn,
+        ctx.pid,
+        args.key,
+        to=args.to,
+        reviewer=args.reviewer,
+        actor=args.actor,
+        to_kind=args.to_kind,
+        reviewer_kind=args.reviewer_kind,
+    )
+    ctx.emit(
+        row_to_dict(row),
+        f"{row['key']}  assignee={row['assignee'] or '-'} ({row['assignee_kind']})  "
+        f"reviewer={row['reviewer'] or '-'} ({row['reviewer_kind']})",
+    )
     return 0
 
 
@@ -165,11 +138,19 @@ def cmd_show(ctx: Ctx, args) -> int:
         for i in core.task_items(ctx.conn, task["id"])
     ]
     payload["dependencies"] = deps.edges_for(ctx.conn, task["id"])
-    payload["blocked_by"] = [b["other_key"] for b in deps.blockers(ctx.conn, task["id"])]
-    payload["open_threads"] = [review.thread_summary(ctx.conn, t["root_key"])
-                               for t in core.open_threads(ctx.conn, task["id"])]
-    payload["children"] = [row_to_dict(c) for c in core.children_of(ctx.conn, task["id"])]
-    payload["artifacts"] = [row_to_dict(a) for a in core.list_artifacts(ctx.conn, task["id"])]
+    payload["blocked_by"] = [
+        b["other_key"] for b in deps.blockers(ctx.conn, task["id"])
+    ]
+    payload["open_threads"] = [
+        review.thread_summary(ctx.conn, t["root_key"])
+        for t in core.open_threads(ctx.conn, task["id"])
+    ]
+    payload["children"] = [
+        row_to_dict(c) for c in core.children_of(ctx.conn, task["id"])
+    ]
+    payload["artifacts"] = [
+        row_to_dict(a) for a in core.list_artifacts(ctx.conn, task["id"])
+    ]
     ctx.emit(payload, render_task(ctx.conn, task))
     return 0
 
