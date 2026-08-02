@@ -17,4 +17,4 @@ uv run pytest tests/bdd \
 ```
 
 The coverage configuration measures the CLI subprocesses used by these E2E
-scenarios and fails if total coverage drops below 52%.
+scenarios and requires 98% total coverage.
