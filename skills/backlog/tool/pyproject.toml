@@ -19,3 +19,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/backlog_cli"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4,<9",
+    "pytest-bdd>=8.1,<9",
+]
