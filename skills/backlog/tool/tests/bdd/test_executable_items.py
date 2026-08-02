@@ -9,7 +9,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from backlog_cli import api, db
 
-from .conftest import World
+from .world import World
 
 
 scenarios("features/executable_items.feature")

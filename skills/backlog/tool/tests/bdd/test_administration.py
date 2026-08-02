@@ -9,7 +9,7 @@ import uuid
 
 from pytest_bdd import scenarios, then, when
 
-from .conftest import World
+from .world import World
 
 
 scenarios("features/administration.feature")

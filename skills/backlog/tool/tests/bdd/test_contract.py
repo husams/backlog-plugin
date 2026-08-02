@@ -12,7 +12,7 @@ def test_bdd_suite_uses_real_database_without_test_doubles() -> None:
     forbidden_fixtures = {"monkeypatch", "mocker", "mock", "mocked"}
     forbidden_calls = {"patch", "Mock", "MagicMock", "create_autospec"}
 
-    for path in sorted(BDD_ROOT.glob("*.py")):
+    for path in sorted(BDD_ROOT.rglob("*.py")):
         if path == Path(__file__):
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -47,6 +47,6 @@ def test_bdd_suite_uses_real_database_without_test_doubles() -> None:
                     f"in-memory databases are forbidden in {path.name}"
                 )
 
-    harness = (BDD_ROOT / "conftest.py").read_text(encoding="utf-8")
+    harness = (BDD_ROOT / "steps" / "project_steps.py").read_text(encoding="utf-8")
     assert '"BACKLOG_DB": "sqlite"' in harness
     assert 'world.run("init", "."' in harness

@@ -6,7 +6,7 @@ import sys
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from .conftest import World
+from .world import World
 
 
 scenarios("features/hooks.feature")

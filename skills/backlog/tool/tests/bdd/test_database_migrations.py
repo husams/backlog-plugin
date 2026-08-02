@@ -7,7 +7,7 @@ from pytest_bdd import given, parsers, scenarios, then, when
 
 from backlog_cli.schema import SCHEMA_VERSION
 
-from .conftest import World
+from .world import World
 
 
 scenarios("features/database_migrations.feature")
