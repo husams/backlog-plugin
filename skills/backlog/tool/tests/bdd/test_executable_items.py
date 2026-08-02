@@ -38,7 +38,10 @@ def shell_item(world: World, exit_code: int) -> None:
 @when("shell execution is enabled")
 def enable_shell(world: World) -> None:
     (world.root / ".backlog" / "execution.yaml").write_text(
-        "shell_enabled: true\nmax_timeout_seconds: 120\nmax_output_bytes: 4096\n",
+        "shell_enabled: true\n"
+        f"allowed_commands: [{sys.executable}]\n"
+        "max_timeout_seconds: 120\n"
+        "max_output_bytes: 4096\n",
         encoding="utf-8",
     )
 

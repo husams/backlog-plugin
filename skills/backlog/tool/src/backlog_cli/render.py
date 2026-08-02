@@ -128,18 +128,15 @@ def deps_block(conn: Conn, task_id: int, indent: str = "  ") -> list[str]:
     return out
 
 
-def items_block(
-    items: list[Row], indent: str = "  ", conn: Conn | None = None
-) -> list[str]:
+def items_block(items: list[Row], conn: Conn, indent: str = "  ") -> list[str]:
     if not items:
         return []
     out: list[str] = []
     current = None
-    for it in items:
-        if conn is not None:
-            from .execution import _item_details
+    from .execution import _item_details
 
-            it = _item_details(conn, it)
+    for it in items:
+        it = _item_details(conn, it)
         if it["kind"] != current:
             current = it["kind"]
             out.append(f"{indent}{ITEM_KIND_DISPLAY[current]}:")

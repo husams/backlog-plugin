@@ -46,7 +46,6 @@ def cycles(conn: Conn) -> list[list[str]]:
     """Every `blocks` cycle already recorded, as task keys."""
     adj = blocks_adjacency(conn)
     found: list[list[int]] = []
-    seen_sets: set[frozenset[int]] = set()
     colour: dict[int, int] = {}
 
     def walk(node: int, path: list[int]) -> None:
@@ -54,10 +53,7 @@ def cycles(conn: Conn) -> list[list[str]]:
         for nxt in adj.get(node, []):
             if colour.get(nxt) == 1:
                 loop = path[path.index(nxt) :] + [nxt]
-                sig = frozenset(loop)
-                if sig not in seen_sets:
-                    seen_sets.add(sig)
-                    found.append(loop)
+                found.append(loop)
             elif colour.get(nxt, 0) == 0:
                 walk(nxt, path + [nxt])
         colour[node] = 2

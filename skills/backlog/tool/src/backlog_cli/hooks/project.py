@@ -40,17 +40,14 @@ def _load_project_hooks(backlog_dir: Path) -> ModuleType | None:
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     project_root = str(backlog_dir.parent)
-    added = project_root not in sys.path
-    if added:
-        sys.path.insert(0, project_root)
+    sys.path.insert(0, project_root)
     try:
         spec.loader.exec_module(module)
     except Exception as exc:
         sys.modules.pop(name, None)
         raise BacklogError(f"cannot load project hooks from {path}: {exc}") from None
     finally:
-        if added:
-            sys.path.remove(project_root)
+        sys.path.remove(project_root)
     return module
 
 

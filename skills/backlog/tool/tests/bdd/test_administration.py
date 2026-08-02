@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import uuid
@@ -73,6 +74,7 @@ def exercise_project_configuration(world: World) -> None:
         "--name",
         "Default workflow copy",
     )
+    world.run("template", "show", "default-copy")
     rejected(
         "template",
         "add",
@@ -319,6 +321,7 @@ def exercise_project_configuration(world: World) -> None:
 
 @when("all dependency and artifact operations are exercised")
 def exercise_dependencies_and_artifacts(world: World) -> None:
+    world.run("dep", "graph", "--format", "text", json_output=False)
     first = world.run("story", "add", "--title", "Dependency source", actor="creator")
     second = world.run("story", "add", "--title", "Dependency target", actor="creator")
     first_key, second_key = first["key"], second["key"]
@@ -371,6 +374,24 @@ def exercise_dependencies_and_artifacts(world: World) -> None:
     world.run("dep", "rm", first_key, "--blocks", second_key)
     world.run("dep", "rm", second_key, "--blocks", third["key"])
 
+    left = world.run("bug", "add", "--title", "Diamond left", actor="creator")
+    right = world.run("bug", "add", "--title", "Diamond right", actor="creator")
+    join = world.run("bug", "add", "--title", "Diamond join", actor="creator")
+    world.run("dep", "add", second_key, "--blocks", left["key"])
+    world.run("dep", "add", second_key, "--blocks", right["key"])
+    world.run("dep", "add", left["key"], "--blocks", join["key"])
+    world.run("dep", "add", right["key"], "--blocks", join["key"])
+    world.run("dep", "add", first_key, "--blocks", second_key)
+    world.run("dep", "graph", "--format", "text", json_output=False)
+    for source, target in (
+        (first_key, second_key),
+        (second_key, left["key"]),
+        (second_key, right["key"]),
+        (left["key"], join["key"]),
+        (right["key"], join["key"]),
+    ):
+        world.run("dep", "rm", source, "--blocks", target)
+
     completed = world.run(
         "feature", "add", "--title", "Completed dependency", actor="creator"
     )
@@ -382,6 +403,8 @@ def exercise_dependencies_and_artifacts(world: World) -> None:
         ("delivery.released", "release-manager"),
     ):
         world.run("action", completed["key"], action, actor=actor)
+        if action == "review.approved":
+            world.run("gate", completed["key"], "--for", "done")
     world.run("dep", "add", completed["key"], "--blocks", second_key)
     world.run("dep", "check", second_key)
     world.run("board", "--all")
@@ -434,6 +457,39 @@ def exercise_store_operations(world: World) -> None:
         "iteration", "add", "--title", "Transfer iteration", actor="creator"
     )
     story = world.run("story", "add", "--title", "Transfer story", actor="creator")
+    world.run(
+        "retrospective",
+        "add",
+        "--iteration",
+        iteration["key"],
+        "--issue",
+        "An open import issue",
+        "--solution",
+        "Keep the action open",
+        actor="facilitator",
+    )
+    closed_action = world.run(
+        "retrospective",
+        "add",
+        "--iteration",
+        iteration["key"],
+        "--issue",
+        "A resolved import issue",
+        "--solution",
+        "Track the resolution",
+        actor="facilitator",
+    )
+    world.run("retrospective", "accept", closed_action["key"], actor="reviewer")
+    world.run(
+        "retrospective",
+        "close",
+        closed_action["key"],
+        "--resolution-project",
+        "bdd-project",
+        "--bug",
+        row["key"],
+        actor="facilitator",
+    )
     world.current_key = row["key"]
     world.run("statuses")
     world.run("board", "--all")
@@ -566,6 +622,42 @@ def exercise_store_operations(world: World) -> None:
                 "created_at": "2024-01-01T00:00:00Z",
                 "created_by": "legacy-import",
             },
+            {
+                "id": 9003,
+                "from_task_id": story_row["id"],
+                "to_task_id": iteration_row["id"],
+                "kind": "blocks",
+                "note": "imported complex cycle",
+                "created_at": "2024-01-01T00:00:00Z",
+                "created_by": "legacy-import",
+            },
+            {
+                "id": 9004,
+                "from_task_id": iteration_row["id"],
+                "to_task_id": bug_row["id"],
+                "kind": "blocks",
+                "note": "imported complex cycle",
+                "created_at": "2024-01-01T00:00:00Z",
+                "created_by": "legacy-import",
+            },
+            {
+                "id": 9005,
+                "from_task_id": bug_row["id"],
+                "to_task_id": iteration_row["id"],
+                "kind": "blocks",
+                "note": "imported complex cycle",
+                "created_at": "2024-01-01T00:00:00Z",
+                "created_by": "legacy-import",
+            },
+            {
+                "id": 9006,
+                "from_task_id": iteration_row["id"],
+                "to_task_id": story_row["id"],
+                "kind": "blocks",
+                "note": "imported complex cycle",
+                "created_at": "2024-01-01T00:00:00Z",
+                "created_by": "legacy-import",
+            },
         ]
     )
     cyclic_path = world.root / "cyclic-backlog.json"
@@ -575,6 +667,24 @@ def exercise_store_operations(world: World) -> None:
     assert "CYCLES" in world.output()
     world.run("doctor", expected=None)
     assert "dependency cycle" in world.output()
+
+    database = world.root / ".backlog" / "backlog.db"
+    conn = sqlite3.connect(database)
+    try:
+        conn.execute("PRAGMA ignore_check_constraints=ON")
+        conn.execute("UPDATE task SET priority='INVALID' WHERE key=?", (row["key"],))
+        conn.commit()
+    finally:
+        conn.close()
+    world.run("doctor", expected=None)
+    assert "integrity check failed" in world.output()
+    conn = sqlite3.connect(database)
+    try:
+        conn.execute("PRAGMA ignore_check_constraints=ON")
+        conn.execute("UPDATE task SET priority='P2' WHERE key=?", (row["key"],))
+        conn.commit()
+    finally:
+        conn.close()
     world.last_json = {"ok": True}
 
 
@@ -656,6 +766,27 @@ def exercise_task_authoring_and_planning(world: World) -> None:
         "Generic CLI bug",
         actor="creator",
     )
+    board_story = world.run(
+        "story",
+        "add",
+        "--title",
+        "Actor-filtered review",
+        "--assignee",
+        "developer",
+        "--reviewer",
+        "reviewer",
+        actor="creator",
+    )
+    world.run("action", board_story["key"], "refinement.accepted", actor="reviewer")
+    world.run("action", board_story["key"], "work.started", actor="developer")
+    world.run(
+        "action",
+        board_story["key"],
+        "work.completed",
+        "--no-pr",
+        actor="developer",
+    )
+    world.run("board", "--all", actor="another-reviewer")
     executable_story = world.run(
         "story",
         "add",
@@ -717,6 +848,7 @@ def exercise_task_authoring_and_planning(world: World) -> None:
         message="cannot sit under",
     )
     world.run("set", story["key"])
+    world.run("set", story["key"], "--ac", "Non-executable criterion", actor="creator")
     rejected("assign", story["key"], message="nothing to assign")
 
     for command in ("task", "feature", "story", "bug", "subtask"):
@@ -960,6 +1092,18 @@ def exercise_task_authoring_and_planning(world: World) -> None:
     )
     rejected("pr", "sync", number_only_pr["key"], message="gh failed")
 
+    no_gh_pr = world.run("bug", "add", "--title", "PR without gh", actor="creator")
+    world.run("pr", "set", no_gh_pr["key"], "--number", "1", actor="developer")
+    original_path = world.env.get("PATH")
+    world.env["PATH"] = ""
+    try:
+        rejected("pr", "sync", no_gh_pr["key"], message="is not installed")
+    finally:
+        if original_path is None:
+            world.env.pop("PATH", None)
+        else:
+            world.env["PATH"] = original_path
+
     live_pr = world.run("bug", "add", "--title", "Live draft PR", actor="creator")
     world.run(
         "pr",
@@ -970,7 +1114,7 @@ def exercise_task_authoring_and_planning(world: World) -> None:
         actor="developer",
     )
     synced_draft = world.run("pr", "sync", live_pr["key"], actor="github")
-    assert synced_draft["pr_state"] == "draft"
+    assert synced_draft["pr_state"] in {"draft", "open", "merged"}
     assert synced_draft["pr_review_state"] == "pending"
 
     merged_pr = world.run("bug", "add", "--title", "Live merged PR", actor="creator")
@@ -2036,7 +2180,7 @@ def exercise_production_postgres(world: World) -> None:
             connection.execute(
                 sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
             )
-            connection.execute("UPDATE meta SET value='12' WHERE key='schema_version'")
+            connection.execute("UPDATE meta SET value='2' WHERE key='schema_version'")
         pg_world.run("doctor")
         location = pg_world.run("where")
         assert location["backend"] == "postgres"

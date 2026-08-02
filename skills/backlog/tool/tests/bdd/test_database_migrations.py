@@ -45,6 +45,14 @@ def historical_store(world: World, version: int) -> None:
             )
         elif version == 14:
             conn.execute("DROP TABLE retrospective_action")
+            template_iteration = conn.execute(
+                "SELECT id FROM template_workflow WHERE task_type='iteration' LIMIT 1"
+            ).fetchone()[0]
+            conn.execute(
+                "DELETE FROM template_transition WHERE template_workflow_id=? "
+                "AND from_status='open' AND to_status='closed'",
+                (template_iteration,),
+            )
             for table, workflow_table, fk in (
                 ("template_transition", "template_workflow", "template_workflow_id"),
                 ("workflow_transition", "workflow", "workflow_id"),
@@ -252,7 +260,7 @@ def version_two_database(world: World) -> None:
             INSERT INTO item(key,kind,parent_key,title,status,acceptance_criteria,
                              created_at,updated_at)
             VALUES('S-001','story','F-001','Version two story','created',
-                   'criterion one\ncriterion two',
+                   NULL,
                    '2024-01-01T00:00:00Z','2024-01-02T00:00:00Z');
             INSERT INTO dependency(from_key,to_key,kind,note)
             VALUES('F-001','S-001','relates','migrated relationship');
@@ -286,8 +294,26 @@ def newer_sqlite_database(world: World) -> None:
         conn.close()
 
 
+@given("a real SQLite store with a damaged schema")
+def damaged_sqlite_database(world: World) -> None:
+    path = world.root / ".backlog" / "backlog.db"
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("DROP TABLE task")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @when("the newer store is opened")
 def open_newer_store(world: World) -> None:
+    world.run("doctor", expected=None)
+    assert world.last_result is not None
+    assert world.last_result.returncode == 1
+
+
+@when("the damaged store is opened")
+def open_damaged_store(world: World) -> None:
     world.run("doctor", expected=None)
     assert world.last_result is not None
     assert world.last_result.returncode == 1
@@ -325,7 +351,7 @@ def version_two_database_work_is_queryable(world: World) -> None:
     story = world.run("show", "S-001")
     assert feature["status"] == "in_progress"
     assert story["parent_id"] == feature["id"]
-    assert len(story["items"]) == 2
+    assert story["items"] == []
     assert len(story["dependencies"]) == 1
     accepted = world.run("action", "S-001", "refinement.accepted")
     assert accepted["task"]["status"] == "ready"

@@ -34,3 +34,8 @@ Feature: Real database compatibility
     Given a real SQLite store from a newer schema version
     When the newer store is opened
     Then the command reports "newer than this tool"
+
+  Scenario: A damaged database reports the underlying database failure
+    Given a real SQLite store with a damaged schema
+    When the damaged store is opened
+    Then the command reports "error: database:"

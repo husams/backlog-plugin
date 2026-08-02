@@ -59,22 +59,21 @@ def cmd_template_show(ctx: Ctx, args) -> int:
         + (f"\n{tpl['description']}" if tpl["description"] else "")
     ]
     payload = {"template": row_to_dict(tpl), "workflows": {}}
+    workflows = templates.workflows_of(ctx.conn, int(tpl["id"]))
     for ttype in types:
         blocks.append(
             f"\n== {ttype}\n" + templates.render(ctx.conn, int(tpl["id"]), ttype)
         )
-        wf = templates.workflows_of(ctx.conn, int(tpl["id"])).get(ttype)
-        if wf:
-            payload["workflows"][ttype] = {
-                "statuses": [
-                    row_to_dict(x)
-                    for x in templates.statuses_of(ctx.conn, int(wf["id"]))
-                ],
-                "transitions": [
-                    row_to_dict(x)
-                    for x in templates.transitions_of(ctx.conn, int(wf["id"]))
-                ],
-            }
+        wf = workflows[ttype]
+        payload["workflows"][ttype] = {
+            "statuses": [
+                row_to_dict(x) for x in templates.statuses_of(ctx.conn, int(wf["id"]))
+            ],
+            "transitions": [
+                row_to_dict(x)
+                for x in templates.transitions_of(ctx.conn, int(wf["id"]))
+            ],
+        }
     ctx.emit(payload, "\n".join(blocks))
     return 0
 

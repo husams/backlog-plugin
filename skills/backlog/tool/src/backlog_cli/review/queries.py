@@ -123,16 +123,13 @@ def inbox(
     actor: str | None = None,
     role: str | None = None,
     key: str | None = None,
-    include_closed: bool = False,
     severity: ReviewSeverity | str | None = None,
 ) -> list[dict]:
     sql = (
         "SELECT r.root_key FROM review_thread r JOIN task t ON t.id = r.task_id "
-        "WHERE t.project_id = ?"
+        "WHERE t.project_id = ? AND r.state != 'closed'"
     )
     params: list = [project_id]
-    if not include_closed:
-        sql += " AND r.state != 'closed'"
     if key:
         sql += " AND t.key = ?"
         params.append(normalize_key(key))
