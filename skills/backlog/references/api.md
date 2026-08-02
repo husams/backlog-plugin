@@ -4,6 +4,12 @@ Reach for this when the CLI has no flag for the question — anything that needs
 counting, filtering, joining or comparing across many tasks. One process, one
 connection, however many operations.
 
+The supported import is `from backlog_cli import api`. Internally, that API is
+organized by domain under `backlog_cli/api/`: `tasks.py`, `workflow.py`,
+`reviews.py`, `retrospectives.py`, `validation.py`, and `session.py`.
+`api/__init__.py` only assembles and exports the supported surface; callers do
+not route through validation or execution to reach unrelated APIs.
+
 ```bash
 backlog-py <<'PY'
 from backlog_cli import api
