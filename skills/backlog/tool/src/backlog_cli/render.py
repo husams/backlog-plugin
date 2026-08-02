@@ -113,8 +113,8 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
     current = None
     for it in items:
         if conn is not None:
-            from .execution import public_item
-            it = public_item(conn, it)
+            from .execution import _item_details
+            it = _item_details(conn, it)
         if it["kind"] != current:
             current = it["kind"]
             out.append(f"{indent}{ITEM_KIND_DISPLAY[current]}:")
@@ -130,7 +130,7 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
         spec = it.get("execution_spec")
         if spec and spec.get("shell"):
             shell = spec["shell"]
-            out.append(f"{indent}        command: hidden")
+            out.append(f"{indent}        command: {shell['command']}")
             out.append(
                 f"{indent}        expected: exit {shell.get('expected_exit_code', 0)}"
             )
@@ -142,19 +142,18 @@ def items_block(items: list[Row], indent: str = "  ", conn: Conn | None = None) 
                 out.append(
                     f"{indent}        environment: "
                     + ", ".join(shell["environment"])
-                    + " (values hidden)"
                 )
         elif spec and spec.get("hook"):
             hook = spec["hook"]
             out.append(f"{indent}        hook: {hook['name']}")
-            out.append(f"{indent}        arguments: hidden")
-            out.append(f"{indent}        expected: hidden")
+            out.append(f"{indent}        arguments: {hook['arguments']!r}")
+            out.append(f"{indent}        expected: {hook['expected_result']!r}")
     return out
 
 
 def _matcher_text(value: dict) -> str:
     name = next(iter(value))
-    return f"{name} (value hidden)"
+    return f"{name} {value[name]!r}"
 
 
 def render_task(conn: Conn, row: Row) -> str:

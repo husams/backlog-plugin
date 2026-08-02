@@ -176,21 +176,9 @@ class Task:
         return [r["content"] for r in rows]
 
     def item_details(self, kind: str | None = None) -> list[dict]:
-        """Plain and executable items with safe display metadata and state."""
+        """Plain and executable items with their declarations and state."""
         rows = core.task_items(self._bl._conn, self._row["id"], kind)
-        return [execution.public_item(self._bl._conn, row) for row in rows]
-
-    def executable_items(self) -> list[dict]:
-        """Executable item declarations, with environment values redacted."""
-        rows = self._bl._conn.execute(
-            "SELECT e.item_id FROM executable_item e "
-            "JOIN task_item i ON i.id=e.item_id "
-            "WHERE i.task_id=? ORDER BY i.kind,i.position,i.id", (self._row["id"],),
-        ).fetchall()
-        return [
-            execution.public_executable(self._bl._conn, int(row["item_id"]))
-            for row in rows
-        ]
+        return [execution._item_details(self._bl._conn, row) for row in rows]
 
     @property
     def open_threads(self) -> list[str]:
@@ -480,7 +468,7 @@ class Backlog:
     def add_item(
         self, key: str, kind: str, content: str, *, execution_spec: dict | None = None
     ) -> dict:
-        """Add one plain, shell, or hook item and return its safe public view."""
+        """Add one plain, shell, or hook item and return its details."""
         spec = _validated_spec(execution_spec)
         normalized_kind = core.normalize_item_kind(kind)
         if spec is not None and normalized_kind not in ("acceptance_criteria", "checklist"):
@@ -492,7 +480,7 @@ class Backlog:
         )
         if spec is not None:
             execution.set_executable(self._conn, row["id"], spec)
-        return execution.public_item(self._conn, row)
+        return execution._item_details(self._conn, row)
 
     def set_items(self, key: str, kind: str, items: list[str | dict]) -> list[dict]:
         """Replace one item kind using strings or ``{content, execution}`` mappings."""
@@ -512,7 +500,7 @@ class Backlog:
         for row, (_, spec) in zip(rows, prepared):
             if spec is not None:
                 execution.set_executable(self._conn, row["id"], spec)
-        return [execution.public_item(self._conn, row) for row in rows]
+        return [execution._item_details(self._conn, row) for row in rows]
 
     # -- reading ---------------------------------------------------------- #
 
@@ -872,8 +860,7 @@ class Backlog:
 
     def set_item_execution(self, item_id: int, spec: dict) -> dict:
         """Attach or replace the typed execution declaration for one item."""
-        execution.set_executable(self._conn, item_id, spec)
-        return execution.public_executable(self._conn, item_id)
+        return execution.set_executable(self._conn, item_id, spec)
 
     def record_execution_result(
         self, item_id: int, spec_fingerprint: str,

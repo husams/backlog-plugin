@@ -697,7 +697,7 @@ def cmd_show(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     payload = row_to_dict(task)
     payload["items"] = [
-        execution.public_item(ctx.conn, i)
+        execution._item_details(ctx.conn, i)
         for i in core.task_items(ctx.conn, task["id"])
     ]
     payload["dependencies"] = deps.edges_for(ctx.conn, task["id"])
@@ -1086,8 +1086,8 @@ def cmd_item_add(ctx: Ctx, args) -> int:
     ]
     if spec:
         execution.set_executable(ctx.conn, rows[0]["id"], spec)
-    public = [execution.public_item(ctx.conn, row) for row in rows]
-    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(nothing added)")
+    details = [execution._item_details(ctx.conn, row) for row in rows]
+    ctx.emit(details, "\n".join(items_block(rows, conn=ctx.conn)) or "(nothing added)")
     return 0
 
 
@@ -1106,16 +1106,16 @@ def cmd_item_set(ctx: Ctx, args) -> int:
                           lines, actor=args.actor)
     if spec:
         execution.set_executable(ctx.conn, rows[0]["id"], spec)
-    public = [execution.public_item(ctx.conn, row) for row in rows]
-    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(cleared)")
+    details = [execution._item_details(ctx.conn, row) for row in rows]
+    ctx.emit(details, "\n".join(items_block(rows, conn=ctx.conn)) or "(cleared)")
     return 0
 
 
 def cmd_item_list(ctx: Ctx, args) -> int:
     task = core.get_task(ctx.conn, ctx.pid, args.key)
     rows = core.task_items(ctx.conn, task["id"], args.kind)
-    public = [execution.public_item(ctx.conn, row) for row in rows]
-    ctx.emit(public, "\n".join(items_block(rows, conn=ctx.conn)) or "(none)")
+    details = [execution._item_details(ctx.conn, row) for row in rows]
+    ctx.emit(details, "\n".join(items_block(rows, conn=ctx.conn)) or "(none)")
     return 0
 
 

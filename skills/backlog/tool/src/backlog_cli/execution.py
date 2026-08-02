@@ -333,8 +333,8 @@ def executable_item(conn: Conn, item_id: int) -> dict[str, Any]:
     return result
 
 
-def public_item(conn: Conn, item: Mapping[str, Any]) -> dict[str, Any]:
-    """Return an item suitable for CLI/API inspection without secret values."""
+def _item_details(conn: Conn, item: Mapping[str, Any]) -> dict[str, Any]:
+    """Return a task item with its execution declaration and current state."""
     result = {key: item[key] for key in item.keys()}
     row = conn.execute(
         "SELECT executor, requirement, execution_spec, spec_fingerprint "
@@ -344,7 +344,7 @@ def public_item(conn: Conn, item: Mapping[str, Any]) -> dict[str, Any]:
     if row is None:
         result.update({"executor": "plain", "requirement": None, "state": None})
         return result
-    spec = _public_spec(json.loads(row["execution_spec"]))
+    spec = json.loads(row["execution_spec"])
     result.update(
         {
             "executor": row["executor"],
@@ -355,36 +355,6 @@ def public_item(conn: Conn, item: Mapping[str, Any]) -> dict[str, Any]:
         }
     )
     return result
-
-
-def public_executable(conn: Conn, item_id: int) -> dict[str, Any]:
-    """Backward-compatible executable row with secret-bearing values redacted."""
-    result = executable_item(conn, item_id)
-    result["execution_spec"] = _public_spec(result["execution_spec"])
-    result["state"] = item_state(conn, item_id)
-    return result
-
-
-def _public_spec(spec: dict[str, Any]) -> dict[str, Any]:
-    spec = dict(spec)
-    shell = spec.get("shell")
-    if shell:
-        shell = dict(shell)
-        shell["command"] = "<hidden>"
-        if shell.get("environment"):
-            shell["environment"] = sorted(shell["environment"])
-        for stream in ("stdout", "stderr"):
-            matcher = shell.get(stream)
-            if matcher:
-                shell[stream] = {next(iter(matcher)): "<hidden>"}
-        spec = {**spec, "shell": shell}
-    hook = spec.get("hook")
-    if hook:
-        hook = dict(hook)
-        hook["arguments"] = "<hidden>"
-        hook["expected_result"] = "<hidden>"
-        spec = {**spec, "hook": hook}
-    return spec
 
 
 def record_result(
@@ -1111,7 +1081,7 @@ def execution_history(
     conn: Conn, item_id: int, *, limit: int = 20,
     project_root: Path | None = None,
 ) -> list[dict[str, Any]]:
-    """Return newest-first bounded, secret-safe result history."""
+    """Return newest-first bounded result history."""
     executable = executable_item(conn, item_id)
     if isinstance(limit, bool) or limit < 1 or limit > 100:
         raise BacklogError("history limit must be between 1 and 100")
@@ -1125,17 +1095,9 @@ def execution_history(
         value = {key: row[key] for key in row.keys()}
         expected = _decode_json(value.pop("expected_result"))
         actual = _decode_json(value.pop("actual_result"))
-        if value["hook_name"]:
-            value["expected"] = "<hidden>"
-            value["actual"] = "<hidden>"
-            value["diagnostic"] = value["reason"] or value["status"]
-        else:
-            value["expected"] = _public_shell_expected(expected)
-            value["actual"] = _public_shell_actual(actual)
-            value["diagnostic"] = value["detail"]
-        value.pop("detail")
-        value["stdout"] = "<hidden>" if value["stdout"] else ""
-        value["stderr"] = "<hidden>" if value["stderr"] else ""
+        value["expected"] = expected
+        value["actual"] = actual
+        value["diagnostic"] = value.pop("detail")
         value["stale"] = (
             value["spec_fingerprint"] != executable["spec_fingerprint"]
             or (
@@ -1275,35 +1237,6 @@ def _source_matches(result: Mapping[str, Any], current: SourceIdentity) -> bool:
 
 def _decode_json(value: str | None) -> Any:
     return json.loads(value) if value is not None else None
-
-
-def _public_shell_expected(value: Any) -> Any:
-    if not isinstance(value, Mapping):
-        return "<hidden>" if value is not None else None
-    return {
-        "exit_code": value.get("exit_code"),
-        "stdout": _public_matcher(value.get("stdout")),
-        "stderr": _public_matcher(value.get("stderr")),
-    }
-
-
-def _public_matcher(value: Any) -> Any:
-    if not isinstance(value, Mapping):
-        return None if value is None else "<hidden>"
-    return {
-        str(name): "<hidden>" for name, matcher in value.items()
-        if matcher is not None
-    }
-
-
-def _public_shell_actual(value: Any) -> Any:
-    if not isinstance(value, Mapping):
-        return "<hidden>" if value is not None else None
-    return {
-        "exit_code": value.get("exit_code"),
-        "stdout": "<hidden>" if value.get("stdout") else "",
-        "stderr": "<hidden>" if value.get("stderr") else "",
-    }
 
 
 def source_revision_unavailable_items(conn: Conn) -> list[int]:

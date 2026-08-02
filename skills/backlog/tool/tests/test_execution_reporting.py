@@ -85,10 +85,11 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(history[0]["expected"]["exit_code"], 3)
         self.assertEqual(history[0]["actual"]["exit_code"], 0)
         self.assertEqual(
-            history[0]["expected"]["stdout"], {"contains": "<hidden>"}
+            history[0]["expected"]["stdout"],
+            {"contains": "matcher-secret", "equals": None, "regex": None},
         )
-        self.assertEqual(history[0]["actual"]["stdout"], "<hidden>")
-        self.assertNotIn("matcher-secret", json.dumps(history))
+        self.assertEqual(history[0]["actual"]["stdout"], "actual\n")
+        self.assertIn("matcher-secret", json.dumps(history))
         self.assertIn("exit_code_mismatch", history[0]["diagnostic"])
         result = self.cli(
             "validation", "history", str(item["id"]), "--limit", "1",
@@ -97,8 +98,8 @@ class ExecutionReportingTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
         self.assertEqual(len(payload), 1)
-        self.assertNotIn("matcher-secret", result.stdout)
-        self.assertNotIn("actual\\n", result.stdout)
+        self.assertIn("matcher-secret", result.stdout)
+        self.assertIn("actual\\n", result.stdout)
         with self.assertRaisesRegex(db.BacklogError, "between 1 and 100"):
             self.bl.execution_history(item["id"], limit=101)
 
@@ -123,14 +124,18 @@ class ExecutionReportingTest(unittest.TestCase):
         )
         hook_history = self.bl.execution_history(hook["id"])
         encoded = json.dumps(hook_history)
-        self.assertEqual(hook_history[0]["expected"], "<hidden>")
-        self.assertEqual(hook_history[0]["actual"], "<hidden>")
-        self.assertEqual(hook_history[0]["diagnostic"], "result_mismatch")
-        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
-            self.assertNotIn(secret, encoded)
+        self.assertEqual(
+            hook_history[0]["expected"], {"nested": {"token": "expected-secret"}}
+        )
+        self.assertEqual(
+            hook_history[0]["actual"], {"nested": {"token": "actual-secret"}}
+        )
+        self.assertEqual(hook_history[0]["diagnostic"], "diagnostic-secret")
+        for value in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertIn(value, encoded)
         result = self.cli("validation", "history", str(hook["id"]))
-        for secret in ("expected-secret", "actual-secret", "diagnostic-secret"):
-            self.assertNotIn(secret, result.stdout)
+        for value in ("expected-secret", "actual-secret", "diagnostic-secret"):
+            self.assertIn(value, result.stdout)
 
     def test_pass_auto_checks_required_checklist_but_criteria_remains_non_tickable(self):
         checklist = self.shell_item()

@@ -289,8 +289,7 @@ actor remain unattributed and operable.
 | `t.parent` | parent task key; alias for `parent_key` |
 | `t.blockers` | unfinished blockers as `{other_key, other_status}` |
 | `t.items(kind=None)` | criteria / checklist / notes as strings |
-| `t.item_details(kind=None)` | value-opaque plain/executable views with requirement and state |
-| `t.executable_items()` | value-opaque executable-only views; secret-bearing fields hidden |
+| `t.item_details(kind=None)` | plain/executable items with declarations, requirement and state |
 | `t.open_threads` | root keys of open review threads |
 
 `str(task)` is `KEY  status  title`.
