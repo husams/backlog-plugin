@@ -35,3 +35,37 @@ jobs:
 
       - name: Run the repository-owned evaluator
         run: python3 -m unittest discover -s skills/backlog-implementer/evals -p 'test_*.py'
+
+  e2e-coverage:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: skills/backlog/tool
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install test dependencies
+        run: uv sync --locked
+
+      - name: Run E2E coverage
+        run: >-
+          uv run pytest tests/bdd
+          --cov=backlog_cli
+          --cov-config=pyproject.toml
+          --cov-report=term-missing
+          --cov-report=xml:coverage-e2e.xml
+
+      - name: Upload E2E coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-coverage
+          path: skills/backlog/tool/coverage-e2e.xml
