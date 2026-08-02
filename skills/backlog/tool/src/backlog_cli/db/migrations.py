@@ -23,6 +23,8 @@ from .upgrades import (
     upgrade_iteration_feedback_flow,
     upgrade_iteration_retrospective_action_gate,
     upgrade_iteration_template_workflows,
+    upgrade_todo_review_gates,
+    upgrade_todo_task_items,
 )
 
 # --------------------------------------------------------------------------- #
@@ -74,6 +76,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     v14                     -> v15 (retrospective improvement actions)
     v15                     -> v16 (task creator attribution and separation)
     v16                     -> v17 (Iteration retrospective-action closure gate)
+    v17                     -> v18 (ordered todos and review-submission gate)
     """
     notes: list[str] = []
     if from_version >= 3 or not conn.table_exists("feature"):
@@ -82,6 +85,8 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
             notes += upgrade_bug_task_constraint(conn)
         notes += backfill_task_creators(conn)
         add_column(conn, "project", "template_id", "INTEGER")
+        if from_version < 18:
+            notes += upgrade_todo_task_items(conn)
         add_column(
             conn,
             "review_thread",
@@ -121,6 +126,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += upgrade_iteration_feedback_flow(conn)
         notes += upgrade_iteration_retrospective_action_gate(conn)
         notes += upgrade_feature_review_flow(conn)
+        notes += upgrade_todo_review_gates(conn)
         notes += upgrade_required_validation_gates(conn)
         _resync_sequences(conn)
         return notes or ["schema brought up to date"]

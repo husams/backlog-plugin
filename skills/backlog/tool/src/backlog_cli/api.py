@@ -76,6 +76,12 @@ class Backlog:
     remove_iteration_member = session_tasks.remove_iteration_member
     add_item = session_tasks.add_item
     set_items = session_tasks.set_items
+    add_todo = session_tasks.add_todo
+    add_todos = session_tasks.add_todos
+    todos = session_tasks.todos
+    close_todo = session_tasks.close_todo
+    reopen_todo = session_tasks.reopen_todo
+    move_todo = session_tasks.move_todo
     task = session_tasks.task
     find = session_tasks.find
     _task = session_tasks._task

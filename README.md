@@ -8,7 +8,7 @@ The plugin manages:
 
 - features, stories, standalone bugs, subtasks, and parallel Iterations;
 - retrospective actions for repeated workflow issues and proposed improvements;
-- acceptance criteria, checklists, notes, priorities, and assignments;
+- acceptance criteria, checklists, notes, flat ordered todos, priorities, and assignments;
 - dependencies and blocked work;
 - review threads with fixed blocker, nice-to-have, or informational severity,
   pull request state, and attached artifacts;
@@ -21,6 +21,11 @@ Workflow rules are enforced by the tool rather than left to the agent. Every
 status change is checked against the selected project and task type. Illegal
 transitions and failed gates are refused, so a custom flow remains consistent
 regardless of which agent is operating it.
+
+Implementation todos are lighter than subtasks: they have no assignment,
+workflow, review, or pull request of their own. They stay in stable order on
+their task, preserve attributed open/closed changes, and the shipped workflow
+refuses review submission until every todo is closed.
 
 Only unresolved review threads with `ReviewSeverity.BLOCKER` stop acceptance
 or merge gates. Advisory and informational threads do not invalidate Ready,
@@ -330,6 +335,12 @@ with api.open() as backlog:
     print(f"{len(active)} tasks in progress")
 PY
 ```
+
+Todo mutations require an attributed API session. For example,
+`backlog.add_todos("S-004", ["implement", "test"])` appends two open steps;
+`close_todo`, `reopen_todo`, and `move_todo` update them without creating child
+tasks. `backlog.todos("S-004")` and `backlog.task("S-004").todos` return the
+same ordered public view.
 
 The same API exposes `create_retrospective_action`,
 `accept_retrospective_action`, `reject_retrospective_action`, and

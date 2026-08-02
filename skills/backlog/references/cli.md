@@ -165,6 +165,25 @@ one non-empty line; existing multi-line plain syntax is unchanged.
 expected hook values, and environment values are hidden in text and JSON;
 environment variable names remain visible.
 
+## Lightweight todos
+
+Todos are flat ordered implementation steps on a task, not subtasks. Mutations
+require `--actor`; positions are zero-based in both CLI and Python API views.
+
+```bash
+$BL todo add S-001 --content "implement the route
+add the regression test" --actor developer
+$BL todo list S-001
+$BL todo close 12 --actor developer
+$BL todo reopen 12 --actor developer
+$BL todo move 12 --position 0 --actor developer
+```
+
+Every todo is created open. Moving one preserves every todo's state and rewrites
+positions to a deterministic contiguous sequence. `review.submitted` and the
+other shipped review-entry actions fail the `todos_closed` gate while any todo
+is open; the diagnostic lists every remaining ID and content.
+
 ## Status and gates
 
 ```bash

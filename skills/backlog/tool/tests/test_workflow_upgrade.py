@@ -69,6 +69,7 @@ class BugIterationWorkflowUpgradeTest(unittest.TestCase):
             "pr_merged",
             "required_validations_pass",
             "iteration_members_finished",
+            "todos_closed",
         }
         rendered = self.cli("workflow", "gates")
         rendered_gates = [

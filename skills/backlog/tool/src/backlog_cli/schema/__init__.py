@@ -33,6 +33,7 @@ from .catalog import (
 )
 from .items import (
     ITEM_KINDS,
+    GENERIC_ITEM_KINDS,
     ITEM_KIND_DISPLAY,
     ITEM_KIND_ALIASES,
     TICKABLE_ITEM_KINDS,

@@ -22,6 +22,7 @@ GATE_CHECKS = [
     "pr_merged",  # the pull request is merged
     "required_validations_pass",  # required executable items have a fresh pass
     "iteration_members_finished",  # every Iteration member is finished
+    "todos_closed",  # no implementation todo remains open
 ]
 
 GATE_DESCRIPTIONS = {
@@ -37,6 +38,7 @@ GATE_DESCRIPTIONS = {
     "pr_merged": "the pull request is merged (waivable with --no-pr)",
     "required_validations_pass": "every required executable item has a fresh passing result",
     "iteration_members_finished": "every Iteration member has reached a finished status",
+    "todos_closed": "every implementation todo is closed",
 }
 
 # The workflow every new project starts with: today's behaviour, expressed as
@@ -60,7 +62,7 @@ DEFAULT_TRANSITIONS = {
         ("created", "incomplete", ""),
         ("incomplete", "ready", ""),
         ("ready", "in_progress", "dependencies_clear"),
-        ("in_progress", "in_review", "pr_recorded"),
+        ("in_progress", "in_review", "pr_recorded,todos_closed"),
         (
             "in_review",
             "accepted",
@@ -77,7 +79,7 @@ DEFAULT_TRANSITIONS = {
         ("created", "incomplete", ""),
         ("incomplete", "ready", ""),
         ("ready", "in_progress", "dependencies_clear"),
-        ("in_progress", "in_review", ""),
+        ("in_progress", "in_review", "todos_closed"),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
         (

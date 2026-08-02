@@ -188,21 +188,25 @@ transitions:
     from: in_progress
     action: work.completed
     to: in_review
+    gates: [todos_closed]
 
   - task_types: [feature, story, bug, subtask]
     from: in_progress
     action: review.submitted
     to: in_review
+    gates: [todos_closed]
 
   - task_types: [story, bug, subtask]
     from: in_progress
     action: pr.created
     to: in_review
+    gates: [todos_closed]
 
   - task_types: [story, bug, subtask]
     from: in_progress
     action: pr.marked_ready
     to: in_review
+    gates: [todos_closed]
 
   # Review requested more work
   - task_types: [feature, story, bug, subtask]

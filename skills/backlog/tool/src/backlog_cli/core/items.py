@@ -144,6 +144,8 @@ def remove_item(
     row = conn.execute("SELECT * FROM task_item WHERE id = ?", (item_id,)).fetchone()
     if row is None:
         raise BacklogError(f"no task item with id {item_id}")
+    if row["kind"] == "todo":
+        raise BacklogError("todos cannot be removed through item rm")
     task = get_task_by_id(conn, row["task_id"])
     conn.execute("DELETE FROM task_item WHERE id = ?", (item_id,))
     log_event(

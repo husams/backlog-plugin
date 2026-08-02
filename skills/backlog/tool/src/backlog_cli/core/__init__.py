@@ -40,5 +40,6 @@ from .tasks import (
     assign,
     update_task,
 )
+from .todos import add_todos, list_todos, move_todo, set_state as set_todo_state
 
 __all__ = [name for name in globals() if not name.startswith("_")]
