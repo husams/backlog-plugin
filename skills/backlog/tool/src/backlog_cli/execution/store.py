@@ -6,7 +6,7 @@ import json
 from typing import Any, Mapping
 
 from ..db import BacklogError, Conn, utcnow
-from .contracts import parse_spec
+from .specs import parse_spec
 
 
 def set_executable(conn: Conn, item_id: int, value: Mapping[str, Any]) -> dict[str, Any]:

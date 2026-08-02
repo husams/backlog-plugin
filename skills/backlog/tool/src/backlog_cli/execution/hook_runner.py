@@ -20,9 +20,9 @@ from .contracts import (
     ValidationContext,
     ValidationExecutionResult,
     ValidationHookResult,
-    parse_spec,
 )
 from .policy import load_policy, source_identity
+from .specs import parse_spec
 from .store import executable_item
 
 

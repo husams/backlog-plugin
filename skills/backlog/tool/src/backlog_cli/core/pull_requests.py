@@ -8,13 +8,21 @@ import subprocess
 from ..db import BacklogError, Conn, Row, actor_kind, log_event, utcnow
 from ..schema import PR_BEARING_TYPES, PR_REVIEW_STATES, PR_STATES
 from .gates import trigger_action
-from .tasks import get_task, get_task_by_id
+from .task_queries import get_task, get_task_by_id
 
 
-def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
-           number: int | None = None, repo: str | None = None, state: str | None = None,
-           review_state: str | None = None, actor: str | None = None,
-           emit_action: bool = True) -> Row:
+def set_pr(
+    conn: Conn,
+    project_id: int,
+    key: str,
+    url: str | None = None,
+    number: int | None = None,
+    repo: str | None = None,
+    state: str | None = None,
+    review_state: str | None = None,
+    actor: str | None = None,
+    emit_action: bool = True,
+) -> Row:
     task = get_task(conn, project_id, key)
     if task["task_type"] not in PR_BEARING_TYPES:
         raise BacklogError(
@@ -51,7 +59,9 @@ def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
     if review_state is not None:
         review_state = review_state.strip().lower().replace("-", "_")
         if review_state not in PR_REVIEW_STATES:
-            raise BacklogError(f"pr review state must be one of {', '.join(PR_REVIEW_STATES)}")
+            raise BacklogError(
+                f"pr review state must be one of {', '.join(PR_REVIEW_STATES)}"
+            )
         sets.append("pr_review_state = ?")
         values.append(review_state)
         notes.append(f"review_state={review_state}")
@@ -64,7 +74,9 @@ def set_pr(conn: Conn, project_id: int, key: str, url: str | None = None,
     sets += ["pr_waived = 0", "updated_at = ?"]
     values += [utcnow(), task["id"]]
     conn.execute(f"UPDATE task SET {', '.join(sets)} WHERE id = ?", values)
-    log_event(conn, "pr", project_id, task["id"], task["key"], actor, detail="; ".join(notes))
+    log_event(
+        conn, "pr", project_id, task["id"], task["key"], actor, detail="; ".join(notes)
+    )
     conn.commit()
     updated = get_task_by_id(conn, task["id"])
     if emit_action:
@@ -123,9 +135,17 @@ def sync_pr(conn: Conn, project_id: int, key: str, actor: str | None = None) -> 
             f"Use `backlog pr set {task['key']} --url <PR-URL>` first."
         )
     if shutil.which("gh") is None:
-        raise BacklogError("`gh` is not installed; set PR state manually with `backlog pr set`.")
-    cmd = ["gh", "pr", "view", str(task["pr_number"]),
-           "--json", "state,isDraft,reviewDecision,url"]
+        raise BacklogError(
+            "`gh` is not installed; set PR state manually with `backlog pr set`."
+        )
+    cmd = [
+        "gh",
+        "pr",
+        "view",
+        str(task["pr_number"]),
+        "--json",
+        "state,isDraft,reviewDecision,url",
+    ]
     if task["pr_repo"]:
         cmd += ["--repo", task["pr_repo"]]
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -135,7 +155,9 @@ def sync_pr(conn: Conn, project_id: int, key: str, actor: str | None = None) -> 
 
     data = _json.loads(proc.stdout)
     gh_state = (data.get("state") or "").upper()
-    state = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}.get(gh_state, "none")
+    state = {"OPEN": "open", "MERGED": "merged", "CLOSED": "closed"}.get(
+        gh_state, "none"
+    )
     if state == "open" and data.get("isDraft"):
         state = "draft"
     decision = (data.get("reviewDecision") or "").upper()
@@ -144,5 +166,12 @@ def sync_pr(conn: Conn, project_id: int, key: str, actor: str | None = None) -> 
         "CHANGES_REQUESTED": "changes_requested",
         "REVIEW_REQUIRED": "pending",
     }.get(decision, "pending" if state in ("open", "draft") else "none")
-    return set_pr(conn, project_id, task["key"], url=data.get("url"), state=state,
-                  review_state=review_state, actor=actor)
+    return set_pr(
+        conn,
+        project_id,
+        task["key"],
+        url=data.get("url"),
+        state=state,
+        review_state=review_state,
+        actor=actor,
+    )

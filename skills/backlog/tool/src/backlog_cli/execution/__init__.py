@@ -12,7 +12,6 @@ from ..audit import (
     waive_validation,
 )
 from .contracts import (
-    ExecutionPolicy,
     ExecutionSpec,
     Executor,
     HookSpec,
@@ -24,11 +23,10 @@ from .contracts import (
     ValidationContext,
     ValidationExecutionResult,
     ValidationHookResult,
-    parse_spec,
-    validation_hook,
 )
 from .hook_runner import hook_implementation_identity, run_hook_validation
-from .policy import load_policy, source_identity
+from .policy import ExecutionPolicy, load_policy, source_identity
+from .specs import parse_spec, validation_hook
 from .runner import (
     ExecutionResult,
     run_shell,
@@ -37,6 +35,4 @@ from .runner import (
     run_validation,
 )
 from .store import _item_details, executable_item, set_executable
-from .facade import ValidationApi
-
 __all__ = [name for name in globals() if not name.startswith("_")]

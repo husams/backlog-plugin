@@ -6,11 +6,19 @@ import shutil
 from pathlib import Path
 
 from ..db import BacklogError, Conn, Row, log_event, utcnow
-from .tasks import get_task
+from .task_queries import get_task
 
 
-def add_artifact(conn: Conn, backlog_dir: Path, project_id: int, key: str, source: Path,
-                 title: str = "", kind: str = "doc", actor: str | None = None) -> dict:
+def add_artifact(
+    conn: Conn,
+    backlog_dir: Path,
+    project_id: int,
+    key: str,
+    source: Path,
+    title: str = "",
+    kind: str = "doc",
+    actor: str | None = None,
+) -> dict:
     task = get_task(conn, project_id, key)
     src = Path(source).expanduser()
     if not src.exists():
@@ -30,11 +38,25 @@ def add_artifact(conn: Conn, backlog_dir: Path, project_id: int, key: str, sourc
         "title = excluded.title, kind = excluded.kind",
         (task["id"], rel, title or src.name, kind, utcnow(), actor),
     )
-    log_event(conn, "artifact", project_id, task["id"], task["key"], actor,
-              to_value=rel, detail=title)
+    log_event(
+        conn,
+        "artifact",
+        project_id,
+        task["id"],
+        task["key"],
+        actor,
+        to_value=rel,
+        detail=title,
+    )
     conn.commit()
-    return {"key": task["key"], "task_type": task["task_type"], "rel_path": rel,
-            "abs_path": str(dest), "title": title or src.name, "kind": kind}
+    return {
+        "key": task["key"],
+        "task_type": task["task_type"],
+        "rel_path": rel,
+        "abs_path": str(dest),
+        "title": title or src.name,
+        "kind": kind,
+    }
 
 
 def list_artifacts(conn: Conn, task_id: int) -> list[Row]:

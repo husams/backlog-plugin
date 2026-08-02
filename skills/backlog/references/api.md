@@ -4,12 +4,11 @@ Reach for this when the CLI has no flag for the question — anything that needs
 counting, filtering, joining or comparing across many tasks. One process, one
 connection, however many operations.
 
-`backlog_cli.api` is intentionally only the small external facade. It contains
-session setup and delegates calls to the single implementation for each domain:
-`core/` for backlog operations, `execution/` for executable items, `review.py`
-for review threads, `retrospective.py` for retrospective actions, `hooks.py` for
-hooks, and `audit.py` for validation history. Public value objects live in
-`types.py`. There is no parallel `api/` implementation tree.
+`backlog_cli.api` is intentionally a small external interface. It contains the
+plain `Backlog` session object and binds its methods directly to functions in
+the owning domain: `core/`, `execution/`, `review/`, `retrospective/`, `hooks/`,
+and `audit/`. Public value objects live in `types.py`. There are no API mixins,
+facade classes, or parallel `api/` implementation tree.
 
 ```bash
 backlog-py <<'PY'

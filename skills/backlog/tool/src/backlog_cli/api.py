@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import contextlib
 
-from . import core, hooks
+from . import hooks
+from .core import session_actions, session_queries, session_tasks
 from .db import (
     BacklogError,
     Conn,
@@ -22,32 +23,105 @@ from .execution import (
     Requirement,
     SourceIdentity,
     TerminalStatus,
-    ValidationApi,
     ValidationContext,
     ValidationExecutionResult,
     ValidationHookResult,
     validation_hook,
 )
 from .hooks import Action
-from .retrospective import RetrospectiveApi, RetrospectiveStatus
-from .review import ReviewApi
+from .execution import session as validation
+from .retrospective import RetrospectiveStatus, session as retrospectives
+from .review import session as reviews
 from .schema import ReviewSeverity
 from .types import Gate, RetrospectiveAction, ReviewComment, Store, Task, Thread
 
 __all__ = [
-    "open", "Backlog", "Task", "RetrospectiveAction", "Gate", "Thread",
-    "ReviewComment", "Store", "Action", "RetrospectiveStatus", "ReviewSeverity",
-    "BacklogError", "ExecutionSpec", "ExecutionPolicy", "ExecutionResult",
-    "Executor", "Requirement", "TerminalStatus", "SourceIdentity",
-    "ValidationContext", "ValidationHookResult", "ValidationExecutionResult",
+    "open",
+    "Backlog",
+    "Task",
+    "RetrospectiveAction",
+    "Gate",
+    "Thread",
+    "ReviewComment",
+    "Store",
+    "Action",
+    "RetrospectiveStatus",
+    "ReviewSeverity",
+    "BacklogError",
+    "ExecutionSpec",
+    "ExecutionPolicy",
+    "ExecutionResult",
+    "Executor",
+    "Requirement",
+    "TerminalStatus",
+    "SourceIdentity",
+    "ValidationContext",
+    "ValidationHookResult",
+    "ValidationExecutionResult",
     "validation_hook",
 ]
 
 
-class Backlog(core.CoreApi, ReviewApi, RetrospectiveApi, ValidationApi):
-    """Small external facade composed from domain passthroughs."""
+class Backlog:
+    """Connection and project state for the public API."""
 
     __slots__ = ("_conn", "actor", "_project", "_spec")
+
+    create_task = session_tasks.create_task
+    create_feature = session_tasks.create_feature
+    create_story = session_tasks.create_story
+    create_bug = session_tasks.create_bug
+    create_iteration = session_tasks.create_iteration
+    add_iteration_member = session_tasks.add_iteration_member
+    remove_iteration_member = session_tasks.remove_iteration_member
+    add_item = session_tasks.add_item
+    set_items = session_tasks.set_items
+    task = session_tasks.task
+    find = session_tasks.find
+    _task = session_tasks._task
+    tasks = session_tasks.tasks
+
+    counts = session_queries.counts
+    task_type_counts = session_queries.task_type_counts
+    statuses = session_queries.statuses
+    flow = session_queries.flow
+    actions = session_queries.actions
+    startable = session_queries.startable
+    blocked = session_queries.blocked
+    cycles = session_queries.cycles
+    dependencies = session_queries.dependencies
+    artifacts = session_queries.artifacts
+
+    can = session_actions.can
+    trigger = session_actions.trigger
+    set_pr = session_actions.set_pr
+    assign = session_actions.assign
+
+    inbox = reviews.inbox
+    threads = reviews.threads
+    review_updates = reviews.review_updates
+    review_audit = reviews.review_audit
+    review_open = reviews.review_open
+    review_set_severity = reviews.review_set_severity
+    review_reply = reviews.review_reply
+    review_reopen = reviews.review_reopen
+
+    create_retrospective_action = retrospectives.create_retrospective_action
+    retrospective_action = retrospectives.retrospective_action
+    retrospective_actions = retrospectives.retrospective_actions
+    accept_retrospective_action = retrospectives.accept_retrospective_action
+    reject_retrospective_action = retrospectives.reject_retrospective_action
+    close_retrospective_action = retrospectives.close_retrospective_action
+
+    set_item_execution = validation.set_item_execution
+    record_execution_result = validation.record_execution_result
+    execution_history = validation.execution_history
+    waive_validation = validation.waive_validation
+    execution_policy = validation.execution_policy
+    source_identity = validation.source_identity
+    run_hook_validation = validation.run_hook_validation
+    run_item = validation.run_item
+    run_task = validation.run_task
 
     def __init__(self, conn: Conn, project_row, spec, actor: str | None = None):
         self._conn = conn
@@ -62,8 +136,12 @@ class Backlog(core.CoreApi, ReviewApi, RetrospectiveApi, ValidationApi):
 
     @property
     def store(self) -> Store:
-        return Store(self._spec.dialect, self._spec.scope,
-                     self._project["slug"], self._spec.location)
+        return Store(
+            self._spec.dialect,
+            self._spec.scope,
+            self._project["slug"],
+            self._spec.location,
+        )
 
     @property
     def artifacts_dir(self):

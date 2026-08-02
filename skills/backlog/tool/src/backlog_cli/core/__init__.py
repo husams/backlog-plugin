@@ -1,6 +1,13 @@
 """Core task, item, gate, pull-request, and artifact operations."""
 
-OPEN_STATUSES = {"created", "incomplete", "ready", "in_progress", "in_review", "needs_work"}
+OPEN_STATUSES = {
+    "created",
+    "incomplete",
+    "ready",
+    "in_progress",
+    "in_review",
+    "needs_work",
+}
 ACTIONABLE_BY_DEV = {"ready", "in_progress", "needs_work"}
 
 from .artifacts import add_artifact, list_artifacts
@@ -24,21 +31,19 @@ from .normalization import (
     require_independent_actor,
 )
 from .pull_requests import set_pr, sync_pr
-from .tasks import (
-    add_iteration_member,
-    add_task,
-    assign,
+from .iterations import add_iteration_member, iteration_members, remove_iteration_member
+from .task_queries import (
     blocking_threads,
     children_of,
     find_task,
     get_task,
     get_task_by_id,
-    iteration_members,
     open_threads,
-    remove_iteration_member,
     task_items,
+)
+from .tasks import (
+    add_task,
+    assign,
     update_task,
 )
-from .facade import CoreApi
-
 __all__ = [name for name in globals() if not name.startswith("_")]

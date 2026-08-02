@@ -1,0 +1,60 @@
+"""Schema constants grouped by responsibility."""
+
+from .task import (
+    SCHEMA_VERSION,
+    TASK_TYPES,
+    TASK_TYPE_DISPLAY,
+    TASK_PARENT_TYPES,
+    TASK_KEY_PREFIX,
+    TASK_TYPE_ALIASES,
+    STATUSES,
+    STATUS_DISPLAY,
+    TRANSITIONS,
+    FEATURE_TRANSITIONS,
+    TRANSITIONS_BY_TYPE,
+    transitions_for,
+    STATUS_ALIASES,
+    SATISFIED_STATUSES,
+)
+from .workflow import (
+    STATUS_CATEGORIES,
+    GATE_CHECKS,
+    GATE_DESCRIPTIONS,
+    DEFAULT_STATUS_ROWS,
+    DEFAULT_TRANSITIONS,
+    ITERATION_STATUS_ROWS,
+)
+from .catalog import (
+    BUILTIN_TEMPLATES,
+    DEFAULT_TEMPLATE_SLUG,
+    PRIORITIES,
+    PROJECT_STATUSES,
+    ACTOR_KINDS,
+    KNOWN_AGENTS,
+)
+from .items import (
+    ITEM_KINDS,
+    ITEM_KIND_DISPLAY,
+    ITEM_KIND_ALIASES,
+    TICKABLE_ITEM_KINDS,
+)
+from .relations import (
+    PR_STATES,
+    PR_REVIEW_STATES,
+    PR_BEARING_TYPES,
+    DEPENDENCY_KINDS,
+    HARD_DEPENDENCY_KINDS,
+    SYMMETRIC_DEPENDENCY_KINDS,
+    DEPENDENCY_KIND_ALIASES,
+    REVIEW_ACTIONS,
+    REVIEW_ROLES,
+    THREAD_STATES,
+    ReviewSeverity,
+    REVIEW_SEVERITIES,
+    ARTIFACT_KINDS,
+)
+from .ddl import (
+    SCHEMA_SQL,
+)
+
+__all__ = [name for name in globals() if not name.startswith("_")]
