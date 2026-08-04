@@ -75,7 +75,9 @@ jobs:
             pr_url="$(jq -r '.pull_request.html_url' "$EVENT_FILE")"
           fi
 
-          if [[ "$branch" =~ (^|/)([FfSsTt]-[0-9]+)(-|/|$) ]]; then
+          # Every key prefix the tool issues: F feature, S story, B bug,
+          # T subtask, I iteration (schema/task.py TASK_KEY_PREFIX).
+          if [[ "$branch" =~ (^|/)([FfSsBbTtIi]-[0-9]+)(-|/|$) ]]; then
             task_key="$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:lower:]' '[:upper:]')"
           else
             echo "No backlog key found in branch '$branch'."
