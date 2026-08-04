@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..common import Conn
+from ..common import BacklogError, Conn
 
 
 def upgrade_bug_task_constraint(conn: Conn) -> list[str]:
@@ -76,12 +76,26 @@ CREATE INDEX idx_task_type ON task(project_id, task_type);
 
 def add_column(conn: Conn, table: str, column: str, decl: str) -> None:
     """`CREATE TABLE IF NOT EXISTS` cannot add a column to a table that already
-    exists, so a new one needs an explicit ALTER."""
-    try:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
-        conn.commit()
-    except Exception:
-        conn.rollback()  # already there
+    exists, so a new one needs an explicit ALTER.
+
+    The two benign outcomes — the table does not exist yet on this store, or
+    the column is already present — are established from the catalog *before*
+    the ALTER rather than inferred from a failure. Anything else (missing
+    privilege, lock timeout, the statement resolving elsewhere) propagates, so
+    a migration can never report success for DDL that did not apply.
+    """
+    if not conn.table_exists(table):
+        return  # a later executescript(SCHEMA_SQL) creates it with the column
+    if conn.column_exists(table, column):
+        return
+    conn.execute(f"ALTER TABLE {conn.qualified(table)} ADD COLUMN {column} {decl}")
+    conn.commit()
+    if not conn.column_exists(table, column):
+        raise BacklogError(
+            f"migration could not add {conn.qualified(table)}.{column}: the ALTER "
+            "reported success but the column is still absent. The store has not "
+            "been upgraded; re-run after fixing the store."
+        )
 
 
 def backfill_task_creators(conn: Conn) -> list[str]:
@@ -111,17 +125,20 @@ def backfill_task_creators(conn: Conn) -> list[str]:
 
 def upgrade_todo_task_items(conn: Conn) -> list[str]:
     """Allow dedicated todo items and retain their latest mutation actor."""
+    if not conn.table_exists("task_item"):
+        return []  # created with the column by executescript(SCHEMA_SQL)
     add_column(conn, "task_item", "updated_by", "TEXT")
     conn.execute(
         "UPDATE task_item SET updated_by=created_by WHERE updated_by IS NULL"
     )
     conn.commit()
     if conn.is_postgres:
+        table = conn.qualified("task_item")
         conn.execute(
-            "ALTER TABLE task_item DROP CONSTRAINT IF EXISTS task_item_kind_check"
+            f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS task_item_kind_check"
         )
         conn.execute(
-            "ALTER TABLE task_item ADD CONSTRAINT task_item_kind_check "
+            f"ALTER TABLE {table} ADD CONSTRAINT task_item_kind_check "
             "CHECK (kind IN ('acceptance_criteria','checklist','note','todo'))"
         )
         conn.commit()

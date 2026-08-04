@@ -150,7 +150,8 @@ commit `.backlog/` in its own commit so a conflict is easy to isolate.
 $BL doctor
 ```
 
-Checks database integrity, tasks nested under the wrong type, subtasks with no
+Checks **that the store actually implements the schema version it records**,
+database integrity, tasks nested under the wrong type, subtasks with no
 parent, **tasks sitting in a status their flow does not define**, task types
 with no workflow, projects not bound to a template, dependency cycles,
 items that are In Progress or In Review while still blocked, threads with a
@@ -160,3 +161,34 @@ vanished. Exit 1 means it found problems, which it lists. If `doctor` reports
 damage the CLI cannot explain, restore from the last good commit of
 `.backlog/backlog.db` (or a `$BL export` dump) rather than editing the
 database.
+
+## The store reports a schema version it does not implement
+
+```
+FAIL ...  schema v18
+problems:
+  - store reports schema v18 but column task_item.updated_by is missing
+    — run `backlog doctor --repair`
+```
+
+A migration whose DDL did not apply (missing privilege, lock timeout) used to
+record the new version anyway, leaving a store that advertised a shape it did
+not have. Because the version was already recorded, no later run retried the
+step. Commands that touch the missing column fail with
+`error: database: column "..." does not exist`.
+
+Repair it through the CLI — never with hand-written SQL against the store:
+
+```bash
+$BL doctor --repair
+```
+
+`--repair` adds whatever tables and columns the recorded version promises but
+the store is missing, re-runs the additive upgrades, and re-checks. It is
+idempotent: on a healthy store it reports that the store already matches and
+changes nothing. If the repair itself cannot apply the DDL, it fails and says
+what is still missing — that is a store-privilege problem to fix with the
+database owner.
+
+Current tools no longer create this state: a migration step that fails leaves
+`schema_version` unchanged, so the next invocation retries it.

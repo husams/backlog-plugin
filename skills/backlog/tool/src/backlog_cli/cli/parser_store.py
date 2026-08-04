@@ -48,7 +48,22 @@ def register_store(sub):
     sp.add_argument("--force", action="store_true")
     sp.set_defaults(func=cmd_init)
 
-    sp = sub.add_parser("doctor", help="verify store integrity and invariants")
+    sp = sub.add_parser(
+        "doctor",
+        help="verify store integrity and invariants",
+        description=(
+            "Checks that the store implements the schema version it records, "
+            "then verifies the data invariants.\n"
+            "--repair adds whatever tables and columns the recorded version "
+            "promises but the store is missing, and re-runs the additive "
+            "upgrades. It is idempotent and needs no hand-written SQL."
+        ),
+    )
+    sp.add_argument(
+        "--repair",
+        action="store_true",
+        help="add missing tables/columns and re-run the additive upgrades",
+    )
     sp.set_defaults(func=cmd_doctor)
 
     sp = sub.add_parser(

@@ -16,6 +16,7 @@ from .common import (
     utcnow,
 )
 from .connection import connect
+from .integrity import expected_schema, repair_schema, schema_drift
 from .legacy import load_v2_export
 from .migrations import migrate
 from .projects import (

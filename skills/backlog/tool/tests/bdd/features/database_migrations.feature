@@ -35,7 +35,23 @@ Feature: Real database compatibility
     When the newer store is opened
     Then the command reports "newer than this tool"
 
-  Scenario: A damaged database reports the underlying database failure
+  Scenario: A damaged database is named as not implementing its schema version
     Given a real SQLite store with a damaged schema
     When the damaged store is opened
-    Then the command reports "error: database:"
+    Then the command reports "table task is missing"
+    And the command reports "backlog doctor --repair"
+    When the store is repaired
+    Then the store is healthy
+
+  Scenario: Repairing a healthy store changes nothing
+    When the store is repaired
+    Then the command reports "already matches"
+    And the store is healthy
+
+  Scenario: A store that lost a migrated column is reported and repaired
+    Given a real SQLite store missing the column its schema version promises
+    When the damaged store is opened
+    Then the command reports "task_item.updated_by is missing"
+    When the store is repaired
+    Then the database schema is current
+    And ordered todos work end to end

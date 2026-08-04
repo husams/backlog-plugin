@@ -108,11 +108,6 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         # Already the task shape (or empty): additive tables plus a seeded
         # workflow for every project that does not have one yet.
         conn.executescript(SCHEMA_SQL)
-        conn.execute(
-            "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (str(SCHEMA_VERSION),),
-        )
         conn.commit()
         from .. import templates
 
@@ -129,6 +124,10 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += upgrade_todo_review_gates(conn)
         notes += upgrade_required_validation_gates(conn)
         _resync_sequences(conn)
+        # Last, and only once every step above has applied: a step that raises
+        # leaves the recorded version behind so the next invocation retries it
+        # instead of skipping it forever.
+        _record_version(conn)
         return notes or ["schema brought up to date"]
 
     old = read_v2(conn)
@@ -144,14 +143,18 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     notes += seed_missing_workflows(conn)
     notes += load_v2_into_v3(conn, project_id, old)
 
+    _resync_sequences(conn)
+    _record_version(conn)
+    return notes
+
+
+def _record_version(conn: Conn) -> None:
     conn.execute(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (str(SCHEMA_VERSION),),
     )
     conn.commit()
-    _resync_sequences(conn)
-    return notes
 
 
 def _resync_sequences(conn: Conn) -> list[str]:
