@@ -225,6 +225,34 @@ class Conn:
             ).fetchone()
         return row is not None
 
+    def qualified(self, table: str) -> str:
+        """The table name as DDL should address it.
+
+        On PostgreSQL a store may be namespaced (`schema=backlog`). The
+        connection sets `search_path`, but naming the schema explicitly keeps
+        migration DDL correct even if something later resets it.
+        """
+        if self.dialect == SQLITE:
+            return table
+        schema = getattr(self.spec, "schema", None)
+        return f'"{schema}"."{table}"' if schema else table
+
+    def columns(self, table: str) -> set[str]:
+        """The column names a table currently has, or an empty set if it has
+        no table."""
+        if self.dialect == SQLITE:
+            rows = self.execute(f"PRAGMA table_info({table})").fetchall()
+            return {row["name"] for row in rows}
+        rows = self.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = ?",
+            (table,),
+        ).fetchall()
+        return {row["column_name"] for row in rows}
+
+    def column_exists(self, table: str, column: str) -> bool:
+        return column in self.columns(table)
+
     def integrity_ok(self) -> bool:
         if self.dialect == SQLITE:
             return self._raw.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

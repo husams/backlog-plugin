@@ -305,6 +305,45 @@ def damaged_sqlite_database(world: World) -> None:
         conn.close()
 
 
+@given("a real SQLite store missing the column its schema version promises")
+def store_missing_migrated_column(world: World) -> None:
+    """The reported B-001 shape: schema_version says 18, but the column the
+    v18 migration was supposed to add never landed."""
+    story = world.run("story", "add", "--title", "Repairable", actor="creator")
+    world.current_key = story["key"]
+    path = world.root / ".backlog" / "backlog.db"
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("ALTER TABLE task_item DROP COLUMN updated_by")
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@when("the store is repaired")
+def repair_store(world: World) -> None:
+    world.run("doctor", "--repair")
+
+
+@then("the store is healthy")
+def store_is_healthy(world: World) -> None:
+    payload = world.run("doctor")
+    assert payload["ok"] is True, payload["problems"]
+    assert payload["schema_drift"] == []
+
+
+@then("ordered todos work end to end")
+def ordered_todos_work(world: World) -> None:
+    key = world.require_key()
+    first = world.run("todo", "add", key, "--content", "first", actor="dev")[0]
+    second = world.run("todo", "add", key, "--content", "second", actor="dev")[0]
+    world.run("todo", "close", str(first["id"]), actor="dev")
+    world.run("todo", "move", str(second["id"]), "--position", "0", actor="dev")
+    rows = world.run("todo", "list", key)
+    assert [row["content"] for row in rows] == ["second", "first"]
+    assert [row["updated_by"] for row in rows] == ["dev", "dev"]
+
+
 @when("the newer store is opened")
 def open_newer_store(world: World) -> None:
     world.run("doctor", expected=None)

@@ -14,8 +14,10 @@ from ..db import (
     get_or_create_project,
     init_store,
     list_projects,
+    repair_schema,
     require_project,
     resolve_spec,
+    schema_drift,
     slugify,
 )
 from ..render import (
@@ -160,6 +162,29 @@ def cmd_doctor(ctx: Ctx, args) -> int:
             "value"
         ]
     )
+
+    # A version number is a claim, not evidence. Compare it against what the
+    # store actually has before trusting anything else here.
+    repaired: list[str] = []
+    if getattr(args, "repair", False):
+        repaired = repair_schema(conn, spec)
+        info["schema_version"] = int(
+            conn.execute(
+                "SELECT value FROM meta WHERE key='schema_version'"
+            ).fetchone()["value"]
+        )
+    drift = schema_drift(conn)
+    info["schema_drift"] = drift
+    info["repaired"] = repaired
+    problems += [
+        f"store reports schema v{info['schema_version']} but {problem}"
+        " — run `backlog doctor --repair`"
+        for problem in drift
+    ]
+    missing_tables = {
+        problem.split()[1] for problem in drift if problem.startswith("table ")
+    }
+
     for tbl in (
         "template",
         "template_workflow",
@@ -181,9 +206,22 @@ def cmd_doctor(ctx: Ctx, args) -> int:
         "artifact",
         "event",
     ):
+        if tbl in missing_tables:
+            continue
         info["counts"][tbl] = conn.execute(
             f"SELECT COUNT(*) AS c FROM {tbl}"
         ).fetchone()["c"]
+
+    if missing_tables:
+        # Every invariant below reads tables that are not there; reporting the
+        # structural break is the only sound answer.
+        text = (
+            f"FAIL {spec.location}  ({spec.dialect}/{spec.scope})  "
+            f"schema v{info['schema_version']}\n\nproblems:\n"
+            + "\n".join(f"  - {p}" for p in problems)
+        )
+        ctx.emit({"ok": False, "problems": problems, **info}, text)
+        return 1
 
     if not conn.integrity_ok():
         problems.append(f"{spec.dialect} integrity check failed")
@@ -324,6 +362,8 @@ def cmd_doctor(ctx: Ctx, args) -> int:
             ["TABLE", "ROWS"], [[k, str(v)] for k, v in sorted(info["counts"].items())]
         )
     )
+    if repaired:
+        text += "\n\nrepaired:\n" + "\n".join(f"  - {r}" for r in repaired)
     if problems:
         text += "\n\nproblems:\n" + "\n".join(f"  - {p}" for p in problems)
     if diagnostics:

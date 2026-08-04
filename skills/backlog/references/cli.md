@@ -24,7 +24,8 @@ named by its root comment key.
 | `$BL projects` | every project in the store |
 | `$BL project add --name N [--slug S] [--template T] [--description D]` | new project |
 | `$BL project set SLUG [--name\|--description\|--status active\|archived]` | edit |
-| `$BL doctor` | integrity + invariant check; exit 1 if problems |
+| `$BL doctor` | schema, integrity + invariant check; exit 1 if problems |
+| `$BL doctor --repair` | add tables/columns the recorded schema version is missing, then re-check |
 | `$BL export [--out FILE]` | JSON dump of the whole store |
 | `$BL import FILE --replace` | restore (older dumps are converted; `--as-project`) |
 
