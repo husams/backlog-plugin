@@ -118,6 +118,7 @@ def task_in_review(world: World) -> None:
         ("work.completed", "developer"),
     ):
         world.run("action", world.require_key(), action, actor=actor)
+    world.verify_criteria()
 
 
 @when("the executable item is run")

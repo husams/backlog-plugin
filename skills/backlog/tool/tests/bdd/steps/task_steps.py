@@ -8,7 +8,19 @@ from ..world import World
 @given(parsers.parse('a "{task_type}" task'))
 def task_of_type(world: World, task_type: str) -> None:
     if task_type == "feature":
-        row = world.run("feature", "add", "--title", "BDD feature", actor="creator")
+        row = world.run(
+            "feature",
+            "add",
+            "--title",
+            "BDD feature",
+            "--ac",
+            "the feature is delivered",
+            "--assignee",
+            "developer",
+            "--reviewer",
+            "reviewer",
+            actor="creator",
+        )
     elif task_type == "story":
         feature = world.run(
             "feature", "add", "--title", "BDD parent feature", actor="creator"
@@ -21,6 +33,12 @@ def task_of_type(world: World, task_type: str) -> None:
             feature["key"],
             "--title",
             "BDD story",
+            "--ac",
+            "the story is delivered",
+            "--assignee",
+            "developer",
+            "--reviewer",
+            "reviewer",
             actor="creator",
         )
     elif task_type == "subtask":
@@ -44,6 +62,12 @@ def task_of_type(world: World, task_type: str) -> None:
             story["key"],
             "--title",
             "BDD subtask",
+            "--ac",
+            "the subtask is delivered",
+            "--assignee",
+            "developer",
+            "--reviewer",
+            "reviewer",
             actor="creator",
         )
     else:
@@ -61,6 +85,11 @@ def submit_action(world: World, action: str, actor: str) -> None:
 @when(parsers.parse('action "{action}" is submitted and rejected'))
 def submit_rejected_action(world: World, action: str) -> None:
     world.run("action", world.require_key(), action, actor="reviewer", expected=None)
+
+
+@when(parsers.parse('the acceptance criteria are verified by "{actor}"'))
+def verify_acceptance_criteria(world: World, actor: str) -> None:
+    world.verify_criteria(actor=actor)
 
 
 @then(parsers.parse('the task status is "{status}"'))

@@ -93,6 +93,7 @@ def accepted_story(world: World) -> None:
         "action", world.require_key(), "refinement.accepted", actor="reviewer"
     )
     world.run("action", world.require_key(), "work.started", actor="developer")
+    world.verify_criteria()
     world.run(
         "pr",
         "set",

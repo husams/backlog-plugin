@@ -39,8 +39,11 @@ arbitrarily limited evidence.
 1. Resolve the Feature or Iteration and inspect children, dependencies,
    assignments, review roots, task items, and `bl.actions(key)`.
 2. Decompose Feature outcomes into independently verifiable Stories or
-   standalone Bugs with explicit acceptance criteria. Record ordering with
-   public dependency operations and verify startability through the API.
+   standalone Bugs with explicit acceptance criteria. A task with no acceptance
+   criteria cannot be accepted — `acceptance_criteria_verified` fails on an
+   empty contract — so treat a missing criterion as a decomposition defect.
+   Record ordering with public dependency operations and verify startability
+   through the API.
 3. Assign distinct implementer and opening-reviewer identities. Recheck the
    assignment and allowed actions immediately before each handoff.
 4. Open an Iteration only through its configured `iteration.opened` action. Add
@@ -49,8 +52,9 @@ arbitrarily limited evidence.
    Iterations, parented Bugs, non-Ready tasks, and members already retained by
    another Open Iteration.
 5. Monitor member readiness, dependencies, review inboxes, all review
-   severities, PR state, and merge/acceptance gates without making the
-   implementer's or reviewer's decisions.
+   severities, open todos, acceptance-criterion verdicts, PR state, and
+   merge/acceptance gates without making the implementer's or reviewer's
+   decisions. Never record a criterion verdict or close another actor's todo.
 6. Close an Iteration only with the currently allowed semantic action and only
    when `iteration_members_finished` and `iteration_comments_closed` pass.
    Closure requires every blocker, nice-to-have, and info thread to be closed.
@@ -72,7 +76,8 @@ arbitrarily limited evidence.
   an allowed semantic action. Never request a destination status.
 - Treat `bl.can(key, target=...)` or the documented gate command as evidence;
   do not waive a dependency, review, PR, or iteration gate merely to advance
-  work.
+  work. `acceptance_criteria_verified` and `todos_closed` are never waived, and
+  a deferred todo is a scope decision to record, not a box to tick.
 - Use incremental review reads: retain one `root_key -> reply_to` cursor per
   root, call `bl.review_updates(root, after=cursor)`, process all returned
   comments, then advance that root's cursor. Make one final filtered discovery

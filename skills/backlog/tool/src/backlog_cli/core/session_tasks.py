@@ -3,6 +3,11 @@
 from .. import execution
 from ..db import BacklogError
 from ..types import Task
+from .acceptance import (
+    clear_verdicts as drop_verdicts,
+    list_criteria as read_criteria,
+    record_verdict as write_verdict,
+)
 from .items import add_item as insert_item, set_items as replace_items
 from .normalization import (
     normalize_item_kind,
@@ -211,6 +216,23 @@ def move_todo(self, todo_id: int, position: int) -> dict:
     return reorder_todo(
         self._conn, self.pid, todo_id, position, actor=self.actor
     )
+
+
+def acceptance_criteria(self, key: str) -> list[dict]:
+    """A task's acceptance criteria with each one's review verdict."""
+    return read_criteria(self._conn, self.pid, key)
+
+
+def verify_criterion(self, item_id: int, *, met: bool, evidence: str) -> dict:
+    """Record an independent reviewer's verdict on one acceptance criterion."""
+    return write_verdict(
+        self._conn, self.pid, item_id, met=met, evidence=evidence, actor=self.actor
+    )
+
+
+def clear_criterion_verdicts(self, key: str, *, reason: str) -> int:
+    """Drop every verdict on a task and report how many were dropped."""
+    return drop_verdicts(self._conn, self.pid, key, reason=reason, actor=self.actor)
 
 
 def task(self, key: str) -> Task:

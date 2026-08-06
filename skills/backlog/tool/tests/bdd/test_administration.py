@@ -393,7 +393,13 @@ def exercise_dependencies_and_artifacts(world: World) -> None:
         world.run("dep", "rm", source, "--blocks", target)
 
     completed = world.run(
-        "feature", "add", "--title", "Completed dependency", actor="creator"
+        "feature",
+        "add",
+        "--title",
+        "Completed dependency",
+        "--ac",
+        "the dependency is delivered",
+        actor="creator",
     )
     for action, actor in (
         ("refinement.accepted", "reviewer"),
@@ -402,6 +408,8 @@ def exercise_dependencies_and_artifacts(world: World) -> None:
         ("review.approved", "reviewer"),
         ("delivery.released", "release-manager"),
     ):
+        if action == "review.approved":
+            world.verify_criteria(completed["key"])
         world.run("action", completed["key"], action, actor=actor)
         if action == "review.approved":
             world.run("gate", completed["key"], "--for", "done")

@@ -57,7 +57,7 @@ def reply(
             f"Use `backlog review reopen {thread['root_key']}` if it must be re-litigated."
         )
 
-    role = resolve_reply_role(thread, author, role)
+    role = resolve_reply_role(thread, task, author, role, action=action)
     transition = _THREAD_TRANSITIONS.get((thread["state"], role, action))
     if transition is None and not reopen:
         allowed = sorted(
@@ -186,7 +186,7 @@ def reopen(
     if thread["state"] != "closed":
         raise BacklogError(f"thread {rk} is already open ({thread['state']})")
     task = get_task_by_id(conn, thread["task_id"])
-    resolved_role = resolve_reply_role(thread, author, role)
+    resolved_role = resolve_reply_role(thread, task, author, role)
     if resolved_role != "reviewer":
         raise BacklogError("only a reviewer can reopen a review thread")
     conn.execute(

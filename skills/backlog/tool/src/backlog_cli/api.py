@@ -82,6 +82,9 @@ class Backlog:
     close_todo = session_tasks.close_todo
     reopen_todo = session_tasks.reopen_todo
     move_todo = session_tasks.move_todo
+    acceptance_criteria = session_tasks.acceptance_criteria
+    verify_criterion = session_tasks.verify_criterion
+    clear_criterion_verdicts = session_tasks.clear_criterion_verdicts
     task = session_tasks.task
     find = session_tasks.find
     _task = session_tasks._task

@@ -19,12 +19,17 @@ STATUS       SLUG         CATEGORY  FLAGS               LEGAL NEXT (gates)
 Created      created      backlog   initial             In-complete, Ready
 In-complete  incomplete   backlog                       Accepted, Ready
 Ready        ready        ready                         In Progress (dependencies_clear)
-In Progress  in_progress  active                        In Review (pr_recorded)
+In Progress  in_progress  active                        In Review (pr_recorded + todos_closed)
 In Review    in_review    review                        Accepted (review_threads_closed +
-                                                          pr_approved + children_complete),
+                                                          pr_approved + children_complete +
+                                                          required_validations_pass +
+                                                          todos_closed +
+                                                          acceptance_criteria_verified),
                                                         Need work
-Need work    needs_work   active                        In Review (pr_recorded)
-Accepted     accepted     done      counts as finished  Done (pr_merged)
+Need work    needs_work   active                        In Review (pr_recorded + todos_closed)
+Accepted     accepted     done      counts as finished  Done (required_validations_pass +
+                                                          pr_merged + todos_closed +
+                                                          acceptance_criteria_verified)
 Done         done         done      counts as finished, terminal
 ```
 
@@ -63,6 +68,8 @@ failure **exits 1** listing which check failed and why.
 | `iteration_members_finished` | every Iteration member has reached a finished status |
 | `iteration_comments_closed` | every Iteration review thread is closed |
 | `todos_closed` | every flat implementation todo on the task is closed; failures list all open todos |
+| `acceptance_criteria_verified` | the task has at least one acceptance criterion and every one of them carries a current `met` verdict from an independent reviewer; failures name each offending criterion and its state |
+| `status_accepted` | the task has already reached `accepted` |
 
 The shipped Iteration flow is `Planned -> Open -> Closed`, driven by
 `iteration.opened`, `iteration.closed`, and `iteration.reopened`. Closing never
@@ -105,6 +112,45 @@ Story-style start gate or change Iteration state. Closure still has its own
 blocking and reports the blocking thread keys.
 
 `$BL workflow gates` prints this list live.
+
+### Acceptance criteria are verified, not ticked
+
+`todos_closed` and `acceptance_criteria_verified` guard **every** transition
+into a `done`-category status, not only the handoff into review — a todo opened
+after review started, or a criterion nobody looked at, still blocks acceptance
+and delivery.
+
+`item check` refuses an acceptance criterion by design. A reviewer records a
+verdict instead:
+
+```bash
+$BL criteria list S-004
+$BL --actor reviewer criteria verify 12 --met \
+    --evidence "ran tests/test_recovery.py::test_expiry and watched the link stay usable"
+$BL --actor reviewer criteria verify 13 --unmet --evidence "the 500 path is still unhandled"
+$BL --actor reviewer criteria clear S-004 --reason "re-reviewing after a rebase"
+```
+
+The gate fails when the task has **no** acceptance criteria at all — an empty
+list is not a satisfied list — and when any criterion is `unverified`, `unmet`,
+or `stale`. It has **no waiver flag**. The verifier must be the assigned
+reviewer, distinct from both task assignee and creator, and may record a verdict
+only while the task is in review. The evidence must be at least 10 characters
+of real content.
+
+These two checks are runtime completion invariants. A custom workflow may add
+other gates, but omitting `todos_closed` or `acceptance_criteria_verified` from
+a transition into a non-Iteration done-category status does not bypass them.
+
+A verdict is bound to the criterion wording it was given for, so editing the
+criterion makes the verdict `stale` and the gate fails again. Replacing the
+criteria deletes their verdicts, and moving work backwards out of a review or
+done status into an active, ready, or backlog status clears every verdict on
+the task — a reviewer's answer to the previous submission does not carry over
+to the next one.
+
+An Iteration is a container and carries no criteria of its own, so the gate
+reports *"not applicable to an iteration"*.
 
 A feature carries no pull request of its own, so the three PR gates report
 *"not applicable to a feature"* rather than failing — a container is finished
@@ -175,7 +221,8 @@ or subtask.
 A task is closed only when its action flow says so, and the CLI enforces every step.
 For a Story or Bug on the shipped delivery flow that means: every blocking
 review thread is closed by reviewer acceptance, the PR approved, the PR merged,
-and every child finished.
+every child finished, every implementation todo closed, and every acceptance
+criterion carrying a current `met` verdict from an independent reviewer.
 For an Iteration, the configured close action additionally requires every
 retained member to be finished and every Iteration review thread of any severity
 to be closed; the member statuses are not changed by closing. Then and only

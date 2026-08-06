@@ -210,11 +210,12 @@ $BL review severity C-003 --severity nice_to_have --author senior-developer
 
 ## Roles
 
-The reviewer is fixed when the thread opens. Every later reply automatically
-reuses that reviewer. Any other responding author is the developer and becomes
-the assignee for that reply; callers do not repeat role, reviewer, or assignee.
-Assign both sides before opening the thread so the opening reviewer is
-validated:
+The task's assigned reviewer is the only actor allowed to open a thread and is
+fixed when the thread opens. Every later reply automatically reuses that
+reviewer. Only the task's assigned implementer may send developer replies; a
+third actor cannot replace either side, and an explicit `role=` value does not
+bypass the assignment. Callers do not repeat role, reviewer, or assignee.
+Assign both sides before opening the thread:
 
 ```bash
 $BL assign S-004 --to developer --reviewer senior-developer
@@ -259,6 +260,38 @@ and, for a blocker on a Ready task, lets the workflow return the task to
 Incomplete. The same operation is available through
 `bl.review_reopen(root, author=, body=, role=)`.
 
+## Judging the acceptance criteria
+
+Closing threads is not a review. Approval also requires an explicit, attributed
+verdict on **every** acceptance criterion, and the tool enforces it: the
+`acceptance_criteria_verified` gate fails when a task records no criteria at
+all, and when any criterion is unverified, unmet, or stale. There is no waiver.
+
+```bash
+$BL criteria list S-004
+$BL --actor reviewer criteria verify 12 --met \
+    --evidence "ran tests/test_recovery.py::test_expiry and watched the link stay usable"
+$BL --actor reviewer criteria verify 13 --unmet --evidence "the 500 path is still unhandled"
+```
+
+An acceptance criterion is never ticked by the implementer — `item check`
+refuses one outright. The verifier must be the task's assigned reviewer,
+distinct from both assignee and creator, and the task must currently be in a
+review-category state. An arbitrary third actor cannot substitute.
+`--evidence` is mandatory and must be at least 10 characters of real content,
+so it names what was actually checked rather than asserting that something
+was.
+
+Record `--unmet` when a criterion genuinely fails, then request changes; the
+verdict and its evidence are logged as `criterion.unmet` in the task history
+and become the reason the implementer has to answer. Re-verifying afterwards
+overwrites the verdict and is logged in its own right.
+
+Verdicts are deliberately fragile. Editing a criterion makes its verdict stale,
+replacing the criteria deletes the verdicts outright, and sending work back out
+of review clears every verdict on the task — so a second review round starts
+from a blank sheet rather than inheriting the first one's conclusions.
+
 ## Why an item is stuck
 
 Every open `blocker` thread blocks `Accepted` for deliverable tasks.
@@ -269,8 +302,12 @@ thread stays open until the opening reviewer accepts or rejects the response:
 
 ```bash
 $BL review list S-004 --state open --severity blocker
+$BL criteria list S-004
 $BL gate S-004 --for accepted
 ```
+
+`gate --for accepted` and `--for merge` also fail on any open implementation
+todo, including one added or reopened after the task entered review.
 
 Before handoff, use `review_updates` to exhaust every known relevant root. If
 new roots could have been opened since the initial read, make exactly one final

@@ -136,6 +136,13 @@ class ExpectedSchemaTest(unittest.TestCase):
         self.assertNotIn("UNIQUE", expected["template_workflow"])
         self.assertNotIn("CHECK", expected["task_item"])
 
+    def test_shipped_ddl_declares_the_v19_acceptance_verdict_table(self):
+        expected = expected_schema()
+        self.assertEqual(
+            set(expected["acceptance_verdict"]),
+            {"item_id", "state", "actor", "evidence", "content_hash", "created_at"},
+        )
+
 
 class SchemaVersionHonestyTest(_StoreTest):
     def test_a_failing_migration_step_leaves_the_version_behind(self):
@@ -212,6 +219,21 @@ class DoctorSchemaDriftTest(_StoreTest):
         rows = self.cli("todo", "list", story["key"], json_output=True)
         self.assertEqual([r["content"] for r in rows], ["y", "x"])
         self.assertEqual([r["updated_by"] for r in rows], ["dev", "dev"])
+
+    def test_doctor_detects_and_repairs_a_missing_acceptance_verdict_table(self):
+        """AC: the v19 table participates in the same DDL verification."""
+        raw = sqlite3.connect(self.db_path)
+        raw.execute("DROP TABLE acceptance_verdict")
+        raw.commit()
+        raw.close()
+
+        broken = self.raw("doctor")
+        self.assertEqual(broken.returncode, 1)
+        self.assertIn("table acceptance_verdict is missing", broken.stdout)
+
+        repaired = self.raw("doctor", "--repair")
+        self.assertEqual(repaired.returncode, 0, repaired.stdout + repaired.stderr)
+        self.assertIn("OK", repaired.stdout)
 
     def test_repair_on_a_healthy_store_changes_nothing(self):
         first = self.raw("doctor", "--repair")

@@ -10,6 +10,13 @@ OPEN_STATUSES = {
 }
 ACTIONABLE_BY_DEV = {"ready", "in_progress", "needs_work"}
 
+from .acceptance import (
+    clear_verdicts,
+    content_hash,
+    criteria_state,
+    list_criteria,
+    record_verdict,
+)
 from .artifacts import add_artifact, list_artifacts
 from .checks import Check, GATE_TARGETS, normalize_gate, run_checks
 from .gates import gate

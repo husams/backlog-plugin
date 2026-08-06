@@ -19,6 +19,7 @@ from .upgrades import (
     seed_missing_workflows,
     upgrade_bug_task_constraint,
     upgrade_bug_template_workflows,
+    upgrade_completion_gates,
     upgrade_feature_review_flow,
     upgrade_iteration_feedback_flow,
     upgrade_iteration_retrospective_action_gate,
@@ -77,6 +78,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
     v15                     -> v16 (task creator attribution and separation)
     v16                     -> v17 (Iteration retrospective-action closure gate)
     v17                     -> v18 (ordered todos and review-submission gate)
+    v18                     -> v19 (acceptance-criteria verdicts and completion gates)
     """
     notes: list[str] = []
     if from_version >= 3 or not conn.table_exists("feature"):
@@ -123,6 +125,7 @@ def migrate(conn: Conn, from_version: int, spec: StoreSpec) -> list[str]:
         notes += upgrade_feature_review_flow(conn)
         notes += upgrade_todo_review_gates(conn)
         notes += upgrade_required_validation_gates(conn)
+        notes += upgrade_completion_gates(conn)
         _resync_sequences(conn)
         # Last, and only once every step above has applied: a step that raises
         # leaves the recorded version behind so the next invocation retries it

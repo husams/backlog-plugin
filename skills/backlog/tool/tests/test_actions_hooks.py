@@ -129,6 +129,19 @@ def post_transition(
 
     def test_action_pr_lifecycle_and_hooks(self):
         self.run_cli("story", "add", "--title", "Action lifecycle")
+        self.run_cli(
+            "assign", "S-001", "--to", "developer", "--reviewer", "reviewer"
+        )
+        criterion = self.run_cli(
+            "item",
+            "add",
+            "S-001",
+            "--kind",
+            "acceptance_criteria",
+            "--content",
+            "the lifecycle reaches Done",
+            json_output=True,
+        )[0]
 
         blocked = self.run_cli(
             "action",
@@ -144,7 +157,7 @@ def post_transition(
         self.run_cli("action", "S-001", "refinement.accepted")
         self.assertEqual(self.status("S-001"), "ready")
 
-        self.run_cli("action", "S-001", "work.started")
+        self.run_cli("action", "S-001", "work.started", "--actor", "developer")
         self.assertEqual(self.status("S-001"), "in_progress")
 
         self.run_cli(
@@ -158,6 +171,16 @@ def post_transition(
         )
         self.assertEqual(self.status("S-001"), "in_review")
 
+        self.run_cli(
+            "--actor",
+            "reviewer",
+            "criteria",
+            "verify",
+            str(criterion["id"]),
+            "--met",
+            "--evidence",
+            "walked the whole action lifecycle end to end",
+        )
         self.run_cli("pr", "set", "S-001", "--review-state", "approved")
         self.assertEqual(self.status("S-001"), "accepted")
 
@@ -221,6 +244,9 @@ transitions:
             ["blocker", "nice_to_have", "info"],
         )
         self.run_cli("feature", "add", "--title", "Severity")
+        self.run_cli(
+            "assign", "F-001", "--to", "developer", "--reviewer", "reviewer"
+        )
         self.run_cli("action", "F-001", "refinement.accepted")
         self.run_cli("action", "F-001", "work.started")
         self.run_cli("action", "F-001", "review.submitted")
@@ -312,14 +338,14 @@ transitions:
             "reply",
             opened["reply_to"],
             "--author",
-            "replacement-developer",
+            "original-developer",
             "--action",
             "fix",
             "--body",
             "Simplified through the public API.",
             json_output=True,
         )
-        self.assertEqual(reply["last_comment"]["assignee"], "replacement-developer")
+        self.assertEqual(reply["last_comment"]["assignee"], "original-developer")
         self.assertEqual(reply["last_comment"]["reviewer"], "opening-reviewer")
 
         impostor = self.run_cli_raw(
@@ -377,7 +403,7 @@ transitions:
                 self.assertEqual(
                     [comment.key for comment in initial], ["C-001", "C-002"]
                 )
-                self.assertEqual(initial[-1].assignee, "replacement-developer")
+                self.assertEqual(initial[-1].assignee, "original-developer")
                 self.assertEqual(initial[-1].reviewer, "opening-reviewer")
                 self.assertEqual(
                     bl.review_updates(opened["root"], after=initial[-1].key), []

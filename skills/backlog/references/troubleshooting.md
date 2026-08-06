@@ -97,14 +97,15 @@ The error prints the loop. One of those edges is wrong — decide which and drop
 it with `$BL dep rm`. Do not invert an edge to dodge the message; that just
 moves the false claim somewhere else.
 
-## `cannot infer role`
+## `review participant is not assigned`
 
-The comment author matches neither the item's `assignee` nor its `reviewer`.
-Either fix the assignment or state the role:
+Review opening and developer replies are bound to the task's assigned
+reviewer and implementer. Fix the assignment rather than substituting an
+identity or forcing a role:
 
 ```bash
 $BL assign <KEY> --to developer --reviewer senior-developer
-$BL review reply C-003 --author qa-engineer --role reviewer --action reject --body "..."
+$BL review reply C-003 --author developer --action fix --body "..."
 ```
 
 ## `thread ... is closed`

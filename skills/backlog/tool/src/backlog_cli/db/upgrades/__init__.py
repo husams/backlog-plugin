@@ -9,6 +9,7 @@ from .tasks import (
 )
 from .workflows import (
     upgrade_bug_template_workflows,
+    upgrade_completion_gates,
     upgrade_feature_review_flow,
     upgrade_iteration_feedback_flow,
     upgrade_iteration_retrospective_action_gate,

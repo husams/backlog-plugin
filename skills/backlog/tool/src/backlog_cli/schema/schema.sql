@@ -245,6 +245,20 @@ CREATE TABLE IF NOT EXISTS executable_item (
     updated_at       TEXT NOT NULL
 );
 
+-- An acceptance criterion is proven by review, never by an implementer's tick,
+-- so its verification state lives here rather than in `task_item.done`: one
+-- attributed, evidence-bearing verdict per criterion. `content_hash` records
+-- the criterion text the verdict was given for, so editing the criterion makes
+-- the verdict stale instead of silently inheriting it.
+CREATE TABLE IF NOT EXISTS acceptance_verdict (
+    item_id      INTEGER PRIMARY KEY REFERENCES task_item(id) ON DELETE CASCADE,
+    state        TEXT NOT NULL CHECK (state IN ('met','unmet')),
+    actor        TEXT NOT NULL,
+    evidence     TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at   TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS execution_result (
     id                       INTEGER PRIMARY KEY AUTOINCREMENT,
     item_id                  INTEGER NOT NULL REFERENCES task_item(id) ON DELETE CASCADE,

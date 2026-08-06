@@ -6,9 +6,41 @@ from typing import Any
 
 from .. import workflow
 from ..db import BacklogError, Conn, Row, log_event, require_backlog_dir, utcnow
+from .acceptance import discard_verdicts
 from .checks import Check, run_checks
-from .normalization import require_independent_actor
+from .normalization import require_actor, require_independent_actor
 from .task_queries import get_task, get_task_by_id
+
+# Categories work leaves, and categories it is sent back into. Expressed as
+# categories rather than slugs because the status vocabulary is per-project
+# data: a project may call `needs_work` anything it likes.
+_REVIEWED_CATEGORIES = ("review", "done")
+_ACTIVE_CATEGORIES = ("active", "ready", "backlog")
+_REVIEWER_ACTIONS = {
+    "review.approved",
+    "review.changes_requested",
+    "delivery.accepted",
+    "delivery.rejected",
+}
+
+
+def _require_reviewer_action(task: Row, action: str, actor: str | None) -> str | None:
+    if action not in _REVIEWER_ACTIONS:
+        return actor
+    identity = require_actor(actor, action)
+    reviewer = task["reviewer"]
+    if not reviewer:
+        raise BacklogError(f"{task['key']} has no assigned reviewer for {action}")
+    if identity.casefold() != reviewer.strip().casefold():
+        raise BacklogError(
+            f"{identity} is not the assigned reviewer for {task['key']}; "
+            f"only {reviewer} may perform {action}"
+        )
+    if task["assignee"] and identity.casefold() == task["assignee"].strip().casefold():
+        raise BacklogError(f"{identity} implements {task['key']} and cannot perform {action}")
+    if task["created_by"] and identity.casefold() == task["created_by"].strip().casefold():
+        raise BacklogError(f"{identity} created {task['key']} and cannot perform {action}")
+    return identity
 
 
 def _transition(
@@ -79,7 +111,15 @@ def _transition(
             f"(`backlog workflow show --type {task['task_type']}` prints this project's flow)"
         )
 
-    names = wf.gates_for(current, target)
+    names = list(wf.gates_for(current, target))
+    # These are lifecycle invariants, not optional workflow decoration. A
+    # custom workflow may add checks, but it cannot remove the two evidence
+    # gates that prevent unfinished work or an unreviewed contract from being
+    # claimed as delivered.
+    if task["task_type"] != "iteration" and wf.category(target) == "done":
+        for required in ("todos_closed", "acceptance_criteria_verified"):
+            if required not in names:
+                names.append(required)
     checks = run_checks(
         conn,
         project_id,
@@ -103,6 +143,20 @@ def _transition(
         "UPDATE task SET status = ?, updated_at = ?, closed_at = ? WHERE id = ?",
         (target, ts, closed, task["id"]),
     )
+    # Work sent back out of review re-opens the question a reviewer already
+    # answered, so no acceptance verdict recorded against the previous
+    # submission survives the move.
+    if (
+        wf.category(current) in _REVIEWED_CATEGORIES
+        and wf.category(target) in _ACTIVE_CATEGORIES
+    ):
+        discard_verdicts(
+            conn,
+            project_id,
+            task,
+            actor=actor,
+            reason=f"{wf.display(current)} -> {wf.display(target)}",
+        )
     log_event(
         conn,
         "status",
@@ -140,6 +194,7 @@ def trigger_action(
 
     task = get_task(conn, project_id, key)
     action = hooks.normalize_action(action)
+    actor = _require_reviewer_action(task, action.value, actor)
     if action is hooks.Action.REFINEMENT_ACCEPTED:
         actor = require_independent_actor(
             task["key"], task["created_by"], actor, "refinement.accepted"

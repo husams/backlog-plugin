@@ -128,6 +128,21 @@ def deps_block(conn: Conn, task_id: int, indent: str = "  ") -> list[str]:
     return out
 
 
+def verdict_text(conn: Conn, item: dict) -> str:
+    """`met by claude` — the review verdict on one acceptance criterion."""
+    from .core import content_hash
+
+    row = conn.execute(
+        "SELECT state, actor, content_hash FROM acceptance_verdict WHERE item_id = ?",
+        (item["id"],),
+    ).fetchone()
+    if row is None:
+        return "unverified"
+    if row["content_hash"] != content_hash(item["content"]):
+        return f"unverified (stale verdict by {row['actor']})"
+    return f"{row['state']} by {row['actor']}"
+
+
 def items_block(items: list[Row], conn: Conn, indent: str = "  ") -> list[str]:
     if not items:
         return []
@@ -146,8 +161,10 @@ def items_block(items: list[Row], conn: Conn, indent: str = "  ") -> list[str]:
         if it["kind"] == "todo":
             box = f"{it['position']:>3} {box}"
         suffix = ""
+        if it["kind"] == "acceptance_criteria":
+            suffix = f"  [{verdict_text(conn, it)}]"
         if it.get("executor") and it["executor"] != "plain":
-            suffix = f"  [{it['executor']}, {it['requirement']}, {it['state']}]"
+            suffix += f"  [{it['executor']}, {it['requirement']}, {it['state']}]"
         out.append(f"{indent}  #{it['id']:<4} {box}{it['content']}{suffix}")
         spec = it.get("execution_spec")
         if spec and spec.get("shell"):

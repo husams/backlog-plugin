@@ -13,7 +13,10 @@ Feature: Task state machines
     Then the task status is "in_progress"
     When action "work.completed" is submitted by "developer"
     Then the task status is "in_review"
-    When action "review.approved" is submitted by "reviewer"
+    When action "review.approved" is submitted and rejected
+    Then the command reports the "acceptance_criteria_verified" gate
+    When the acceptance criteria are verified by "reviewer"
+    And action "review.approved" is submitted by "reviewer"
     Then the task status is "accepted"
     When the task delivery is finalized
     Then the task status is "done"

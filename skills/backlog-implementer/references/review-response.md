@@ -44,10 +44,30 @@ After responding, return the ball to the opening reviewer. Do not accept it,
 approve the PR, or merge. Only the opening reviewer may decide the response and
 the configured workflow may decide the task transition.
 
+## Rework resets acceptance verdicts
+
+Work that returns for changes loses its acceptance evidence. The reviewer's
+criterion verdicts are cleared when the task moves backwards out of review into
+active work, when the criteria themselves are rewritten, and explicitly through
+`bl.clear_criterion_verdicts`. A criterion whose text changed after its verdict
+is `stale` and counts as unverified.
+
+That reset is not a setback to work around. Before resubmitting:
+
+- close every reopened and newly added todo, so `bl.todos(key)` is empty again;
+- re-run the required executable items so each has a current `pass` for the
+  current spec fingerprint;
+- restate which evidence proves which acceptance criterion, including the
+  criteria that were previously accepted — the reviewer must verify all of them
+  again.
+
+Never call `bl.verify_criterion` to restore a cleared verdict. Verification is
+reviewer-owned and the API rejects this actor's identity.
+
 ## New findings and handoff
 
 If a response introduces a regression, the reviewer—not the implementer—must
 open a new blocker with the causal explanation. The implementer then answers
 that new root with the same severity-independent rules. Before handoff, ensure
-no known root is still awaiting the implementer and submit only a currently
-allowed semantic review action.
+no known root is still awaiting the implementer, `bl.todos(key)` holds no open
+todo, and submit only a currently allowed semantic review action.

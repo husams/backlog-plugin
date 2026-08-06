@@ -38,6 +38,13 @@ decision before acceptance. After every blocker is reviewer-accepted, the
 review subsystem emits the
 aggregate `feedback.resolved` workflow action.
 
+Acceptance is also evidence-gated: every non-Iteration task needs at least one
+criterion, and only its assigned reviewer may record a current, evidence-bearing
+verdict while the task is in review. The reviewer must be distinct from both
+the implementer and the creator. Open todos and missing or
+stale criterion verdicts cannot be waived, and custom workflows cannot remove
+those completion invariants.
+
 If a reviewer opens a new blocker or reopens an accepted blocker with a reply,
 the shipped workflow invalidates readiness and transitions `Ready` back to
 `Incomplete`. The Python API exposes this as `review_reopen(...)`.

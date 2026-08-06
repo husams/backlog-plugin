@@ -81,6 +81,21 @@ configured for that task's current state. A gate can be waived deliberately
 (`--no-pr`, `--allow-blocked`, `--allow-open-subtasks`) and `doctor` reports
 the waiver afterwards, so an override stays visible.
 
+Two gates guard every transition into a finished status and neither has a
+waiver: `todos_closed` and `acceptance_criteria_verified`. The second requires
+the task to record at least one acceptance criterion and every one of them to
+carry a current `met` verdict from an actor who is neither the task's assignee
+nor its creator. Criteria are never ticked — `item check` refuses one. Record
+the verdict with evidence instead:
+
+```bash
+$BL criteria list S-004
+$BL --actor reviewer criteria verify 12 --met --evidence "how it was actually checked"
+```
+
+See [references/workflow.md](references/workflow.md) and
+[references/review.md](references/review.md).
+
 ## Hard rules
 
 Review work has exactly two accountable roles: the **implementer**, who must
@@ -178,9 +193,9 @@ treat a recorded acceptance alone as evidence that a person verified the fix.
     long narratives or a bare statement such as "fixed" are not sufficient.
 15. **Thread resolution is reviewer-owned.** Only the reviewer who opened the
     thread may accept or reject a developer response. The API reuses that
-    reviewer automatically and treats any other responding author as the
-    developer/assignee for that reply. Callers MUST NOT repeat or alter role,
-    reviewer, or assignee metadata. Never submit a
+    reviewer automatically; only the task's assigned implementer may send the
+    developer reply. A third actor cannot substitute for either side. Callers
+    MUST NOT repeat or alter role, reviewer, or assignee metadata. Never submit a
     `feedback.*` task action. The review subsystem emits `feedback.resolved`
     only after every blocker has reviewer acceptance; until then, leave the
     task status unchanged.
@@ -192,6 +207,8 @@ treat a recorded acceptance alone as evidence that a person verified the fix.
     includes advisory and informational feedback. A reviewer MUST NOT leave a
     response pending, silently abandon a thread, or substitute a neutral
     comment for a decision.
+    The thread opener must be the task's assigned reviewer, distinct from both
+    creator and implementer; an explicit `role=` value never overrides this.
 17. **Reviewers MUST leave the story or feature in a decisive state.** A review
     ends only when the reviewer either accepts the changes through the
     configured semantic action, or leaves explicit advisory/blocker threads
@@ -276,6 +293,8 @@ $BL review inbox --actor claude
 $BL review reply C-003 --author claude --action fix --body "Fixed in a1b2c3d"
 $BL review reply C-004 --author husam --action accept --body "Confirmed"
 
+$BL criteria list S-004
+$BL --actor husam criteria verify 12 --met --evidence "ran the suite and watched it pass"
 $BL pr set S-004 --review-state approved
 $BL gate S-004 --for merge                        # exit 0 => merging is allowed
 # ...merge the PR...

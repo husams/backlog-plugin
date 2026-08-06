@@ -249,29 +249,54 @@ transitions:
     from: in_review
     action: review.approved
     to: accepted
-    gates: [review_threads_closed, children_complete, required_validations_pass]
+    gates:
+      - review_threads_closed
+      - children_complete
+      - required_validations_pass
+      - todos_closed
+      - acceptance_criteria_verified
 
   - task_types: [feature, story, bug, subtask]
     from: in_review
     action: delivery.accepted
     to: accepted
-    gates: [review_threads_closed, children_complete, required_validations_pass]
+    gates:
+      - review_threads_closed
+      - children_complete
+      - required_validations_pass
+      - todos_closed
+      - acceptance_criteria_verified
 
   - task_types: [story, bug, subtask]
     from: in_review
     action: pr.approved
     to: accepted
-    gates: [review_threads_closed, children_complete, required_validations_pass]
+    gates:
+      - review_threads_closed
+      - children_complete
+      - required_validations_pass
+      - todos_closed
+      - acceptance_criteria_verified
 
   # Delivery completed
   - task_types: [feature]
     from: accepted
     action: delivery.released
     to: done
-    gates: [children_complete, required_validations_pass]
+    gates:
+      - children_complete
+      - required_validations_pass
+      - todos_closed
+      - acceptance_criteria_verified
 
   - task_types: [story, bug, subtask]
     from: accepted
     action: pr.merged
     to: done
-    gates: [review_threads_closed, children_complete, required_validations_pass, pr_merged]
+    gates:
+      - review_threads_closed
+      - children_complete
+      - required_validations_pass
+      - pr_merged
+      - todos_closed
+      - acceptance_criteria_verified

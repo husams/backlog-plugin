@@ -274,7 +274,7 @@ class IterationTaskIntegrationTest(unittest.TestCase):
             "--assignee",
             "developer",
             "--reviewer",
-            "assigned-reviewer",
+            "opening-reviewer",
         )
 
         roots = []

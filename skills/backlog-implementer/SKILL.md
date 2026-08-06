@@ -30,9 +30,57 @@ arbitrarily limited evidence.
   `refinement.accepted` for work this actor will implement, even when this
   actor created the task. If refinement is not independently attributed, stop
   and report the missing refiner.
-- Never approve a review response, perform reviewer-owned final acceptance, or
-  merge this actor's own work. Preserve unrelated changes and the accepted
-  scope.
+- Never approve a review response, record an acceptance-criterion verdict,
+  perform reviewer-owned final acceptance, or merge this actor's own work.
+  Preserve unrelated changes and the accepted scope.
+
+## Worktree and file boundary
+
+- Work only in the implementation worktree established for the assigned task.
+  Resolve its repository root before inspecting or changing files; never follow
+  a path into another checkout, the user home, a sibling repository, or a
+  mounted secret/configuration directory.
+- Derive the writable file set from the accepted criteria and task evidence.
+  Modify only files required to satisfy that contract. Do not perform broad
+  formatting, dependency refreshes, generated-file rewrites, or cleanup outside
+  that set merely because the files are nearby.
+- Treat pre-existing modified and untracked files as user-owned. Record the
+  initial changed-file list, do not overwrite or delete those files, and stop
+  for coordination if the task cannot be completed without touching one.
+- Never modify `.backlog/`, Backlog skill/runtime files, review records,
+  credentials, tokens, keychains, environment files, or repository policy in
+  order to make the implementation or its gates pass. Backlog mutations go
+  only through the documented public API.
+- Before handoff, compare the final changed-file list with the accepted scope.
+  Revert only files this implementation created or changed and that are proven
+  out of scope; never discard pre-existing user work. Report any unavoidable
+  extra path instead of hiding it.
+
+## Hand off only when the work is actually finished
+
+These conditions are non-negotiable and are checked by the tool, not inferred.
+
+1. `bl.todos(key)` must return zero open todos before the review-submission
+   action. `todos_closed` gates the move into review and every later
+   acceptance and done transition, so a deferred todo blocks the whole
+   remaining lifecycle.
+2. Close a todo only when its work is genuinely done and evidenced. To defer
+   work, remove the todo's premise by raising the scope change with the
+   coordinator; never close a todo falsely and never leave one open at handoff.
+3. Never open a new todo to defer a criterion the review depends on, and never
+   submit the review-handoff action while any todo is open.
+4. Implement every acceptance criterion and leave evidence the reviewer can
+   check independently. State in the handoff which evidence proves which
+   criterion — file and line, test name, or validation result.
+5. Never call `bl.verify_criterion`. Acceptance verdicts are reviewer-owned and
+   the API rejects this actor's identity; do not attempt it and do not
+   substitute another identity.
+6. When work returns for rework, expect the reviewer's criterion verdicts to
+   have been cleared. Close every reopened and newly added todo, re-run the
+   required validations, and resubmit only after both are current.
+7. Re-check `bl.can(key, target="in_review")` and `bl.actions(key)` immediately
+   before handoff. Report every `gate.failures` entry instead of routing around
+   it.
 
 ## Delivery workflow
 
@@ -44,7 +92,9 @@ arbitrarily limited evidence.
    through `bl.trigger(...)`. Never request or assign a destination status.
    Re-read actions before every later state change and submit only the action
    the configured workflow exposes.
-3. Implement every acceptance criterion within the task's scope. Use normal
+3. Implement every acceptance criterion within the task's scope. Track flat
+   steps with `bl.add_todo(s)` and close each one with `bl.close_todo(id)` as
+   its work actually lands, not in a batch at handoff. Use normal
    repository inspection and repository-native tests; do not inspect or copy
    lifecycle implementation from the Backlog launchers, runtime internals, or
    operational scripts.
@@ -57,12 +107,14 @@ arbitrarily limited evidence.
    remain visible but do not satisfy the required gate. See
    [validation-and-gates.md](references/validation-and-gates.md).
 5. Record a concise implementation/validation summary as a Backlog task note
-   (`bl.add_item(key, "note", body)`). Do not turn review feedback into a note
+   (`bl.add_item(key, "note", body)`), mapping each acceptance criterion to the
+   evidence that proves it. Do not turn review feedback into a note
    or artifact. Add an artifact only when the user explicitly requests a
    durable file, report, patch, or other attachment.
-6. Before handoff, recheck actions, validation state, and the merge/acceptance
-   gate. Use the allowed review-submission semantic action; do not infer its
-   destination. Follow [delivery-api.md](references/delivery-api.md).
+6. Before handoff, recheck actions, `bl.todos(key)`, validation state, and the
+   merge/acceptance gate. Use the allowed review-submission semantic action; do
+   not infer its destination. Follow
+   [delivery-api.md](references/delivery-api.md).
 
 ## Independent review loop
 

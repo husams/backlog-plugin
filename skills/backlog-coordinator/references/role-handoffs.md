@@ -27,19 +27,24 @@ invent a fallback role.
 
 ## Handoff contract
 
-Before handing work to an implementer, verify the task is assigned, Ready, and
-startable. The implementer starts only with an allowed `work.started` action,
-records current validation evidence, and answers every review root at blocker,
-nice-to-have, and info severity. The coordinator may inspect those responses
-and the opening reviewer's decisions but must not supply either decision.
+Before handing work to an implementer, verify the task is assigned, Ready,
+startable, and carrying at least one acceptance criterion. The implementer
+starts only with an allowed `work.started` action, records current validation
+evidence, closes every todo before submitting for review, and answers every
+review root at blocker, nice-to-have, and info severity. The coordinator may
+inspect those responses and the opening reviewer's decisions but must not
+supply either decision.
 
 Before handing work to the reviewer, use one narrowly filtered inbox read for
 the task and reviewer role. Retain `root_key -> reply_to`; use
 `bl.review_updates(root, after=last_seen)` for known roots, advancing only
 after all updates are processed. Make one final filtered discovery read for
 previously unseen roots. The opening reviewer accepts or rejects every
-implementer response and ends through the configured approval or
-changes-requested action.
+implementer response, records an evidenced `bl.verify_criterion` verdict for
+every acceptance criterion, and ends through the configured approval or
+changes-requested action. Verdict recording belongs to the opening reviewer
+alone; the coordinator neither supplies nor requests a substitute identity for
+it.
 
 ## Evidence and gates
 

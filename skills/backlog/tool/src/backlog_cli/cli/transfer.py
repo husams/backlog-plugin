@@ -37,6 +37,7 @@ _EXPORT_TABLES: list[tuple[str, str]] = [
     ("retrospective_action", "id"),
     ("task_item", "id"),
     ("executable_item", "item_id"),
+    ("acceptance_verdict", "item_id"),
     ("execution_result", "id"),
     ("validation_waiver", "id"),
     ("dependency", "id"),

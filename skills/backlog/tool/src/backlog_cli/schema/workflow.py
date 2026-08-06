@@ -23,6 +23,8 @@ GATE_CHECKS = [
     "required_validations_pass",  # required executable items have a fresh pass
     "iteration_members_finished",  # every Iteration member is finished
     "todos_closed",  # no implementation todo remains open
+    "acceptance_criteria_verified",  # every criterion carries a current met verdict
+    "status_accepted",  # the task is already Accepted
 ]
 
 GATE_DESCRIPTIONS = {
@@ -39,6 +41,11 @@ GATE_DESCRIPTIONS = {
     "required_validations_pass": "every required executable item has a fresh passing result",
     "iteration_members_finished": "every Iteration member has reached a finished status",
     "todos_closed": "every implementation todo is closed",
+    "acceptance_criteria_verified": (
+        "every acceptance criterion carries a current met verdict from an "
+        "independent reviewer (no waiver)"
+    ),
+    "status_accepted": "the task has already been accepted",
 }
 
 # The workflow every new project starts with: today's behaviour, expressed as
@@ -66,12 +73,18 @@ DEFAULT_TRANSITIONS = {
         (
             "in_review",
             "accepted",
-            "review_threads_closed,pr_approved,children_complete,required_validations_pass",
+            "review_threads_closed,pr_approved,children_complete,"
+            "required_validations_pass,todos_closed,acceptance_criteria_verified",
         ),
         ("in_review", "needs_work", ""),
         ("needs_work", "in_progress", ""),
         ("accepted", "needs_work", ""),
-        ("accepted", "done", "required_validations_pass,pr_merged"),
+        (
+            "accepted",
+            "done",
+            "required_validations_pass,pr_merged,todos_closed,"
+            "acceptance_criteria_verified",
+        ),
     ],
     # Features use the same delivery states but carry no pull request gates.
     "feature": [
@@ -85,10 +98,16 @@ DEFAULT_TRANSITIONS = {
         (
             "in_review",
             "accepted",
-            "review_threads_closed,children_complete,required_validations_pass",
+            "review_threads_closed,children_complete,required_validations_pass,"
+            "todos_closed,acceptance_criteria_verified",
         ),
         ("accepted", "needs_work", ""),
-        ("accepted", "done", "children_complete,required_validations_pass"),
+        (
+            "accepted",
+            "done",
+            "children_complete,required_validations_pass,todos_closed,"
+            "acceptance_criteria_verified",
+        ),
     ],
 }
 DEFAULT_TRANSITIONS["subtask"] = DEFAULT_TRANSITIONS["story"]

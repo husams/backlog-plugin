@@ -97,7 +97,9 @@ status. `next --iteration I-001` and `board --iteration I-001` select only
 eligible member work from that Open Iteration; generic selection remains
 unscoped. `--ac` replaces the acceptance criteria, one per line.
 Assignee and reviewer names are free text — the human/agent kind is guessed
-from the name and shown with a `*` on agents.
+from the name and shown with a `*` on agents. They must be distinct, the
+reviewer must differ from the creator, and review feedback/verdicts are bound
+to those assigned identities.
 
 There is no agent-facing command that accepts a destination status. Status
 changes only when a semantic action resolves through the configured workflow.
@@ -161,10 +163,34 @@ Shell options are `--working-directory`, `--expected-exit-code`,
 `--arguments JSON` and `--expected-result JSON`. Executable input must contain
 one non-empty line; existing multi-line plain syntax is unchanged.
 
+`item check` refuses an acceptance criterion: criteria are proven by review,
+not by a tick. Use `criteria verify` below.
+
 `item list` and `show` display plain/shell/hook, required/advisory, and
-`pending` before the first run. Commands, matcher values, hook arguments,
+`pending` before the first run. An acceptance criterion additionally shows its
+review verdict. Commands, matcher values, hook arguments,
 expected hook values, and environment values are hidden in text and JSON;
 environment variable names remain visible.
+
+## Acceptance criteria — reviewer verdicts
+
+```bash
+$BL criteria list KEY
+$BL --actor reviewer criteria verify ID --met|--unmet --evidence "how it was checked"
+$BL --actor reviewer criteria clear KEY --reason "why the verdicts no longer hold"
+```
+
+`criteria list` prints each criterion's zero-based position, id, state
+(`unverified`, `met`, or `unmet`), verdict author, evidence, and whether the
+verdict is stale. `--evidence` is mandatory and must be at least 10 characters
+of real content; the actor must be the assigned reviewer, must differ from the
+task's assignee and creator, and may record the verdict only while the task is
+in review.
+
+The `acceptance_criteria_verified` gate guards every transition into a
+finished status and has no waiver. It fails when a task records no acceptance
+criteria at all, and when any criterion is unverified, unmet, or stale. See
+[workflow.md](workflow.md).
 
 ## Lightweight todos
 
@@ -183,7 +209,9 @@ $BL todo move 12 --position 0 --actor developer
 Every todo is created open. Moving one preserves every todo's state and rewrites
 positions to a deterministic contiguous sequence. `review.submitted` and the
 other shipped review-entry actions fail the `todos_closed` gate while any todo
-is open; the diagnostic lists every remaining ID and content.
+is open; the diagnostic lists every remaining ID and content. The same gate
+guards acceptance and delivery, so a todo added or reopened after the handoff
+into review blocks the task from being accepted or completed.
 
 ## Status and gates
 

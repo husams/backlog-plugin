@@ -105,6 +105,9 @@ assertion, not cryptographic authentication.
 | `bl.todos(key)` | ordered todo dictionaries with state and attribution |
 | `bl.close_todo(id)` / `bl.reopen_todo(id)` | persist an attributed state change |
 | `bl.move_todo(id, position)` | move a todo to a zero-based contiguous position without changing state |
+| `bl.acceptance_criteria(key)` | every acceptance criterion with its review verdict |
+| `bl.verify_criterion(item_id, met=, evidence=)` | record an independent reviewer's verdict; evidence is mandatory |
+| `bl.clear_criterion_verdicts(key, reason=)` | drop every verdict on a task and return how many were dropped |
 | `bl.run_item(item_id, project_root, policy=None, actor=None)` | execute one shell or hook item under trusted local policy |
 | `bl.run_task(key, project_root, fail_fast=False, policy=None, actor=None)` | execute all executable items in declaration order |
 | `bl.execution_history(item_id, limit=20, project_root=None)` | bounded newest-first result history with stale metadata |
@@ -301,6 +304,7 @@ actor remain unattributed and operable.
 | `t.items(kind=None)` | criteria / checklist / notes / todos as strings |
 | `t.item_details(kind=None)` | plain/executable items with declarations, requirement and state |
 | `t.todos` | the same ordered public todo view as `bl.todos(t.key)` |
+| `t.acceptance_criteria` | the same verdict-bearing view as `bl.acceptance_criteria(t.key)` |
 | `t.open_threads` | root keys of open review threads |
 
 `str(task)` is `KEY  status  title`.
@@ -310,6 +314,46 @@ Todo dictionaries expose `id`, `task_key`, zero-based `position`, `content`,
 and `updated_at`. Batch creation validates the complete input before inserting
 anything. Unknown tasks or todos, non-todo item IDs, invalid positions, and
 duplicate close/reopen operations fail without changing order or state.
+
+## Acceptance criteria and reviewer verdicts
+
+An acceptance criterion is proven by review, never by an implementer's tick, so
+it is not tickable through `item check`. What a reviewer records instead is an
+attributed verdict carrying the evidence they judged it on.
+
+```python
+with api.open(actor="reviewer") as bl:
+    for criterion in bl.acceptance_criteria("S-004"):
+        if criterion["state"] != "met":
+            bl.verify_criterion(
+                criterion["id"],
+                met=True,
+                evidence="ran tests/test_recovery.py::test_expiry and watched the link stay usable",
+            )
+```
+
+Criterion dictionaries expose `id`, `task_key`, zero-based `position`,
+`content`, `state` (`unverified`, `met`, or `unmet`), `verdict_by`,
+`verdict_at`, `evidence`, and `stale`.
+
+- `verify_criterion` requires the session actor to be the task's assigned
+  reviewer, distinct from both assignee and creator. Verdicts are accepted only
+  while the task is in a review-category state; another third-party identity
+  cannot substitute for the assigned reviewer.
+- `evidence` must be at least 10 characters of real content after stripping.
+  `"ok"` is rejected.
+- Re-verifying overwrites the previous verdict and is logged as its own
+  `criterion.met` / `criterion.unmet` event.
+- A verdict is bound to the criterion text it was given for. Editing the
+  criterion sets `stale`, and a stale verdict counts as `unverified`.
+- Replacing the criteria with `set_items` deletes their verdicts outright, and
+  moving a task backwards out of a review or done status into an active, ready,
+  or backlog status clears every verdict on it.
+- Reassigning either the implementer or reviewer also clears existing verdicts,
+  because the recorded decision belonged to the previous role pairing.
+
+`acceptance_criteria_verified` is the gate that reads this state, and it has no
+waiver flag. See [workflow.md](workflow.md).
 
 ## Gate
 
@@ -339,8 +383,9 @@ The result is `list[ReviewComment]` ordered oldest-to-newest; an empty list
 means nothing changed.
 Each comment exposes `key`, `root_key`, `parent_key`, `author`, `assignee`,
 `reviewer`, `role`, `action`, `body`, `file`, `line`, and `created_at`.
-`reviewer` is inherited from the thread opener. For a developer reply,
-`assignee` is the responding author.
+`reviewer` is inherited from the assigned reviewer who opened the thread. For
+a developer reply, `assignee` is the task's assigned implementer; substitute
+actors are rejected.
 
 For multiple already-known threads, process updates in code and print only
 threads that actually changed:

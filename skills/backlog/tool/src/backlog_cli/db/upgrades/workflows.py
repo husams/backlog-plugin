@@ -222,3 +222,47 @@ def upgrade_todo_review_gates(conn: Conn) -> list[str]:
             changed += 1
     conn.commit()
     return [f"added todo review gate to {changed} transition(s)"] if changed else []
+
+
+def upgrade_completion_gates(conn: Conn) -> list[str]:
+    """Gate every existing transition into a finished state on todos and criteria.
+
+    Reaching a done-category status is the moment work is claimed to be
+    delivered, so both questions have to be answered there rather than only on
+    the way into review, where the answers can still change afterwards. An
+    Iteration is a container and carries neither, so its flows are left alone.
+    """
+    gates_wanted = ("todos_closed", "acceptance_criteria_verified")
+    changed = 0
+    for workflow_table, status_table, transition_table, fk in (
+        (
+            "template_workflow",
+            "template_status",
+            "template_transition",
+            "template_workflow_id",
+        ),
+        ("workflow", "workflow_status", "workflow_transition", "workflow_id"),
+    ):
+        transitions = conn.execute(
+            f"SELECT tr.id,tr.gates FROM {transition_table} tr "
+            f"JOIN {workflow_table} w ON w.id=tr.{fk} "
+            f"JOIN {status_table} target ON target.{fk}=tr.{fk} "
+            "AND target.slug=tr.to_status "
+            "WHERE target.category='done' AND w.task_type<>'iteration'"
+        ).fetchall()
+        for transition in transitions:
+            gates = [
+                gate.strip()
+                for gate in (transition["gates"] or "").split(",")
+                if gate.strip()
+            ]
+            missing = [gate for gate in gates_wanted if gate not in gates]
+            if not missing:
+                continue
+            conn.execute(
+                f"UPDATE {transition_table} SET gates=? WHERE id=?",
+                (",".join([*gates, *missing]), transition["id"]),
+            )
+            changed += 1
+    conn.commit()
+    return [f"added completion gates to {changed} transition(s)"] if changed else []

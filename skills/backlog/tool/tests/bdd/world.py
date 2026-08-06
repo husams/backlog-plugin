@@ -51,6 +51,22 @@ class World:
             assert result.returncode == expected, result.stderr or result.stdout
         return self.last_json if json_output else result.stdout
 
+    def verify_criteria(self, key: str | None = None, actor: str = "reviewer") -> None:
+        """Record the independent verdict the acceptance gate demands."""
+        target = key or self.require_key()
+        previous_result, previous_json = self.last_result, self.last_json
+        for criterion in self.run("criteria", "list", target):
+            self.run(
+                "criteria",
+                "verify",
+                str(criterion["id"]),
+                "--met",
+                "--evidence",
+                f"observed the stated behaviour while reviewing {target}",
+                actor=actor,
+            )
+        self.last_result, self.last_json = previous_result, previous_json
+
     def task(self, key: str | None = None) -> dict[str, Any]:
         previous_result, previous_json = self.last_result, self.last_json
         payload = self.run("show", key or self.require_key())

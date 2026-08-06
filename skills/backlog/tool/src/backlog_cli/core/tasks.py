@@ -15,6 +15,27 @@ from .normalization import (
 from .task_queries import get_task, get_task_by_id
 
 
+def _clean_identity(value: str | None, label: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise BacklogError(f"{label} must be a non-empty identity")
+    return value.strip()
+
+
+def _same_identity(left: str | None, right: str | None) -> bool:
+    return bool(left and right and left.strip().casefold() == right.strip().casefold())
+
+
+def _validate_delivery_roles(
+    *, assignee: str | None, reviewer: str | None, creator: str | None
+) -> None:
+    if _same_identity(assignee, reviewer):
+        raise BacklogError("assignee and reviewer must be different actors")
+    if _same_identity(reviewer, creator):
+        raise BacklogError("the task creator cannot be its reviewer")
+
+
 def add_task(
     conn: Conn,
     project_id: int,
@@ -48,6 +69,9 @@ def add_task(
         raise BacklogError("a subtask requires a parent story or bug (--parent <KEY>)")
 
     actor = require_actor(actor, "task creation")
+    assignee = _clean_identity(assignee, "assignee")
+    reviewer = _clean_identity(reviewer, "reviewer")
+    _validate_delivery_roles(assignee=assignee, reviewer=reviewer, creator=actor)
     key = next_key(conn, project_id, TASK_KEY_PREFIX[task_type])
     initial = workflow.get(conn, project_id, task_type).initial
     ts = utcnow()
@@ -143,6 +167,15 @@ def assign(
     task = get_task(conn, project_id, key)
     if to is None and reviewer is None:
         raise BacklogError("nothing to assign: pass --to and/or --reviewer")
+    to = _clean_identity(to, "assignee")
+    reviewer = _clean_identity(reviewer, "reviewer")
+    effective_assignee = to if to is not None else task["assignee"]
+    effective_reviewer = reviewer if reviewer is not None else task["reviewer"]
+    _validate_delivery_roles(
+        assignee=effective_assignee,
+        reviewer=effective_reviewer,
+        creator=task["created_by"],
+    )
     sets, values, notes = [], [], []
     if to is not None:
         sets += ["assignee = ?", "assignee_kind = ?"]
@@ -154,7 +187,21 @@ def assign(
         notes.append(f"reviewer {task['reviewer'] or '-'} -> {reviewer}")
     sets.append("updated_at = ?")
     values += [utcnow(), task["id"]]
+    changed_assignee = to is not None and not _same_identity(to, task["assignee"])
+    changed_reviewer = reviewer is not None and not _same_identity(
+        reviewer, task["reviewer"]
+    )
     conn.execute(f"UPDATE task SET {', '.join(sets)} WHERE id = ?", values)
+    if changed_assignee or changed_reviewer:
+        from .acceptance import discard_verdicts
+
+        discard_verdicts(
+            conn,
+            project_id,
+            task,
+            actor=actor,
+            reason="implementer or reviewer assignment changed",
+        )
     log_event(
         conn,
         "assign",

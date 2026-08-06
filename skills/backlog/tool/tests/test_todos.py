@@ -58,7 +58,17 @@ class TodoTest(unittest.TestCase):
 
     def story(self, title="Todo story"):
         return self.cli(
-            "story", "add", "--title", title, "--actor", "creator", json_output=True
+            "story",
+            "add",
+            "--title",
+            title,
+            "--assignee",
+            "developer",
+            "--reviewer",
+            "reviewer",
+            "--actor",
+            "creator",
+            json_output=True,
         )
 
     def start(self, key):
@@ -282,7 +292,7 @@ class TodoTest(unittest.TestCase):
             version = conn.execute(
                 "SELECT value FROM meta WHERE key='schema_version'"
             ).fetchone()["value"]
-            self.assertEqual(version, "18")
+            self.assertEqual(version, "19")
         finally:
             conn.close()
 

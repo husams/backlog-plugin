@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claude Backlog Review"
+  short_description: "Ask Claude to review a backlog work item"
+  default_prompt: "Use $claude-review-backlog-item to ask Claude to review S-001 from its implementation worktree."

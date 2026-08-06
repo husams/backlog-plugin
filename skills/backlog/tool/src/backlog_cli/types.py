@@ -107,6 +107,11 @@ class Task:
         return self._bl.todos(self.key)
 
     @property
+    def acceptance_criteria(self) -> list[dict]:
+        """Acceptance criteria with each one's review verdict."""
+        return self._bl.acceptance_criteria(self.key)
+
+    @property
     def open_threads(self) -> list[str]:
         return [
             r["root_key"] for r in core.open_threads(self._bl._conn, self._row["id"])

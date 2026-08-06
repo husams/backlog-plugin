@@ -19,6 +19,11 @@ from .items import (
     cmd_item_check,
     cmd_item_rm,
 )
+from .criteria import (
+    cmd_criteria_clear,
+    cmd_criteria_list,
+    cmd_criteria_verify,
+)
 from .todos import (
     cmd_todo_add,
     cmd_todo_close,
@@ -90,6 +95,26 @@ def register_collaboration(sub):
     sp = ip.add_parser("rm")
     sp.add_argument("id", type=int)
     sp.set_defaults(func=cmd_item_rm)
+
+    cp = sub.group(
+        "criteria", help="acceptance criteria and the reviewer verdicts on them"
+    )
+    sp = cp.add_parser("list", help="list criteria with their verdict state")
+    sp.add_argument("key")
+    sp.set_defaults(func=cmd_criteria_list)
+    sp = cp.add_parser("verify", help="record an independent reviewer's verdict")
+    sp.add_argument("id", type=int)
+    verdict = sp.add_mutually_exclusive_group(required=True)
+    verdict.add_argument("--met", action="store_true")
+    verdict.add_argument("--unmet", action="store_true")
+    sp.add_argument(
+        "--evidence", required=True, help="how the criterion was actually checked"
+    )
+    sp.set_defaults(func=cmd_criteria_verify)
+    sp = cp.add_parser("clear", help="drop every verdict on a task")
+    sp.add_argument("key")
+    sp.add_argument("--reason", required=True)
+    sp.set_defaults(func=cmd_criteria_clear)
 
     tp = sub.group("todo", help="flat ordered implementation steps on a task")
     sp = tp.add_parser("add", help="append one or more open todos")

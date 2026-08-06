@@ -22,7 +22,19 @@ def finalize_delivery(world: World) -> None:
 
 @given("a feature with an unfinished story")
 def feature_with_unfinished_story(world: World) -> None:
-    feature = world.run("feature", "add", "--title", "Parent", actor="creator")
+    feature = world.run(
+        "feature",
+        "add",
+        "--title",
+        "Parent",
+        "--ac",
+        "every child is delivered",
+        "--assignee",
+        "developer",
+        "--reviewer",
+        "reviewer",
+        actor="creator",
+    )
     world.run(
         "story",
         "add",
@@ -44,6 +56,7 @@ def feature_in_review(world: World) -> None:
         ("work.completed", "developer"),
     ):
         world.run("action", world.require_key(), action, actor=actor)
+    world.verify_criteria()
 
 
 @when("pull request events and gate outcomes are exercised")
@@ -58,6 +71,8 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         "developer",
         "--reviewer",
         "reviewer",
+        "--ac",
+        "the gate target is delivered",
         actor="creator",
     )
     world.run("action", target["key"], "refinement.accepted", actor="reviewer")
@@ -73,6 +88,7 @@ def exercise_pull_requests_and_gates(world: World) -> None:
     no_pr = world.run("gate", target["key"], "--for", "in_review", expected=2)
     assert any(check["check"] == "pr_recorded" for check in no_pr["checks"])
     world.run("gate", target["key"], "--for", "in_review", "--no-pr")
+    world.run("action", target["key"], "work.started", actor="developer")
 
     recorded = world.run(
         "pr",
@@ -86,6 +102,8 @@ def exercise_pull_requests_and_gates(world: World) -> None:
     assert recorded["pr_number"] == 123
     world.run("gate", target["key"], "--for", "in_review")
     world.run("gate", target["key"], "--for", "accepted", expected=2)
+    world.run("list", json_output=False)
+    world.verify_criteria(target["key"])
     world.run(
         "pr",
         "set",
@@ -94,7 +112,6 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         "approved",
         actor="reviewer",
     )
-    world.run("list", json_output=False)
     world.run("gate", target["key"], "--for", "accepted")
 
     child = world.run(
@@ -168,6 +185,8 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         "developer",
         "--reviewer",
         "reviewer",
+        "--ac",
+        "the defect no longer reproduces",
         actor="creator",
     )
     key = lifecycle["key"]
@@ -206,6 +225,7 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         world.run("action", key, action, actor=actor)
     world.run("gate", key, "--for", "in_review")
     world.run("action", key, "work.completed", actor="developer")
+    world.verify_criteria(key)
     world.run("pr", "set", key, "--review-state", "approved", actor="reviewer")
     world.run("gate", key, "--for", "accepted")
     world.run("next", actor="reviewer", json_output=False)
@@ -215,7 +235,25 @@ def exercise_pull_requests_and_gates(world: World) -> None:
     world.run("pr", "set", key, "--state", "merged", actor="merge-bot")
     world.run("gate", key, "--for", "done", expected=2)
 
-    waived = world.run("story", "add", "--title", "Waived PR", actor="creator")
+    waived = world.run(
+        "story",
+        "add",
+        "--title",
+        "Waived PR",
+        "--ac",
+        "the work ships without a pull request",
+        "--assignee",
+        "developer",
+        "--reviewer",
+        "reviewer",
+        actor="creator",
+    )
+    world.run("action", waived["key"], "refinement.accepted", actor="reviewer")
+    world.run("action", waived["key"], "work.started", actor="developer")
+    world.run(
+        "action", waived["key"], "review.submitted", "--no-pr", actor="developer"
+    )
+    world.verify_criteria(waived["key"])
     world.run("gate", waived["key"], "--for", "accepted", "--no-pr")
     world.run("gate", waived["key"], "--for", "done", "--no-pr", expected=2)
 
@@ -264,6 +302,8 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         "developer",
         "--reviewer",
         "reviewer",
+        "--ac",
+        "the approved pull request delivers the story",
         actor="creator",
     )
     world.run("action", pr_required["key"], "refinement.accepted", actor="reviewer")
@@ -277,6 +317,7 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         actor="developer",
     )
     world.run("action", pr_required["key"], "work.completed", actor="developer")
+    world.verify_criteria(pr_required["key"])
     world.run(
         "action", pr_required["key"], "review.approved", actor="reviewer", expected=None
     )
@@ -296,6 +337,8 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         "developer",
         "--reviewer",
         "reviewer",
+        "--ac",
+        "the reviewed work is deliverable without a pull request",
         actor="creator",
     )
     for action, actor in (
@@ -311,6 +354,7 @@ def exercise_pull_requests_and_gates(world: World) -> None:
         actor="developer",
     )
     assert world.task(no_pr_lifecycle["key"])["pr_waived"] == 1
+    world.verify_criteria(no_pr_lifecycle["key"])
     world.run("next", actor="reviewer", json_output=False)
     world.run("action", no_pr_lifecycle["key"], "review.approved", actor="reviewer")
     world.run("next", actor="developer", json_output=False)
@@ -324,8 +368,22 @@ def exercise_pull_requests_and_gates(world: World) -> None:
     assert world.task(no_pr_lifecycle["key"])["status"] == "done"
 
     container = world.run(
-        "feature", "add", "--title", "No PR container", actor="creator"
+        "feature",
+        "add",
+        "--title",
+        "No PR container",
+        "--ac",
+        "the container carries no pull request",
+        "--assignee",
+        "developer",
+        "--reviewer",
+        "reviewer",
+        actor="creator",
     )
+    world.run("action", container["key"], "refinement.accepted", actor="reviewer")
+    world.run("action", container["key"], "work.started", actor="developer")
+    world.run("action", container["key"], "review.submitted", actor="developer")
+    world.verify_criteria(container["key"])
     world.run(
         "workflow",
         "move-add",

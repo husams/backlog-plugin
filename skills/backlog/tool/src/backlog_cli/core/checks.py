@@ -4,12 +4,37 @@ from __future__ import annotations
 
 from .. import deps, workflow
 from ..db import BacklogError, Conn, Row
-from ..schema import PR_BEARING_TYPES
+from ..schema import PR_BEARING_TYPES, STATUS_DISPLAY
+from .acceptance import criteria_state
 from .iterations import iteration_members
 from .task_queries import blocking_threads, children_of, open_threads
 
-GATE_TARGETS = ["start", "in_review", "accepted", "done", "merge"]
+# What each public gate target demands. A target is a name for a set of named
+# checks, nothing more — the checks themselves are defined once, in
+# `run_checks`, so `gate()` and a workflow transition can never drift apart.
+_ACCEPTED_CHECKS = [
+    "required_validations_pass",
+    "review_threads_closed",
+    "pr_approved",
+    "children_complete",
+    "todos_closed",
+    "acceptance_criteria_verified",
+]
+
+GATE_TARGET_CHECKS: dict[str, list[str]] = {
+    "start": ["dependencies_clear", "review_threads_closed"],
+    "in_review": ["todos_closed", "pr_recorded"],
+    "accepted": _ACCEPTED_CHECKS,
+    "done": [*_ACCEPTED_CHECKS, "status_accepted", "pr_merged"],
+    "merge": ["status_accepted", *_ACCEPTED_CHECKS],
+}
+
+GATE_TARGETS = list(GATE_TARGET_CHECKS)
 _GATE_ALIASES = {"in_progress": "start", "begin": "start"}
+
+# An Iteration is a container: the work carrying acceptance criteria is its
+# members, so the criteria gate does not apply to the Iteration itself.
+_CRITERIA_EXEMPT_TYPES = {"iteration"}
 
 
 class Check:
@@ -231,4 +256,40 @@ def run_checks(
                     ),
                 )
             )
+        elif name == "acceptance_criteria_verified":
+            if task["task_type"] in _CRITERIA_EXEMPT_TYPES:
+                checks.append(Check(name, True, "not applicable to an Iteration"))
+                continue
+            criteria = criteria_state(conn, task["id"])
+            outstanding = [c for c in criteria if c["state"] != "met"]
+            if not criteria:
+                # An empty list must never pass: unrecorded criteria are not
+                # satisfied criteria, they are criteria nobody wrote down.
+                detail = "no acceptance criteria recorded"
+            elif outstanding:
+                detail = "unverified or unmet criteria: " + "; ".join(
+                    _criterion_summary(c) for c in outstanding
+                )
+            else:
+                detail = f"all {len(criteria)} acceptance criteria verified"
+            checks.append(Check(name, bool(criteria) and not outstanding, detail))
+        elif name == "status_accepted":
+            checks.append(
+                Check(
+                    name,
+                    task["status"] == "accepted",
+                    f"status={STATUS_DISPLAY.get(task['status'], task['status'])}",
+                )
+            )
     return checks
+
+
+def _criterion_summary(criterion: dict) -> str:
+    """`#12 the API rejects an empty body (unverified, stale)`."""
+    content = criterion["content"]
+    if len(content) > 60:
+        content = content[:57] + "..."
+    state = criterion["state"]
+    if criterion["stale"]:
+        state += ", stale"
+    return f"#{criterion['id']} {content} ({state})"
