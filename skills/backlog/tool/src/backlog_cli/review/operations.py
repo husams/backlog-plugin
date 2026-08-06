@@ -33,7 +33,7 @@ def open_thread(
     task = get_task(conn, project_id, key)
     role = resolve_role(task, author, role)
     if role != "reviewer":
-        raise BacklogError("only a reviewer can open a review thread")
+        raise BacklogError("only the assigned reviewer can open a review thread")
     severity = normalize_severity(severity)
     ckey = next_comment_key(conn)
     ts = utcnow()
@@ -124,9 +124,11 @@ def set_severity(
     ).fetchone()
     if thread is None:
         raise BacklogError(f"no review thread rooted at {rk}")
+    task = get_task_by_id(conn, thread["task_id"])
+    if not task["reviewer"] or author.casefold() != task["reviewer"].strip().casefold():
+        raise BacklogError("only the assigned reviewer can change review severity")
     if thread["severity"] == level.value:
         return _thread_summary(conn, rk)
-    task = get_task_by_id(conn, thread["task_id"])
     conn.execute(
         "UPDATE review_thread SET severity = ?, updated_at = ? WHERE root_key = ?",
         (level.value, utcnow(), rk),
